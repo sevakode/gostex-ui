@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_control_hold_options">Hold · options</string>
+    <string name="home_control_shelves">Sections</string>
+</resources>

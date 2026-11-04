@@ -1,0 +1,86 @@
+name: GOSTEX continuous releases
+on:
+  push:
+    branches: [main]
+    paths: ['native-launcher/**', '.github/workflows/gostex-release.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: gostex-releases
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [android-arm64, linux-x64]
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v6.1.0
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v6.4.1
+        with:
+          gradle-version: '9.8.2'
+      - name: Monotonic development version
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          run = int(os.environ['GITHUB_RUN_NUMBER'])
+          Path('native-launcher/version.properties').write_text(f'code={100000 + run}\nname=0.33.{run}\n')
+          PY
+      - name: Restore release signing key
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.GOSTEX_RELEASE_SIGNING_KEY }}
+        run: |
+          test -n "$RELEASE_SIGNING_KEY"
+          umask 077
+          printf '%s' "$RELEASE_SIGNING_KEY" > "$RUNNER_TEMP/gostex-release.pem"
+      - name: Build Android with existing installation identity
+        if: matrix.platform == 'android-arm64'
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$ANDROID_KEYSTORE_BASE64"
+          mkdir -p "$HOME/.android"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$HOME/.android/debug.keystore"
+          chmod 600 "$HOME/.android/debug.keystore"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.2' 'build-tools;36.0.0'
+          gradle -p native-launcher --no-daemon :release-runtime:test :app:assembleRelease :app:lintRelease
+          python3 native-launcher/tools/release/publish_feed.py --platform android-arm64 --artifact native-launcher/app/build/outputs/apk/release/app-release.apk --output release-assets --private-key "$RUNNER_TEMP/gostex-release.pem" --base-url "https://github.com/$GITHUB_REPOSITORY/releases/download/build-$GITHUB_RUN_NUMBER"
+      - name: Build native Linux image
+        if: matrix.platform == 'linux-x64'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libgl1 libxrender1 libxtst6 libxi6 libxext6 xvfb
+          xvfb-run -a gradle -p native-launcher --no-daemon -Pgostex.android=false -Pgostex.desktop=true :release-runtime:test :shared-core:jvmTest :desktop:test :desktop:createDistributable
+          python3 native-launcher/tools/deck/test_bootstrap.py
+          python3 native-launcher/tools/release/package_linux.py --image native-launcher/desktop/build/compose/binaries/main/app/GOSTEX --output "$RUNNER_TEMP/gostex-linux.zip"
+          python3 native-launcher/tools/release/publish_feed.py --platform linux-x64 --artifact "$RUNNER_TEMP/gostex-linux.zip" --output release-assets --private-key "$RUNNER_TEMP/gostex-release.pem" --base-url "https://github.com/$GITHUB_REPOSITORY/releases/download/build-$GITHUB_RUN_NUMBER"
+          cp native-launcher/tools/deck/bootstrap.py native-launcher/tools/deck/gostex-install.py native-launcher/tools/deck/gostex.svg release-assets/
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: release-${{ matrix.platform }}
+          path: release-assets/*
+          if-no-files-found: error
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+      - name: Publish complete signed release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          printf '%s\n' 'GOSTEX development update for Android TV and native Linux / Steam Deck.' '' 'Signed update manifests and verified platform artifacts are included. Android uses system installation confirmation. Linux applies staged updates at the next launcher start.' > "$RUNNER_TEMP/release-body.md"
+          gh release create "build-$GITHUB_RUN_NUMBER" release-assets/* --title "GOSTEX 0.33.$GITHUB_RUN_NUMBER" --notes-file "$RUNNER_TEMP/release-body.md" --latest

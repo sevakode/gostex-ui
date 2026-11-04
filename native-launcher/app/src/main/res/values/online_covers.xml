@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cover_find_online">Find cover options</string>
+    <string name="cover_sources">Online sources and priority</string>
+    <string name="cover_api_key">SteamGridDB API key</string>
+    <string name="cover_key_missing">API key not configured</string>
+    <string name="cover_key_saved">Key saved on this device</string>
+    <string name="cover_key_hint">Create your personal key at steamgriddb.com/profile/preferences/api. Paste it here; leave blank to remove it. The key is not exported with your library.</string>
+    <string name="cover_key_invalid">Enter a valid 32-character API key</string>
+    <string name="cover_access_failed">Access denied; check the API key</string>
+    <string name="cover_rate_limited">Request limit reached; try later</string>
+    <string name="cover_network_error">Could not load or save the image; try again</string>
+    <string name="cover_no_matches">No matching artwork found</string>
+    <string name="cover_online_disabled">Online sources are disabled in cover settings</string>
+    <string name="cover_search_query">Search title</string>
+    <string name="cover_search_again">Search again</string>
+    <string name="cover_next_source">Other source</string>
+    <string name="cover_searching">Searching…</string>
+    <string name="cover_preview_apply">Select a cover to save it for this game.</string>
+    <string name="cover_pick_title">Choose the correct game and edition first.</string>
+    <string name="cover_online_hint">Downloads run only in this window. Saved artwork works offline; manual choices are protected.</string>
+    <string name="cover_landscape_first">Prefer landscape covers</string>
+</resources>

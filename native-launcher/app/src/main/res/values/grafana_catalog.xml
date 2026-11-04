@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="grafana_catalog_title">Dashboards</string>
+    <string name="grafana_catalog_hint">Choose a dashboard for the screensaver. Stars are saved on this TV for this server and organization.</string>
+    <string name="grafana_catalog_all">All</string>
+    <string name="grafana_catalog_favorites">Favorites</string>
+    <string name="grafana_catalog_reload">Refresh list</string>
+    <string name="grafana_catalog_login">Open Grafana</string>
+    <string name="grafana_catalog_empty">No accessible dashboards were found in this organization.</string>
+    <string name="grafana_catalog_empty_favorites">No favorites yet. Open All and add dashboards with ☆.</string>
+    <string name="grafana_catalog_signin_needed">Sign in through Open Grafana, then reopen this list. Your account needs access to this organization.</string>
+    <string name="grafana_catalog_network_error">Could not reach Grafana. Check the connection or VPN and refresh the list.</string>
+    <string name="grafana_catalog_response_error">Grafana did not return a usable dashboard list. Check the server address and organization.</string>
+    <string name="grafana_catalog_add_favorite">Add %1$s to favorites</string>
+    <string name="grafana_catalog_remove_favorite">Remove %1$s from favorites</string>
+    <string name="grafana_catalog_limit">Showing up to 5,000 dashboards. The server may also limit the list.</string>
+</resources>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="import_source_title">Добавить игры</string>
+    <string name="import_one_game">Выбрать игру</string>
+    <string name="import_game_folder">Выбрать папку</string>
+    <string name="import_sources_title">Источники библиотеки</string>
+    <string name="import_remove_file">Убрать эту игру из источников?</string>
+    <string name="import_file_unavailable">Файл игры недоступен. Выбери его снова.</string>
+    <string name="import_file_cia_hint">CIA — установочный пакет. Установи его в Azahar через «Установить игровой контент» и вернись в GOSTEX. Один раз добавь папку данных Azahar, чтобы видеть установленные игры.</string>
+    <string name="import_file_companions_hint">Этому формату нужны соседние файлы. Выбери папку игры, чтобы эмулятор мог прочитать все дорожки или диски.</string>
+    <string name="import_file_wrong_type">Файл %1$s не поддерживается для %2$s.</string>
+    <string name="import_file_not_game">Этот файл не является запускаемой игрой. Выбери основной образ или источник установленных игр Azahar.</string>
+</resources>

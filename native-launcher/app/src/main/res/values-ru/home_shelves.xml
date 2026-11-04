@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_shelf_video">Видео</string>
+    <string name="home_shelf_recent">Недавние игры</string>
+    <string name="home_shelf_favorites">Избранное</string>
+    <string name="home_shelf_games">Игры</string>
+    <string name="home_shelf_apps">Приложения</string>
+    <string name="home_shelves_hint">Единый главный экран для пульта и геймпада. Вверх и вниз — переход между рядами, влево и вправо — внутри ряда.</string>
+    <string name="home_shelves_choose">Видимые ряды</string>
+    <string name="home_shelves_selected">Выбрано: %1$d</string>
+    <string name="home_shelves_apply">Применить</string>
+    <string name="home_shelves_order_hint">Выберите ряд, чтобы передвинуть его выше или ниже. Пустые ряды появятся, когда в них будет содержимое.</string>
+    <string name="home_shelf_position">Позиция %1$d</string>
+    <string name="home_shelf_hidden">Скрыт</string>
+    <string name="home_shelf_move_up">Передвинуть выше</string>
+    <string name="home_shelf_move_down">Передвинуть ниже</string>
+</resources>

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sections_title">Secciones de inicio</string>
+    <string name="sections_hint">Crea secciones con apps y juegos. Elige su orden y oculta cualquier sección, incluida Apps.</string>
+    <string name="sections_create">Crear sección</string>
+    <string name="sections_create_hint">Por ejemplo: Vídeo, Ajustes o una colección de juegos</string>
+    <string name="sections_name_hint">Nombre de la sección</string>
+    <string name="sections_name_error">Escribe un nombre de 1 a %1$d caracteres, sin saltos de línea.</string>
+    <string name="sections_save_error">No se pudo guardar la sección. Revisa el nombre y la cantidad de secciones.</string>
+    <string name="sections_save">Guardar</string>
+    <string name="sections_apply">Aplicar</string>
+    <string name="sections_choose_contents">Elegir apps y juegos</string>
+    <string name="sections_order_contents">Ordenar contenido</string>
+    <string name="sections_app_label">%1$s · App</string>
+    <string name="sections_game_label">%1$s · Juego</string>
+    <string name="sections_unavailable_item">No disponible · %1$s</string>
+    <string name="sections_remove_item">Quitar de la sección</string>
+    <string name="sections_rename">Renombrar sección</string>
+    <string name="sections_hide">Ocultar en inicio</string>
+    <string name="sections_show">Mostrar en inicio</string>
+    <string name="sections_delete">Eliminar sección</string>
+    <string name="sections_delete_hint">¿Eliminar «%1$s»? Las apps, los juegos y sus archivos permanecerán en el dispositivo.</string>
+    <string name="sections_item_count">Elementos: %1$d</string>
+    <string name="sections_automatic">Sección automática</string>
+    <string name="sections_position_description">Posición %1$d · %2$s</string>
+    <string name="sections_hidden_description">Oculta · %1$s</string>
+    <string name="sections_automatic_hint">Favoritos incluye apps y juegos. Recientes, Juegos y Apps se actualizan automáticamente. Las secciones propias mantienen el contenido y el orden que elijas.</string>
+    <string name="sections_assign">Añadir a secciones</string>
+    <string name="sections_no_custom">Crea tu primera sección y pulsa Aplicar para añadir este elemento.</string>
+    <string name="favorites_order_title">Ordenar favoritos</string>
+    <string name="favorites_order_description">%1$d elementos · Elegir su orden</string>
+    <string name="favorites_order_hint">Elige un elemento y muévelo a la izquierda, a la derecha, al principio o al final. Los cambios se guardan al instante.</string>
+    <string name="favorites_order_empty">Añade apps o juegos a Favoritos desde el menú de pulsación larga y luego ordénalos aquí.</string>
+    <string name="favorites_order_single">Solo hay un favorito. Añade otra app o juego para cambiar su orden.</string>
+    <string name="favorites_move_left">Mover a la izquierda</string>
+    <string name="favorites_move_right">Mover a la derecha</string>
+    <string name="favorites_move_first">Mover al principio</string>
+    <string name="favorites_move_last">Mover al final</string>
+</resources>

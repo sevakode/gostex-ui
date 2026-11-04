@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="appearance_title">Оформление</string>
+    <string name="appearance_hint">Настрой размер карточек, оформление обложек и отметки избранного для игр и приложений.</string>
+    <string name="cover_style_title">Обложки игр</string>
+    <string name="cover_style_generated">Дорисованные обложки</string>
+    <string name="cover_style_generated_hint">Обложки с дорисованными ИИ краями заполняют широкие карточки. Если такого арта нет, показываем оригинал на фоне его цветов.</string>
+    <string name="cover_style_ambient">Цвета обложки</string>
+    <string name="cover_style_ambient_hint">Обложка видна целиком, а свободное место заполняет мягкий фон в её цветах.</string>
+    <string name="cover_style_plain">Исходный формат</string>
+    <string name="cover_style_plain_hint">Обложка целиком на однотонном фоне с сохранением исходных пропорций.</string>
+    <string name="cover_style_crop">Заполнить карточку</string>
+    <string name="cover_style_crop_hint">Обложка заполняет карточку. Часть изображения по краям может обрезаться.</string>
+    <string name="tile_size_title">Размер карточек</string>
+    <string name="tile_size_large">Крупные · 4 в ряд</string>
+    <string name="tile_size_balanced">Средние · 5 в ряд</string>
+    <string name="tile_size_compact">Компактные · 6 в ряд</string>
+    <string name="tile_size_hint">Один размер для игр и приложений — на главном экране и в библиотеке. Размер текста сохраняется.</string>
+</resources>

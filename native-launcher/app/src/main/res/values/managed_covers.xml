@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="network_disconnected">Network disconnected</string>
+    <string name="network_no_internet">Connected · no internet</string>
+    <string name="network_ethernet">Ethernet · internet connected</string>
+    <string name="network_wifi">Wi-Fi · internet connected</string>
+    <string name="network_connected">Internet connected</string>
+    <string name="network_settings">Network settings</string>
+    <string name="network_status_visibility">Network status in header</string>
+    <string name="covers_title">Game covers</string>
+    <string name="covers_summary">Choose covers and connect an update folder</string>
+    <string name="covers_hint">Hold a game tile to change its cover. Manual choices stay in place when automatic covers are updated.</string>
+    <string name="cover_manage">Cover</string>
+    <string name="covers_no_folder">Not connected</string>
+    <string name="covers_folder_selected">Folder connected</string>
+    <string name="covers_shared_folder">Shared cover folder</string>
+    <string name="covers_automatic">Import updates automatically</string>
+    <string name="covers_syncing">Working…</string>
+    <string name="covers_sync_now">Apply updates and export library</string>
+    <string name="covers_exchange_hint">The folder receives library.json and source images for your installed games. Ready covers are imported from updates.json while GOSTEX is open.</string>
+    <string name="covers_disconnect">Disconnect folder</string>
+    <string name="covers_games">Your games</string>
+    <string name="covers_empty">Add games to manage their covers.</string>
+    <string name="covers_choose_game">Choose a game</string>
+    <string name="covers_hold_hint">Also available by holding a game tile</string>
+    <string name="cover_saved">Cover saved</string>
+    <string name="cover_error">Cover update failed: %1$s</string>
+    <string name="covers_sync_result">Folder checked · updated: %1$d · skipped: %2$d</string>
+    <string name="cover_choice_manual">Using your selected image</string>
+    <string name="cover_choice_original">Using the original cover</string>
+    <string name="cover_choice_auto">Automatic · shared folder and built-in covers</string>
+    <string name="cover_choose_file">Choose an image</string>
+    <string name="cover_use_manual">Use my selected image</string>
+    <string name="cover_use_auto">Use automatic cover</string>
+    <string name="cover_use_original">Use original cover</string>
+    <string name="cover_original_hint">Originals are preserved. You can switch back at any time.</string>
+    <string name="cover_choose_shared">Choose from shared folder</string>
+    <string name="covers_no_images">There are no images in the shared folder yet.</string>
+</resources>

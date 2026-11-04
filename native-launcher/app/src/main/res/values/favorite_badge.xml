@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="favorite_badge_title">Favorite marks</string>
+    <string name="favorite_badge_hint">Show a small outline heart on favorite games and apps. Hiding the mark keeps your favorites unchanged.</string>
+    <string name="favorite_badge_description">In favorites</string>
+</resources>

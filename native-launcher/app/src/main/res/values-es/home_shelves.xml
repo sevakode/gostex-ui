@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_shelf_video">Vídeo</string>
+    <string name="home_shelf_recent">Jugados recientemente</string>
+    <string name="home_shelf_favorites">Favoritos</string>
+    <string name="home_shelf_games">Juegos</string>
+    <string name="home_shelf_apps">Aplicaciones</string>
+    <string name="home_shelves_hint">Una pantalla de inicio para el mando a distancia y el de juegos. Sube o baja entre filas y desplázate a izquierda o derecha dentro de cada fila.</string>
+    <string name="home_shelves_choose">Filas visibles</string>
+    <string name="home_shelves_selected">%1$d seleccionadas</string>
+    <string name="home_shelves_apply">Aplicar</string>
+    <string name="home_shelves_order_hint">Selecciona una fila para subirla o bajarla. Las filas vacías aparecen cuando añades contenido.</string>
+    <string name="home_shelf_position">Posición %1$d</string>
+    <string name="home_shelf_hidden">Oculta</string>
+    <string name="home_shelf_move_up">Subir</string>
+    <string name="home_shelf_move_down">Bajar</string>
+</resources>

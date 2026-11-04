@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="nds_emulator_title">Nintendo DS emulator</string>
+    <string name="nds_emulator_standalone">melonDS · standalone</string>
+    <string name="nds_emulator_retroarch">RetroArch · melonDS DS</string>
+    <string name="nds_emulator_hint">Choose the emulator used to launch Nintendo DS games. Each emulator manages its own saves.</string>
+    <string name="nds_retroarch_hint">Install the melonDS DS core in RetroArch. Game files must be in a folder on SHIELD or a connected drive that RetroArch can read.</string>
+    <string name="nds_retroarch_location_error">RetroArch cannot open this game location directly. Select a folder on SHIELD or a connected drive and allow RetroArch to read it.</string>
+</resources>

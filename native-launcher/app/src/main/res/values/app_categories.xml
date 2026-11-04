@@ -1,0 +1,13 @@
+<resources>
+    <string-array name="video_app_packages" translatable="false">
+        <item>org.smarttube.stable</item>
+        <item>org.smarttube.beta</item>
+        <item>mobi.zona</item>
+        <item>org.jellyfin.androidtv</item>
+        <item>org.videolan.vlc</item>
+        <item>org.courville.nova</item>
+        <item>com.mxtech.videoplayer.ad</item>
+        <item>com.mxtech.videoplayer.pro</item>
+        <item>org.xbmc.kodi</item>
+    </string-array>
+</resources>

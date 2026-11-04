@@ -1,0 +1,20 @@
+name: GOSTEX diagnostic report
+description: Report an update, input, focus, launch or performance problem.
+body:
+  - type: textarea
+    id: behavior
+    attributes:
+      label: What happened?
+      description: Include the steps and expected behavior.
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Device, GOSTEX version and mode
+      placeholder: SHIELD / Steam Deck, version, Gaming Mode or Desktop Mode
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostic ZIP
+      description: Export from Settings → Updates and diagnostics. Review the ZIP, then attach it here. Do not include passwords, API keys, ROMs or saves.

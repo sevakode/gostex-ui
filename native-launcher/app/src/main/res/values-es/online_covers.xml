@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cover_find_online">Buscar portadas</string>
+    <string name="cover_sources">Fuentes y prioridad</string>
+    <string name="cover_api_key">Clave API de SteamGridDB</string>
+    <string name="cover_key_missing">Falta la clave API</string>
+    <string name="cover_key_saved">Clave guardada en este dispositivo</string>
+    <string name="cover_key_hint">Crea tu clave personal en steamgriddb.com/profile/preferences/api. Pégala aquí; deja el campo vacío para borrarla. No se exporta con tu biblioteca.</string>
+    <string name="cover_key_invalid">Introduce una clave API válida de 32 caracteres</string>
+    <string name="cover_access_failed">Acceso denegado; revisa la clave API</string>
+    <string name="cover_rate_limited">Límite alcanzado; inténtalo más tarde</string>
+    <string name="cover_network_error">No se pudo cargar o guardar la imagen; inténtalo de nuevo</string>
+    <string name="cover_no_matches">No se encontraron portadas</string>
+    <string name="cover_online_disabled">Las fuentes están desactivadas en ajustes de portadas</string>
+    <string name="cover_search_query">Título de búsqueda</string>
+    <string name="cover_search_again">Buscar de nuevo</string>
+    <string name="cover_next_source">Otra fuente</string>
+    <string name="cover_searching">Buscando…</string>
+    <string name="cover_preview_apply">Selecciona una portada para guardarla para este juego.</string>
+    <string name="cover_pick_title">Elige primero el juego y la edición correctos.</string>
+    <string name="cover_online_hint">Las descargas solo funcionan en esta ventana. Las portadas guardadas funcionan sin conexión y se respeta tu selección.</string>
+    <string name="cover_landscape_first">Preferir portadas horizontales</string>
+</resources>

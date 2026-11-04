@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="apps_tab_visibility">Apps tab</string>
+    <string name="apps_tab_hint">Show or hide the Apps tab. The Apps row on Home is managed in Home sections.</string>
+    <string name="apps_loading">Loading apps…</string>
+    <string name="apps_empty">No launchable apps found</string>
+    <plurals name="apps_count">
+        <item quantity="one">%d app</item>
+        <item quantity="other">%d apps</item>
+    </plurals>
+</resources>

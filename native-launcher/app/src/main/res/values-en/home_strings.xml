@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_settings">Home screen</string>
+    <string name="home_hint">Choose the order of games on your home screen.</string>
+    <string name="home_order">Game order</string>
+    <string name="home_order_recent">Recently played</string>
+    <string name="home_order_favorites">Favorites first</string>
+    <string name="home_order_title">By title</string>
+    <string name="home_recent_hint">Your most recently launched games appear first. Games you have not played yet follow in title order.</string>
+    <string name="home_favorites_hint">Favorites appear first, with recently launched games at the front of each group.</string>
+    <string name="home_title_hint">All games appear in alphabetical order.</string>
+</resources>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_appearance_group">Appearance</string>
+    <string name="settings_appearance_summary">Cards and screensaver</string>
+    <string name="settings_media_group">Media &amp; library</string>
+    <string name="settings_media_summary">Games and ROM folders</string>
+    <string name="settings_controls_group">Controls</string>
+    <string name="settings_controls_summary">Gamepad buttons and on-screen hints</string>
+    <string name="settings_locale_group">Language &amp; clocks</string>
+    <string name="settings_locale_summary">Language, time and time zones</string>
+    <string name="settings_system_group">System</string>
+    <string name="settings_system_summary">SHIELD settings and remote access</string>
+    <string name="settings_cards_title">Cards</string>
+</resources>

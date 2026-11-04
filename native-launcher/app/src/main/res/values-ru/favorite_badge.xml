@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="favorite_badge_title">Отметки избранного</string>
+    <string name="favorite_badge_hint">Небольшое контурное сердце на избранных играх и приложениях. Если скрыть отметку, состав избранного сохранится.</string>
+    <string name="favorite_badge_description">В избранном</string>
+</resources>

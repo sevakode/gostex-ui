@@ -1,0 +1,15 @@
+Game descriptions are excerpts from Wikipedia article introductions, authored by
+Wikipedia contributors and available under Creative Commons Attribution-ShareAlike
+4.0 International: https://creativecommons.org/licenses/by-sa/4.0/
+
+Each language entry in descriptions.json includes the original article URL, title,
+language, author credit and license URL. Article URLs provide access to the page
+history and contributor attribution. Text is excerpted (first two introductory
+paragraphs) without translation or paraphrase. UI previews truncate visually; the
+full stored excerpt and original source are available from the description panel.
+
+Descriptions are independently licensed content; their license does not change
+the license of the application code. Original GOSTEX fallback descriptions are
+not presented as Wikipedia content. Missing translations fall back to English
+with an explicit EN indicator. No fuzzy title matching or automatic ROM uploads
+are used.

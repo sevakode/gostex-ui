@@ -1,0 +1,151 @@
+{
+  "version": 1,
+  "generatedAtUtc": "2026-11-04T03:31:54.621210+00:00",
+  "scope": "Filename index only. Image artwork remains on the source server. Not a snapshot of the images.",
+  "platforms": {
+    "Dreamcast": {
+      "system": "Sega - Dreamcast",
+      "file": "a0196116947a2173.idx",
+      "source": "https://thumbnails.libretro.com/Sega%20-%20Dreamcast/Named_Boxarts/",
+      "names": 1332,
+      "keys": 1048,
+      "bytes": 21051,
+      "sha256": "961c869bec3d750368b8bea00675e97d1db25b9a8b3e55ba1ed4980bb5650c46"
+    },
+    "Game Boy": {
+      "system": "Nintendo - Game Boy",
+      "file": "31ea9db25668f840.idx",
+      "source": "https://thumbnails.libretro.com/Nintendo%20-%20Game%20Boy/Named_Boxarts/",
+      "names": 1647,
+      "keys": 1456,
+      "bytes": 28574,
+      "sha256": "9030aa75c623b650a880089582b4b49f6db4ac34a7c96518c6c55370da6b60a1"
+    },
+    "Game Boy Advance": {
+      "system": "Nintendo - Game Boy Advance",
+      "file": "7deb8eea199cd63c.idx",
+      "source": "https://thumbnails.libretro.com/Nintendo%20-%20Game%20Boy%20Advance/Named_Boxarts/",
+      "names": 5961,
+      "keys": 5147,
+      "bytes": 87852,
+      "sha256": "2e4fb13bbf4062f15e857461c894fb7ac4940c72197141b79cff19211c11e6ed"
+    },
+    "Game Boy Color": {
+      "system": "Nintendo - Game Boy Color",
+      "file": "81af76ce09b18e99.idx",
+      "source": "https://thumbnails.libretro.com/Nintendo%20-%20Game%20Boy%20Color/Named_Boxarts/",
+      "names": 1524,
+      "keys": 1329,
+      "bytes": 30712,
+      "sha256": "e3133c1706bd2f75d125cdc2ab816f1dc814c328d73abacee3a45ae612025e1b"
+    },
+    "GameCube": {
+      "system": "Nintendo - GameCube",
+      "file": "3db26290a47435f1.idx",
+      "source": "https://thumbnails.libretro.com/Nintendo%20-%20GameCube/Named_Boxarts/",
+      "names": 1954,
+      "keys": 1278,
+      "bytes": 26986,
+      "sha256": "5b6628712e2c3c7f4ef795a23c158b14811c19f9304d7cd8d6205aed27f7af04"
+    },
+    "Master System": {
+      "system": "Sega - Master System - Mark III",
+      "file": "6a3c8583d451cf9e.idx",
+      "source": "https://thumbnails.libretro.com/Sega%20-%20Master%20System%20-%20Mark%20III/Named_Boxarts/",
+      "names": 559,
+      "keys": 545,
+      "bytes": 9540,
+      "sha256": "bdbbb63045b7199a27be0b2758e07af02541cb4bf2283003b3aa4701c5a8a527"
+    },
+    "Mega Drive": {
+      "system": "Sega - Mega Drive - Genesis",
+      "file": "91faea512ec70a28.idx",
+      "source": "https://thumbnails.libretro.com/Sega%20-%20Mega%20Drive%20-%20Genesis/Named_Boxarts/",
+      "names": 2352,
+      "keys": 1895,
+      "bytes": 33129,
+      "sha256": "1972e01563328fd07bef14faba519181a1a3cfc619a59770669cf1bdd1345f49"
+    },
+    "NES": {
+      "system": "Nintendo - Nintendo Entertainment System",
+      "file": "a9c58d62d6df4dc2.idx",
+      "source": "https://thumbnails.libretro.com/Nintendo%20-%20Nintendo%20Entertainment%20System/Named_Boxarts/",
+      "names": 13439,
+      "keys": 12874,
+      "bytes": 204608,
+      "sha256": "3117b6c3ec7f863afe7352e9c17b2464d6a7222ee73460bb0ab5074642ff5a52"
+    },
+    "Neo Geo Pocket": {
+      "system": "SNK - Neo Geo Pocket",
+      "file": "4de2c56ed707bdae.idx",
+      "source": "https://thumbnails.libretro.com/SNK%20-%20Neo%20Geo%20Pocket/Named_Boxarts/",
+      "names": 11,
+      "keys": 10,
+      "bytes": 387,
+      "sha256": "2795ef382dea5e56c6ad3a89a39cedd50f74de3b08c7f33ae61254a393d24879"
+    },
+    "Nintendo 64": {
+      "system": "Nintendo - Nintendo 64",
+      "file": "c0ec61749f8daa25.idx",
+      "source": "https://thumbnails.libretro.com/Nintendo%20-%20Nintendo%2064/Named_Boxarts/",
+      "names": 1115,
+      "keys": 764,
+      "bytes": 15179,
+      "sha256": "edbc095dd13653bf32dfb4f71288c22e8501ba5d1f47a09d6ef62758387aaa3c"
+    },
+    "Nintendo DS": {
+      "system": "Nintendo - Nintendo DS",
+      "file": "f8377286c1b69577.idx",
+      "source": "https://thumbnails.libretro.com/Nintendo%20-%20Nintendo%20DS/Named_Boxarts/",
+      "names": 7335,
+      "keys": 5996,
+      "bytes": 141834,
+      "sha256": "d66569822319bb56776e4547ce57eda941723389cbb5f9a993c4d6baad5e5280"
+    },
+    "PC Engine": {
+      "system": "NEC - PC Engine - TurboGrafx 16",
+      "file": "d1cf89614f080bbb.idx",
+      "source": "https://thumbnails.libretro.com/NEC%20-%20PC%20Engine%20-%20TurboGrafx%2016/Named_Boxarts/",
+      "names": 479,
+      "keys": 437,
+      "bytes": 7349,
+      "sha256": "a3ca749fc641e3efa22f8763bfd3e674cdac74aadcc6649118748ffb347803b3"
+    },
+    "PSP": {
+      "system": "Sony - PlayStation Portable",
+      "file": "95968f32519bcaed.idx",
+      "source": "https://thumbnails.libretro.com/Sony%20-%20PlayStation%20Portable/Named_Boxarts/",
+      "names": 1774,
+      "keys": 1623,
+      "bytes": 36735,
+      "sha256": "47bee426808df54e4ec86f991301df7f6d69b173505a3b22877991f2aa6fb5c8"
+    },
+    "PlayStation": {
+      "system": "Sony - PlayStation",
+      "file": "5f6e1165eb7d5c30.idx",
+      "source": "https://thumbnails.libretro.com/Sony%20-%20PlayStation/Named_Boxarts/",
+      "names": 9301,
+      "keys": 7610,
+      "bytes": 143801,
+      "sha256": "a1bade2f34de3576746bb87a58e70488bf41d7936d05eece50be59f2d8e0280f"
+    },
+    "SNES": {
+      "system": "Nintendo - Super Nintendo Entertainment System",
+      "file": "5f48a934768fd146.idx",
+      "source": "https://thumbnails.libretro.com/Nintendo%20-%20Super%20Nintendo%20Entertainment%20System/Named_Boxarts/",
+      "names": 3689,
+      "keys": 2813,
+      "bytes": 54001,
+      "sha256": "1339a7f8361f3e6dcbc7de732d3e7d8e600ef95c415f90ffbe929512fe971dc5"
+    },
+    "Wii": {
+      "system": "Nintendo - Wii",
+      "file": "2cf367e54a8b173c.idx",
+      "source": "https://thumbnails.libretro.com/Nintendo%20-%20Wii/Named_Boxarts/",
+      "names": 6668,
+      "keys": 4156,
+      "bytes": 87970,
+      "sha256": "f7ba71b8409d020bdecf05e702a5086414ca450576b413048bc425de258cc5ec"
+    }
+  }
+}

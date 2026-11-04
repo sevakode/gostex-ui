@@ -1,0 +1,21 @@
+<resources>
+    <string name="media_player">Minirreproductor</string>
+    <string name="media_listener_label">GOSTEX · controles multimedia</string>
+    <string name="media_playing">Reproduciendo</string>
+    <string name="media_paused">En pausa</string>
+    <string name="media_pause">Pausar</string>
+    <string name="media_resume">Reanudar</string>
+    <string name="media_previous">Pista anterior</string>
+    <string name="media_next">Pista siguiente</string>
+    <string name="media_open_app">Abrir %1$s</string>
+    <string name="media_visibility">Mostrar en la barra superior</string>
+    <string name="media_access">Acceso multimedia</string>
+    <string name="media_access_granted">Activado</string>
+    <string name="media_access_required">Activa el acceso a notificaciones para GOSTEX</string>
+    <string name="media_access_hint">Para mostrar lo que reproducen otras apps, activa el acceso a notificaciones para GOSTEX en los ajustes de Android.</string>
+    <string name="media_empty">No hay reproducción activa. Inicia música o vídeo en una app compatible con los controles multimedia de Android.</string>
+    <string name="media_hint">Muestra la reproducción activa y las sesiones en pausa. Los controles dependen de la app. Solo se actualiza con GOSTEX visible; no se guardan notificaciones.</string>
+    <string name="media_settings_summary">Reproducción en la barra superior y controles multimedia</string>
+    <string name="media_action_failed">La app no aceptó la orden. Ábrela e inténtalo de nuevo.</string>
+    <string name="media_settings_unavailable">Los ajustes de acceso a notificaciones no están disponibles en este dispositivo.</string>
+</resources>

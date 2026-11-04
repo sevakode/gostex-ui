@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_appearance_group">Apariencia</string>
+    <string name="settings_appearance_summary">Tarjetas y salvapantallas</string>
+    <string name="settings_media_group">Multimedia y biblioteca</string>
+    <string name="settings_media_summary">Juegos y carpetas de ROM</string>
+    <string name="settings_controls_group">Controles</string>
+    <string name="settings_controls_summary">Botones del mando e indicaciones</string>
+    <string name="settings_locale_group">Idioma y relojes</string>
+    <string name="settings_locale_summary">Idioma, hora y zonas horarias</string>
+    <string name="settings_system_group">Sistema</string>
+    <string name="settings_system_summary">Ajustes de SHIELD y acceso remoto</string>
+    <string name="settings_cards_title">Tarjetas</string>
+</resources>

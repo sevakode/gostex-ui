@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cover_find_online">Найти варианты обложки</string>
+    <string name="cover_sources">Источники и приоритет</string>
+    <string name="cover_api_key">API-ключ SteamGridDB</string>
+    <string name="cover_key_missing">API-ключ не задан</string>
+    <string name="cover_key_saved">Ключ сохранён на приставке</string>
+    <string name="cover_key_hint">Создай личный ключ на steamgriddb.com/profile/preferences/api и вставь сюда. Пустое поле удалит ключ. Он не выгружается вместе с библиотекой.</string>
+    <string name="cover_key_invalid">Нужен корректный API-ключ из 32 символов</string>
+    <string name="cover_access_failed">Нет доступа · проверь API-ключ</string>
+    <string name="cover_rate_limited">Лимит запросов · попробуй позже</string>
+    <string name="cover_network_error">Не удалось загрузить или сохранить · попробуй ещё раз</string>
+    <string name="cover_no_matches">Подходящих вариантов нет</string>
+    <string name="cover_online_disabled">Источники отключены в настройках обложек</string>
+    <string name="cover_search_query">Название для поиска</string>
+    <string name="cover_search_again">Повторить поиск</string>
+    <string name="cover_next_source">Другой источник</string>
+    <string name="cover_searching">Поиск…</string>
+    <string name="cover_preview_apply">Нажми на вариант, чтобы сохранить его для этой игры.</string>
+    <string name="cover_pick_title">Сначала выбери нужную игру и издание.</string>
+    <string name="cover_online_hint">Загрузка работает только в этом окне. Сохранённые обложки доступны без интернета; ручной выбор защищён.</string>
+    <string name="cover_landscape_first">Предпочитать широкие обложки</string>
+</resources>

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sections_title">Home sections</string>
+    <string name="sections_hint">Make your own sections with apps and games. Choose their order and hide any section, including Apps.</string>
+    <string name="sections_create">Create section</string>
+    <string name="sections_create_hint">For example: Video, Settings or a collection of games</string>
+    <string name="sections_name_hint">Section name</string>
+    <string name="sections_name_error">Enter a name without line breaks. Character limit: %1$d.</string>
+    <string name="sections_save_error">Could not save this section. Check the name and the number of sections.</string>
+    <string name="sections_save">Save</string>
+    <string name="sections_apply">Apply</string>
+    <string name="sections_choose_contents">Choose apps and games</string>
+    <string name="sections_order_contents">Order contents</string>
+    <string name="sections_app_label">%1$s · App</string>
+    <string name="sections_game_label">%1$s · Game</string>
+    <string name="sections_unavailable_item">Unavailable · %1$s</string>
+    <string name="sections_remove_item">Remove from section</string>
+    <string name="sections_rename">Rename section</string>
+    <string name="sections_hide">Hide on home screen</string>
+    <string name="sections_show">Show on home screen</string>
+    <string name="sections_delete">Delete section</string>
+    <string name="sections_delete_hint">Delete “%1$s”? Apps, games and their files will stay on your device.</string>
+    <string name="sections_item_count">Items: %1$d</string>
+    <string name="sections_automatic">Automatic section</string>
+    <string name="sections_position_description">Position %1$d · %2$s</string>
+    <string name="sections_hidden_description">Hidden · %1$s</string>
+    <string name="sections_automatic_hint">Favorites includes both apps and games. Recently played, Games and Apps update automatically. Custom sections keep your chosen content and order.</string>
+    <string name="sections_assign">Add to sections</string>
+    <string name="sections_no_custom">Create your first section, then apply to add this item.</string>
+    <string name="favorites_order_title">Order favorites</string>
+    <string name="favorites_order_description">%1$d items · Choose their order</string>
+    <string name="favorites_order_hint">Choose an item, then move it left, right, to the beginning or to the end. Changes are saved immediately.</string>
+    <string name="favorites_order_empty">Add apps or games to Favorites from their hold menu, then arrange them here.</string>
+    <string name="favorites_order_single">There is only one favorite. Add another app or game to change their order.</string>
+    <string name="favorites_move_left">Move left</string>
+    <string name="favorites_move_right">Move right</string>
+    <string name="favorites_move_first">Move to beginning</string>
+    <string name="favorites_move_last">Move to end</string>
+</resources>

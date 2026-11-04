@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="clock_title">Relojes y zonas horarias</string>
+    <string name="clock_format_system">Según el sistema</string>
+    <string name="clock_format_12">12 horas</string>
+    <string name="clock_format_24">24 horas</string>
+    <string name="clock_local">Hora del dispositivo</string>
+    <string name="clock_manage_title">Gestionar reloj</string>
+    <string name="clock_add_title">Añadir zona horaria</string>
+    <string name="clock_hint">Elige los relojes de la pantalla principal. La zona horaria del dispositivo no cambia.</string>
+    <string name="clock_visibility">Mostrar relojes</string>
+    <string name="clock_format">Formato de hora</string>
+    <string name="clock_add">Añadir zona horaria</string>
+    <string name="clock_order_hint">Los relojes aparecen en este orden. Selecciona uno para moverlo o quitarlo.</string>
+    <string name="clock_empty">No hay relojes seleccionados. Añade una zona horaria para mostrar la hora.</string>
+    <string name="clock_order_value">%1$d · %2$s</string>
+    <string name="clock_picker_hint">Elige una región y luego una zona horaria. Los nombres y los cambios de horario proceden del sistema.</string>
+    <string name="clock_group_count">Zonas horarias: %1$d</string>
+    <string name="clock_page">Página %1$d de %2$d</string>
+    <string name="clock_back_to_groups">Volver a regiones</string>
+    <string name="clock_previous_page">Página anterior</string>
+    <string name="clock_next_page">Página siguiente</string>
+    <string name="clock_back_to_clocks">Volver a relojes</string>
+    <string name="clock_move_hint">Cambia el orden o quita este reloj. La hora del dispositivo no cambia.</string>
+    <string name="clock_move_earlier">Mover antes</string>
+    <string name="clock_move_later">Mover después</string>
+    <string name="clock_remove">Quitar reloj</string>
+    <string name="clock_group_africa">África</string>
+    <string name="clock_group_america">América</string>
+    <string name="clock_group_antarctica">Antártida</string>
+    <string name="clock_group_arctic">Ártico</string>
+    <string name="clock_group_asia">Asia</string>
+    <string name="clock_group_atlantic">Océano Atlántico</string>
+    <string name="clock_group_australia">Australia</string>
+    <string name="clock_group_europe">Europa</string>
+    <string name="clock_group_indian">Océano Índico</string>
+    <string name="clock_group_pacific">Océano Pacífico</string>
+    <string name="clock_group_utc">Desplazamientos UTC</string>
+    <string name="clock_group_other">Otros identificadores</string>
+</resources>

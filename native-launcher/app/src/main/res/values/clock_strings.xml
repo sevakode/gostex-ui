@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="clock_title">Clocks and time zones</string>
+    <string name="clock_format_system">Follow system</string>
+    <string name="clock_format_12">12-hour</string>
+    <string name="clock_format_24">24-hour</string>
+    <string name="clock_local">Device time</string>
+    <string name="clock_manage_title">Manage clock</string>
+    <string name="clock_add_title">Add time zone</string>
+    <string name="clock_hint">Choose the clocks shown on the home screen. Your device time zone stays unchanged.</string>
+    <string name="clock_visibility">Show clocks</string>
+    <string name="clock_format">Time format</string>
+    <string name="clock_add">Add time zone</string>
+    <string name="clock_order_hint">Clocks appear in this order. Select one to move or remove it.</string>
+    <string name="clock_empty">No clocks selected. Add a time zone to show the time.</string>
+    <string name="clock_order_value">%1$d · %2$s</string>
+    <string name="clock_picker_hint">Choose a region, then a time zone. Names and daylight-saving rules come from the device.</string>
+    <string name="clock_group_count">%1$d time zones</string>
+    <string name="clock_page">Page %1$d of %2$d</string>
+    <string name="clock_back_to_groups">Back to regions</string>
+    <string name="clock_previous_page">Previous page</string>
+    <string name="clock_next_page">Next page</string>
+    <string name="clock_back_to_clocks">Back to clocks</string>
+    <string name="clock_move_hint">Change the display order or remove this clock. This does not change the device time.</string>
+    <string name="clock_move_earlier">Move earlier</string>
+    <string name="clock_move_later">Move later</string>
+    <string name="clock_remove">Remove clock</string>
+    <string name="clock_group_africa">Africa</string>
+    <string name="clock_group_america">Americas</string>
+    <string name="clock_group_antarctica">Antarctica</string>
+    <string name="clock_group_arctic">Arctic</string>
+    <string name="clock_group_asia">Asia</string>
+    <string name="clock_group_atlantic">Atlantic Ocean</string>
+    <string name="clock_group_australia">Australia</string>
+    <string name="clock_group_europe">Europe</string>
+    <string name="clock_group_indian">Indian Ocean</string>
+    <string name="clock_group_pacific">Pacific Ocean</string>
+    <string name="clock_group_utc">UTC offsets</string>
+    <string name="clock_group_other">Other zone IDs</string>
+</resources>

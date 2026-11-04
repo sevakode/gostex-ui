@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_settings">Главный экран</string>
+    <string name="home_hint">Выбери порядок игр на главном экране.</string>
+    <string name="home_order">Порядок игр</string>
+    <string name="home_order_recent">Недавно запущенные</string>
+    <string name="home_order_favorites">Сначала избранное</string>
+    <string name="home_order_title">По названию</string>
+    <string name="home_recent_hint">Недавно запущенные игры идут первыми. Игры, которые ты ещё не запускал, идут следом по названию.</string>
+    <string name="home_favorites_hint">Сначала избранное. Внутри каждой группы первыми идут недавно запущенные игры.</string>
+    <string name="home_title_hint">Все игры идут в алфавитном порядке.</string>
+</resources>

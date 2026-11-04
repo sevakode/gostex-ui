@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="appearance_title">Apariencia</string>
+    <string name="appearance_hint">Elige el tamaño de las tarjetas, el estilo de las portadas y las marcas de favoritos para juegos y aplicaciones.</string>
+    <string name="cover_style_title">Portadas de juegos</string>
+    <string name="cover_style_generated">Ilustración ampliada</string>
+    <string name="cover_style_generated_hint">Las portadas ampliadas con IA llenan las tarjetas panorámicas. Si no hay una, se muestra la portada original con un fondo de sus propios colores.</string>
+    <string name="cover_style_ambient">Colores de la portada</string>
+    <string name="cover_style_ambient_hint">La portada se ve completa, con un fondo suave de sus propios colores.</string>
+    <string name="cover_style_plain">Formato original</string>
+    <string name="cover_style_plain_hint">La portada completa sobre un fondo liso, manteniendo sus proporciones originales.</string>
+    <string name="cover_style_crop">Llenar la tarjeta</string>
+    <string name="cover_style_crop_hint">La portada llena la tarjeta. Es posible que se recorten algunos bordes.</string>
+    <string name="tile_size_title">Tamaño de las tarjetas</string>
+    <string name="tile_size_large">Grandes · 4 por fila</string>
+    <string name="tile_size_balanced">Medianas · 5 por fila</string>
+    <string name="tile_size_compact">Compactas · 6 por fila</string>
+    <string name="tile_size_hint">El mismo tamaño se aplica a juegos y aplicaciones, en el inicio y en la biblioteca. El tamaño del texto no cambia.</string>
+</resources>

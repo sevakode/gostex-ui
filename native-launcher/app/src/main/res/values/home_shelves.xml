@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_shelf_video">Video</string>
+    <string name="home_shelf_recent">Recently played</string>
+    <string name="home_shelf_favorites">Favorites</string>
+    <string name="home_shelf_games">Games</string>
+    <string name="home_shelf_apps">Apps</string>
+    <string name="home_shelves_hint">One home screen for your remote and controller. Move up and down between rows, and left and right within each row.</string>
+    <string name="home_shelves_choose">Visible rows</string>
+    <string name="home_shelves_selected">%1$d selected</string>
+    <string name="home_shelves_apply">Apply</string>
+    <string name="home_shelves_order_hint">Select a row to move it up or down. Rows without content appear when you add something to them.</string>
+    <string name="home_shelf_position">Position %1$d</string>
+    <string name="home_shelf_hidden">Hidden</string>
+    <string name="home_shelf_move_up">Move up</string>
+    <string name="home_shelf_move_down">Move down</string>
+</resources>

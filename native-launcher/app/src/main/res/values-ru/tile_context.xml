@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tile_game_options">ОПЦИИ ИГРЫ</string>
+    <string name="tile_app_options">ОПЦИИ ПРИЛОЖЕНИЯ</string>
+    <string name="tile_play">Играть</string>
+    <string name="tile_details">Об игре</string>
+    <string name="tile_favorite_add">Добавить в избранное</string>
+    <string name="tile_favorite_remove">Убрать из избранного</string>
+    <string name="tile_open">Открыть</string>
+    <string name="tile_sections">Разделы…</string>
+    <string name="tile_section_first">На первое место в «%1$s»</string>
+    <string name="tile_app_info">О приложении</string>
+</resources>

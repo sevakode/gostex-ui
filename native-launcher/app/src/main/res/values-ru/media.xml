@@ -1,0 +1,21 @@
+<resources>
+    <string name="media_player">Мини-плеер</string>
+    <string name="media_listener_label">GOSTEX · управление воспроизведением</string>
+    <string name="media_playing">Играет</string>
+    <string name="media_paused">На паузе</string>
+    <string name="media_pause">Пауза</string>
+    <string name="media_resume">Продолжить</string>
+    <string name="media_previous">Предыдущий трек</string>
+    <string name="media_next">Следующий трек</string>
+    <string name="media_open_app">Открыть %1$s</string>
+    <string name="media_visibility">Показывать в верхней панели</string>
+    <string name="media_access">Доступ к воспроизведению</string>
+    <string name="media_access_granted">Разрешён</string>
+    <string name="media_access_required">Разрешите GOSTEX доступ к уведомлениям</string>
+    <string name="media_access_hint">Чтобы видеть воспроизведение из других приложений, разрешите GOSTEX доступ к уведомлениям в настройках Android.</string>
+    <string name="media_empty">Сейчас ничего не играет. Включите музыку или видео в приложении с поддержкой медиаплеера Android.</string>
+    <string name="media_hint">Показывает активное воспроизведение и паузу. Кнопки зависят от приложения. Обновляется только пока открыт GOSTEX; уведомления не сохраняются.</string>
+    <string name="media_settings_summary">Воспроизведение в верхней панели и управление</string>
+    <string name="media_action_failed">Приложение не приняло команду. Откройте его и попробуйте ещё раз.</string>
+    <string name="media_settings_unavailable">Настройки доступа к уведомлениям недоступны на этом устройстве.</string>
+</resources>

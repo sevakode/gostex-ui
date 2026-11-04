@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="metadata_adapted">Resumen adaptado / traducción</string>
+    <string name="metadata_art_credit">Imagen · %1$s</string>
+    <string name="metadata_description_source">Descripción · %1$s</string>
+    <string name="metadata_art_rights">Las imágenes de los juegos pertenecen a sus respectivos titulares; la licencia del texto no se aplica a ellas.</string>
+</resources>

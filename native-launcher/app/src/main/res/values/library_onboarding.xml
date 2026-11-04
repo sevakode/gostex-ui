@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="library_empty_title">Your games start here</string>
+    <string name="library_import_steps">1. Save a game on SHIELD or your drive.\n2. Select “%1$s”, choose its system, then select a game file or folder.\n3. Open the game card to launch it in its emulator.</string>
+    <string name="library_optional_hint">No games needed? Home still shows your apps. Hide the Library tab in Settings → Media &amp; library.</string>
+    <string name="library_tab_visibility">Library tab</string>
+    <string name="library_tab_hint">Show or hide the Library tab. Adding games remains available here; Home rows are managed in Home sections.</string>
+</resources>

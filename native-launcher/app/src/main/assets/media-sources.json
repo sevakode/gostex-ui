@@ -1,0 +1,1070 @@
+{
+  "media/metadata-0be476217836-cover.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Ace%20o%20Nerae%21%20%28Japan%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "0c54958baa9b64146fef7576b0d9ee3b21e338c860c3c2d9e5598fd188a91ab1",
+    "gitBlobSha": "8e007dc4684c336b2884e2584b15e3fa681e65fd",
+    "game": "Ace wo Nerae!"
+  },
+  "media/metadata-0be476217836-scene.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Ace%20o%20Nerae%21%20%28Japan%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "8d32d20dff999e283913451615c73a2b20bba29825a069ae784bae6ba454d609",
+    "gitBlobSha": "79aba45bd39793d125dba8b4d4062c5a38afc6ad",
+    "game": "Ace wo Nerae!"
+  },
+  "media/metadata-8e8c32fd8e10-cover.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Battletoads-Double%20Dragon%20%28USA%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "99e07e3f1db25381b393421f9232ac92b6b297bd4bd946b37e142c345f9d3357",
+    "gitBlobSha": "b5a5e418928b5982896e81940cd5656bc1f1a5e4",
+    "game": "Battletoads & Double Dragon - The Ultimate Team"
+  },
+  "media/metadata-8e8c32fd8e10-scene.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Battletoads-Double%20Dragon%20%28USA%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "d3e45576d2adcf65a5486bdb3874989b3e34b894e0fbc9103a0de5a8f789c787",
+    "gitBlobSha": "fc9bdd78ac7c04e9807783cac01782a16caf0294",
+    "game": "Battletoads & Double Dragon - The Ultimate Team"
+  },
+  "media/metadata-2642e100d2e4-cover.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Musya%20-%20The%20Classic%20Japanese%20Tale%20of%20Horror%20%28USA%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "4e3c4560a41fc3552646a34a07e305ae138593d1d9a3242bbeb198b006d1d95c",
+    "gitBlobSha": "95b634cc9fa097d4da48b498622c3096ad43e06e",
+    "game": "Musya"
+  },
+  "media/metadata-2642e100d2e4-scene.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Musya%20-%20The%20Classic%20Japanese%20Tale%20of%20Horror%20%28USA%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "fd0c645a982ab87ccbede6002bf94135ac96473265ffa0aeb1e5c229ced4de79",
+    "gitBlobSha": "16c51059a32e1136fe1c1a41f6b9e7b78c17a87c",
+    "game": "Musya"
+  },
+  "media/metadata-9078ca54964c-cover.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Wonder%20Project%20J%20-%20Kikai%20no%20Shounen%20Pino%20%28Japan%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "cc87df82778e7c90b76ec7784123c96cdba6f4d4ddeb73574da13ebc33a6456b",
+    "gitBlobSha": "c0d72555714ba26bfacce5d67d33dbc94f3aedfd",
+    "game": "Wonder Project J - Kikai no Shonen Pino"
+  },
+  "media/metadata-9078ca54964c-scene.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Wonder%20Project%20J%20-%20Kikai%20no%20Shounen%20Pino%20%28Japan%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "a6343e130ad3f5ee1a3aa70e02f960d259bc4d298530e780fed4ef06521051db",
+    "gitBlobSha": "5c701dec2d4ec16f4d2a4248099b371c0483c129",
+    "game": "Wonder Project J - Kikai no Shonen Pino"
+  },
+  "media/metadata-2fee3ea5ece0-cover.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Satellaview/blob/e9fd89a13ce967d79c26714a10831f434f5ac0cf/Named_Titles/Radical%20Dreamers%20-%20Nusume%20Nai%20Houseki%20%28Japan%29%20%282-24%29.png",
+    "kind": "title-screen image",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "12254b2fd8fea4e9621119dd1a741f48ab8ce76ee65dde7f9a9d201263420595",
+    "gitBlobSha": "7476fd273d790be65c55561da25e1ed2284272f9",
+    "game": "Radical Dreamers - Nusumenai Houseki"
+  },
+  "media/metadata-2fee3ea5ece0-scene.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Satellaview/blob/e9fd89a13ce967d79c26714a10831f434f5ac0cf/Named_Snaps/Radical%20Dreamers%20-%20Nusume%20Nai%20Houseki%20%28Japan%29%20%282-24%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "c785cbb360ba2420427af9527be7eb1dac48fa97dc9b42c3f5633f442dbef4a2",
+    "gitBlobSha": "1577d4e218532302c24455b7749bedbbb96452af",
+    "game": "Radical Dreamers - Nusumenai Houseki"
+  },
+  "media/55adaff88342-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/ActRaiser%20%28Europe%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "839b49f24a11dfc9d55caa14cc1ebff3dec9222d47aa621adbb157f016b2ce40",
+    "gitBlobSha": "7afb7c494d2917807692bd77983e0401cf46a68c"
+  },
+  "media/55adaff88342-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/ActRaiser%20%28Europe%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "a20a611d464b5d3714b9ea8f90073c8b134b368af4fa9816b9ef05a54e0648d7",
+    "gitBlobSha": "f5fa360000ef9945b3513ee72161544a11c971ae"
+  },
+  "media/60039a66dd4e-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Addams%20Family%2C%20The%20%28USA%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "0b049253d83d96a68265375b14a7be24ea43981e73a0585c31be01859956aa25",
+    "gitBlobSha": "4389bcb7fb87e4abefc8899be9313f471075e7d4"
+  },
+  "media/60039a66dd4e-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Addams%20Family%2C%20The%20%28USA%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "17490bc38db399c889f190af87636f7e1911c2f62589fb70c3218ca510d6ef32",
+    "gitBlobSha": "a5af30ae81958ea31919882e87a27a75bb72a362"
+  },
+  "media/506d5d12205d-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Aladdin%20%28USA%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "2b1271f6f44ea10115ea302c96765bdb1c72bdc5c5a63a61d6ff0162961115ee",
+    "gitBlobSha": "e75e19543f64405cbb14f7b5b9b87e8eb87fbccd"
+  },
+  "media/506d5d12205d-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Aladdin%20%28Europe%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "9ee28dcccfedae43c1097a2e13a20a3fe9a3e375c19ecbd35e544d4d066cfdcb",
+    "gitBlobSha": "eb51da9678486d4432582f7dd38d26cfe8112aba"
+  },
+  "media/146667a5ae75-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Alien%203%20%28USA%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "1f882f007f9f5a540e51cce8bcee808163e50af1da3a957106df44f44ed07ff8",
+    "gitBlobSha": "f38c980c70d19db8878b12bd4149188b22f3b9c5"
+  },
+  "media/146667a5ae75-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Alien%203%20%28USA%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "8d7894319bd67f36ada80e287e5dab23bde5c2f07944e5c731454f2bf8d810a3",
+    "gitBlobSha": "059c29a91e93bcb2512e7f21dad267298a250157"
+  },
+  "media/b2ed4925b1b5-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Alien%20vs%20Predator%20%28USA%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "75a86f6b5ccb2e6566dcd5e3961b4e1c8a1f63d1f8d65448d067cc9c4af8d73a",
+    "gitBlobSha": "b22c7342dc1d1e0365ccadfc3bd1889a2110c547"
+  },
+  "media/b2ed4925b1b5-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Alien%20vs%20Predator%20%28USA%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "9084c23dfd2c7e6bcafd05225b336c5da1cfdf94c6bcb19736a7b9ce5e69b194",
+    "gitBlobSha": "a2cd59bd6c10ba955e7d03d0b1a0f39bbb2d4fc2"
+  },
+  "media/25f67f02357a-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Arcana%20%28USA%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "e594acf66264b788c15eb0f7afecc597eaa5ec9a4106ee773022b954a4b9d9b2",
+    "gitBlobSha": "c63afdc33f35808fa3e73b46963be4f92f083c04"
+  },
+  "media/25f67f02357a-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Arcana%20%28USA%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "19b7d4a64260e4d11ad2312e5768864027b969dc48598bbe59dec432beb12df8",
+    "gitBlobSha": "b6d7d4c234f0f412bb564af991baf2efe3050f80"
+  },
+  "media/bbe816d45aa8-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Bahamut%20Lagoon%20%28Japan%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "7e3bb2cd1d949edeec80967377414dd4bd5296c06d746974f677132efe10b36f",
+    "gitBlobSha": "2af05565529c65714347db1e2ff0ec31b7ad0275"
+  },
+  "media/bbe816d45aa8-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Bahamut%20Lagoon%20%28Japan%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "458d9a9da9b6407f92736fd46cee8ecd8010a974771c361c83cc8687c65e8aac",
+    "gitBlobSha": "4344f778309a0ba93e8018c1cc1d00dfe87ae87d"
+  },
+  "media/d0245f3b2b96-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Battletoads%20in%20Battlemaniacs%20%28USA%29%20%28Beta%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "be560ccd9bfa86d001008b67c401ace4ec48c83b8100f13c9038a0c37ff2b777",
+    "gitBlobSha": "7e39bea752efc92c37770cdb6266365c7d089b9a"
+  },
+  "media/d0245f3b2b96-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Battletoads%20in%20Battlemaniacs%20%28USA%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "ab178bcbeebf9d3b41c5865d0357e108a50bb2c2d8bc6a0bd32a8adf6b9de4fd",
+    "gitBlobSha": "baa5d2956bb38e1788e05d76d6f0fb90f0d20496"
+  },
+  "media/776c7f6c50f5-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/BioMetal%20%28USA%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "9fed08325b73fb72247363f4e0a5eabe83bd82ab4745c0848809470e3f3562bd",
+    "gitBlobSha": "cee39984be3db0a84dc5bd90bd1b62de30559fc9"
+  },
+  "media/776c7f6c50f5-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/BioMetal%20%28USA%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "a5e5b72d35b29530c7b307e6b6d87ecad230499399b7ec80c27dd61b8a8906a1",
+    "gitBlobSha": "124038294df783de54129312ef321d553de05aef"
+  },
+  "media/13092adb8704-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Bishoujo%20Senshi%20Sailor%20Moon%20-%20Another%20Story%20%28Japan%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "32c9a6db8626cf3ac25484d60031e690667e8389924861c8645ee59d6c436995",
+    "gitBlobSha": "2f807e160f13a9e91cc902c905bed26a7326536b"
+  },
+  "media/13092adb8704-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Bishoujo%20Senshi%20Sailor%20Moon%20-%20Another%20Story%20%28Japan%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "1a1e84e74272be002564d2cd744d11f1c97a825c701c3ce36454f52cc3ec65d1",
+    "gitBlobSha": "6622a9670e3ad0b8acd9662b92a611ab4ce46cfb"
+  },
+  "media/a475c213c482-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Blackthorne%20%28USA%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "65166861fc52c7b5cd6e43fac3e6e3f45acb7b8271f37fb213dea44789c8bf7c",
+    "gitBlobSha": "7c4a5eba94d056df4d46054de614a98cbc196f2c"
+  },
+  "media/a475c213c482-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Blackthorne%20%28USA%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "aa2cc83134a78144b7da6a701ee40a83936e2299c76af69f12f765000092e61c",
+    "gitBlobSha": "c6d625cb170aac8a45749f2b79b5363a4cef4335"
+  },
+  "media/97acf5fbb8e2-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Breath%20of%20Fire%20II%20%28USA%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "002ad0ef0f4d11db03b684fe0963096b2584b4d28ee1579c93001ed9cef53ddb",
+    "gitBlobSha": "90b753300ee344c38eb250a975dfddd4b8dbd60f"
+  },
+  "media/97acf5fbb8e2-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Breath%20of%20Fire%20II%20%28USA%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "4ecb7714db2503760fc867b17e5ed36742633a7aec9e5faf996629c8ffa13390",
+    "gitBlobSha": "ca11fd26a1aa9343daac87f5bb4e47d6d00ed413"
+  },
+  "media/943a2bae2dc8-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Chrono%20Trigger%20%28Japan%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "41467ff8d74a01baea32a25df238aea9e7e52f92e20e9857b3d33212da36acf1",
+    "gitBlobSha": "46b6dc13c3675718fafdd15fec3910caa534fed4"
+  },
+  "media/943a2bae2dc8-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Chrono%20Trigger%20%28Japan%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "bb4aaa6222912f32f42a054adc92ff1dd95b29b0418dac9fd81286cc3410e36d",
+    "gitBlobSha": "d1a72d355ee25f1f1edc88e2a9013758bf126995"
+  },
+  "media/ea982df6cecb-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Clock%20Tower%20%28Japan%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "50d4cf84cc299b21d9ae29adab0762a5f44cd3b3fec81b355d69a85d22779c62",
+    "gitBlobSha": "9e4fadc4f43b1546972f904b4c00365b91a3717b"
+  },
+  "media/ea982df6cecb-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Clock%20Tower%20%28Japan%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "b2a5e7d7d94582f5deb8cdae0d1df9523c6ae178d96a970706e356d4eeba6d29",
+    "gitBlobSha": "996f18753826189c525d2baed604ded80e6ddc00"
+  },
+  "media/ee8d9f5988f4-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Daze%20Before%20Christmas%20%28Europe%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "6606b8d474c92af25930f4cc929f84a27d2eb67b01848001d708ff88887014bf",
+    "gitBlobSha": "7216a4502d9c6ebb6d2eb20f2e36f9ef218d4efc"
+  },
+  "media/ee8d9f5988f4-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Daze%20Before%20Christmas%20%28Europe%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "1786526af6eaca1b836fca56bbb8f3069694c0c6f890eae742a311a1845be85d",
+    "gitBlobSha": "499065c9fc440721a42e508e5a1c6a42c3880537"
+  },
+  "media/b1d28b438098-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/DinoCity%20%28USA%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "34203309844fc8edf95fc4302391f88ff9512f09bd93db033e24ab20a4059036",
+    "gitBlobSha": "69db5a28516df92a266437d4c6e54be0f38c755d"
+  },
+  "media/b1d28b438098-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/DinoCity%20%28USA%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "12821f74c87c75dcc732855f49564c7c03a4cf3962b9744ab1a60708667b2245",
+    "gitBlobSha": "644adcd377f46cfcd39e47f1ef232b31d13e4257"
+  },
+  "media/b578811be9f0-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Donkey%20Kong%20Country%20%28USA%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "f2f8873d7433212f811aeff06f56681b7101eb532d1c2b21511cc7d7e5faa315",
+    "gitBlobSha": "d89d04b01a133be289027a232f8f5d75996bf249"
+  },
+  "media/b578811be9f0-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Donkey%20Kong%20Country%20%28Europe%29%20%28En%2CFr%2CDe%29%20%28Rev%201%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "c142bafe28c0ee7d870ddfa983024ebcc96d80b7e3302a86d6cb42c2079e54ca",
+    "gitBlobSha": "ce1c760401b5f91b46637dc4390f9311214bb47a"
+  },
+  "media/c37295261592-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Dr.%20Mario%20%28Japan%29%20%28En%29%20%28NP%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "e35f78dc6c6224f214d93c8a43482ce880ab30a3db84252c8d3eecff54067b60",
+    "gitBlobSha": "f6be923076ba8f8534be3451552df69205760e60"
+  },
+  "media/c37295261592-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Dr.%20Mario%20%28Japan%29%20%28En%29%20%28NP%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "9eef2e7187daa212532084eef66f533be9ed26a43c1d4df7bd78f044e8f6c826",
+    "gitBlobSha": "f1a1fb55c3a8cffb2a7388ab6acb2ce06deac41c"
+  },
+  "media/44da92c2293f-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Final%20Fantasy%20III%20%28USA%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "d8c63bd1806e8096d67277301094a4133e0a8f4131d8e7c266a70db0173c23cc",
+    "gitBlobSha": "f0b36ed398fa3d7ae61502961749a0be4fc35f7f"
+  },
+  "media/44da92c2293f-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Final%20Fantasy%20III%20%28USA%29%20%28Rev%201%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "ab43ef4284b8799592a6b772fb3e22a0abfd9b5c59ff6c751584d369fe023533",
+    "gitBlobSha": "69501d6da75cd827f298c09e13a9f9978c898190"
+  },
+  "media/6bfbb19b9ea9-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Final%20Fantasy%20II%20%28USA%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "cffbe094011416c8199640e49e995cf82483039f1eab42ad79982cafb60fe9cb",
+    "gitBlobSha": "6a4446a49b33b35aa6f574da4cefe22ba9f981e7"
+  },
+  "media/6bfbb19b9ea9-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Final%20Fantasy%20II%20%28USA%29%20%28Rev%201%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "5ec3648c07da4a39b39952bd0d1ee3e55e0a01b8c2e819431d0309f499ffa830",
+    "gitBlobSha": "ef974b50864e663dd0eed814515ae893f7565fe6"
+  },
+  "media/42f7d030cd66-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Final%20Fantasy%20V%20%28Japan%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "b03bd83c90c8c467e777519355b9cf566134cd60e444419f0f7834c1dc07ce43",
+    "gitBlobSha": "a062d90b4e8f42b0313c2636f585c47502949ca9"
+  },
+  "media/42f7d030cd66-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Final%20Fantasy%20V%20%28Japan%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "07f67e5402a021bc9ae1e42816e3a99cb6e60d3238a8ec8fc6edb11e794d2fa9",
+    "gitBlobSha": "0b269d58e38899425bc0aafee7b6e32c25c80d83"
+  },
+  "media/3545c3af051c-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Flashback%20-%20The%20Quest%20for%20Identity%20%28USA%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "c562cb33953e43a2656cfa9f805b66abfa50c2e34ed006e8d4341c8ebba929db",
+    "gitBlobSha": "36949177c99bc3f272574cf358d3dc43c7b5ef0f"
+  },
+  "media/3a3184795b7d-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Fushigi%20no%20Dungeon%202%20-%20Fuurai%20no%20Shiren%20%28Japan%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "493576cd9184cc3e6019e05c49421252a1ca3b3edb2d7fe25bec083a3020ed16",
+    "gitBlobSha": "cf2523c23cacf10c77960ebf2372a078ca22cb90"
+  },
+  "media/3a3184795b7d-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Fushigi%20no%20Dungeon%202%20-%20Fuurai%20no%20Shiren%20%28Japan%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "3c338742fce250d21f7c51cab8efc4bdd5d4b7c0c8839704a99c73c6b1d6e866",
+    "gitBlobSha": "f51d3a59e5db65359c3685ee0fb4171703a0c709"
+  },
+  "media/e175b2f7734e-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Go%20Go%20Ackman%20%28Japan%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "303589272b8c7917ff16fe722a7197ab34e624f6d3dee0b7432e275aa691b555",
+    "gitBlobSha": "9c73cfcbb8adc9c75802211d1fe3d91392e4f2c7"
+  },
+  "media/e175b2f7734e-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Go%20Go%20Ackman%20%28Japan%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "1e690f9666613033a7f115d0ff1c4568ca5f0fd33b1a20c79b2feb6a1f488a57",
+    "gitBlobSha": "913112ec5aa124a88766c61cc8f5117d5106762d"
+  },
+  "media/b2a0d3e7e5a3-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Goof%20Troop%20%28USA%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "20600eadb6a6e7dd2a629bf6ba9d164d6bc738ae2acc523cf442b231eeb9f5c1",
+    "gitBlobSha": "6697cab591bef531cbc3217df804b0255f7aacef"
+  },
+  "media/b2a0d3e7e5a3-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Goof%20Troop%20%28USA%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "9ea57987f3f82d2f62f31e3145c2157b89c70dfdb49dc24c95b20e3334579208",
+    "gitBlobSha": "530dd8130efd1ca4c6dde61f0515782f337dd464"
+  },
+  "media/d6633a723791-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Hameln%20no%20Violin%20Hiki%20%28Japan%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "9b73ef99cca4bbaa8ff2b737ca019be32b9e9611b43db8acbdaaa139e411966d",
+    "gitBlobSha": "e6635130a79c0f3a96bd37dbd25cb30a9cd58edf"
+  },
+  "media/d6633a723791-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Hameln%20no%20Violin%20Hiki%20%28Japan%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "7dfc913f12890b88ab83cdf9d0d34d596bea258e6e7de0276efe6463e08a1d82",
+    "gitBlobSha": "709cff9809e89a88eabe416f4ab503844a2a7905"
+  },
+  "media/36d2ad5b47c1-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Harvest%20Moon%20%28Europe%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "1bbf2742707a9044cf86610a599f3035e28d0bf09653d838ac7209e3e6be2588",
+    "gitBlobSha": "ef052cbd69abf75bd5ec9383cde938dd80d49269"
+  },
+  "media/36d2ad5b47c1-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Harvest%20Moon%20%28Europe%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "c3f3d0cea4dff0bc52964fd37842d4fa728f641e76146c2773da9c2866d4deca",
+    "gitBlobSha": "5adf48648a6602d8becc40cb3b208dc0ed2a5f1e"
+  },
+  "media/f4ee30198a30-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Home%20Alone%20%28USA%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "c925806fbebaa81272be7b45a6e7bc2e57b7efd7f4bffedb6617b96a5cabd278",
+    "gitBlobSha": "281ad3446dde9489fd3fc1d84082a1c47798cb1a"
+  },
+  "media/f4ee30198a30-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Home%20Alone%20%28USA%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "3e88f1d777c79f48950d6c2fd596e11a2fa5c2f27940e27d97bb6f6d9ba82dfb",
+    "gitBlobSha": "f1f6a4ba3ff53e3a07cd18e9a77cead662287974"
+  },
+  "media/2f84d67d09bf-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Home%20Alone%202%20-%20Lost%20in%20New%20York%20%28USA%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "ed8321c353ef4ae86c7f4ab4ef2f06b82792b166ccba6dc5e8e692ad1e6beddd",
+    "gitBlobSha": "5d6e556a83e7d9a921ed4c52bb8c399f0e17f2a6"
+  },
+  "media/2f84d67d09bf-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Home%20Alone%202%20-%20Lost%20in%20New%20York%20%28USA%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "d52a1eb687d9d39fc69d51dac1c3e29d4f8ca71df04272ce0e1db030e6201bab",
+    "gitBlobSha": "033fb61fdde3535e79f3a5ae6134eb9edb5713c3"
+  },
+  "media/0648298b48be-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Hook%20%28Europe%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "2e9c9e6a1ccf0bb22bce46e17b073b3a5a10c50cbaa99d418e351de537d07888",
+    "gitBlobSha": "468cbb3f6656dd1cb465c08f0a6faf96d21b3118"
+  },
+  "media/0648298b48be-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Hook%20%28Europe%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "c92fc29c6c734a3d36b8679c9be64342f583ae1d961ca77b922f38984ae756bb",
+    "gitBlobSha": "db5e22e16b1f8c0db761f990b28a7cd8c3483125"
+  },
+  "media/5cc2061218d9-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Illusion%20of%20Gaia%20%28USA%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "aea155675254a844f6bde639905a753fd99cb7e8fc9c2047cf297bb8dc43a2b7",
+    "gitBlobSha": "8696f1135244d8c2ee93a7bba8d32e57cbf8e358"
+  },
+  "media/5cc2061218d9-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Illusion%20of%20Gaia%20%28USA%29%20%28Beta%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "682ce95f7ec7f915a565b54d00d9a3df0932c7cab91f3daf9bf41c43d1f959ea",
+    "gitBlobSha": "10cbd5a236799638fcfac67307c6587eda070322"
+  },
+  "media/3cd9aab1671c-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/King%20Arthur%27s%20World%20%28USA%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "0dc79fa3d3625fec1223e452eca1f377ad8955979869a34e5a2dac5c20c96ea2",
+    "gitBlobSha": "ab94ec00e3552b6f7a8af221c853ffcdfa6e857e"
+  },
+  "media/3cd9aab1671c-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/King%20Arthur%27s%20World%20%28USA%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "c5cd9183958cd003455a3b8e598b6e8ff635bea0830af3f0a5b986c54f811693",
+    "gitBlobSha": "060725443190c3952156fa573be17ada65be9f19"
+  },
+  "media/fe50f2458b67-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Legend%20of%20Zelda%2C%20The%20-%20A%20Link%20to%20the%20Past%20%28USA%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "ad56494a337cd5d2bf0477c7c8f2f344ef661ff43158f58cd2593b625ba2fddc",
+    "gitBlobSha": "e97d6b86a2f48c4d9cb91a5a4790aae44336cb04"
+  },
+  "media/fe50f2458b67-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Legend%20of%20Zelda%2C%20The%20-%20A%20Link%20to%20the%20Past%20%28Canada%29%20%28Fr%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "ec683d5cd2c7d02efe19e7095f12f287ac8f401a685d5a82d634d14b462718c0",
+    "gitBlobSha": "cda62cc1206c53dbd5024be0be2ae761880b76f8"
+  },
+  "media/17aa03587d39-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Lester%20the%20Unlikely%20%28USA%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "97e94958088897bac900a8c380268b2cdae785a55080823dbcbe111d97021ec8",
+    "gitBlobSha": "1b7e204b5699ecd2bd341d88117c6b6a4d1718e2"
+  },
+  "media/17aa03587d39-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Lester%20the%20Unlikely%20%28USA%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "c14d5d9e2c3a2d85bc9256902e8b8665dbed5ec84988e9dd2f7f647001442742",
+    "gitBlobSha": "86e3b4dac26dc991d9179fff4d17db0a28f469d2"
+  },
+  "media/67c6f6a3f243-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Lethal%20Weapon%20%28USA%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "c4aba4fb9bf964172d632730077cf02a47fe74036c179bec0a5dbafa417db1c0",
+    "gitBlobSha": "a80cd24a05f1701ed97c7b085c1aee5192e8008d"
+  },
+  "media/67c6f6a3f243-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Lethal%20Weapon%20%28USA%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "2c1832af46f3123baf8159a1ad14571974d6d418e10d7b9e1e89b9cad9187d6f",
+    "gitBlobSha": "dfc473e4ac40ae3cc02c51be41f9b8a87e9dc5ed"
+  },
+  "media/24eb4da09205-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Lion%20King%2C%20The%20%28USA%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "a001733f4590689cfa075a93285f8a13c4f31d34b0c1a2d36fbceb6a00f00d38",
+    "gitBlobSha": "63ed65ac1d2bb0d094f52918e5a3a827f7f6565d"
+  },
+  "media/24eb4da09205-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Lion%20King%2C%20The%20%28Europe%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "74b95e4fa4fa688afb04472046226105146980a8fabfa6161dc01bc88e026bee",
+    "gitBlobSha": "f8b4df0892485fcaaae579abbf13ad0c799f95db"
+  },
+  "media/2c34c86f82a0-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Lost%20Vikings%202%20%28USA%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "7557d9eba12a9a7681681e4139f0ff81f1b63fcd21fa8cf168b41f07509ef81f",
+    "gitBlobSha": "59366323477197dff1ddd64055d5145c33d13b97"
+  },
+  "media/2c34c86f82a0-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Lost%20Vikings%202%20%28USA%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "631b9f7fff1d3fc8cc8f733fa56c46a13d7e51e800bf544a694f7b6461bdcd99",
+    "gitBlobSha": "c047c5e05b5411cfd2ec925c51554adce776944f"
+  },
+  "media/d187e8eeea70-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Mega%20Man%20X%20%28USA%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "8ceb600c20be8f0141bd8fa9c1974db7e1ef2ae0ff1837aadd3eef523318eabe",
+    "gitBlobSha": "caecf7710783e42465c62925b047380d8abcd263"
+  },
+  "media/d187e8eeea70-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Mega%20Man%20X%20%28Europe%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "67ca0bc39416518003fd454aae64b99c2ae0f35df4953699aff183ee45a4209d",
+    "gitBlobSha": "c4afab1059b949d1f1c7cfd133b3825797d82f5f"
+  },
+  "media/d793991db04c-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Monstania%20%28Japan%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "486a97221557de68f7a1be74f60017ed96e81500abecd1638df3813d0aeaf210",
+    "gitBlobSha": "31fe7c38a620073480c125e78d3c41684e555d61"
+  },
+  "media/d793991db04c-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Monstania%20%28Japan%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "969df2cd90732bfba874f17bccf684285bfc9a4cdf8f0de3c27ab43b3be3cfa4",
+    "gitBlobSha": "1a3e6286e6c122402f8b491fbb7b30dc02f70801"
+  },
+  "media/afc6d97211b6-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Ninja%20Gaiden%20Trilogy%20%28USA%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "1d8dd6a6cdc97532b1edeb0626f00ca255e6eff61e28a61ec261a34961b23e02",
+    "gitBlobSha": "d41507559657e6a0c40ceee6e432bbf64cc619db"
+  },
+  "media/afc6d97211b6-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Ninja%20Gaiden%20Trilogy%20%28USA%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "877b5000030414cc84b1963f6d971d2e18142bc284e35459eee0c41913467c54",
+    "gitBlobSha": "ab5e00ae5746c84d1f7514cef826d022a0c657b2"
+  },
+  "media/b141a1649dc3-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Phantom%202040%20%28USA%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "a3ded0c027519bbaa9b1245dc9735b3f56b9c46e7ddaa5788cc6400a0b9d3045",
+    "gitBlobSha": "5d54ad9a03fbe11e54cca38fb7b772a7e9d3c4ef"
+  },
+  "media/b141a1649dc3-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Phantom%202040%20%28USA%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "0e42cb128d2df7cea9d576fb5b20436a4b9b4357d47af8280638c47c78622707",
+    "gitBlobSha": "4de8e01fddb88cdf301d3403f4b2ecd2ba6af057"
+  },
+  "media/923ce0545a83-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Pilotwings%20%28USA%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "fba5228254f12eed264b87a846fb04e39c889da0864a21316cf81113c6967b53",
+    "gitBlobSha": "1ba2007c177cece8609bdefd3945202421950331"
+  },
+  "media/923ce0545a83-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Pilotwings%20%28USA%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "784664a59e7e3e6a4261786b73113f175a89301fc0012684daae626417bab402",
+    "gitBlobSha": "244229a1814e7cee1fc697270918650217c998a8"
+  },
+  "media/f01e6ea75f41-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Scooby-Doo%20Mystery%20%28USA%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "4203d5f288fe94ca08a490007538e6495b42cc377b94aabf888091cacb2ee4d2",
+    "gitBlobSha": "0bcbfc5b4adc23055fb0f28276ee4601b742ee32"
+  },
+  "media/f01e6ea75f41-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Scooby-Doo%20Mystery%20%28USA%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "250ad73e08cafc8d69ab51e9796dd82fa65aa3ee3ffc9c2e23c9d726122d4599",
+    "gitBlobSha": "93fcf104ab5dad80bfce36b0694f5c495058e92a"
+  },
+  "media/ed2b110da369-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Secret%20of%20Mana%20%28USA%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "0642bad1e9d785a7c5f71757d870805663b0b2376c04111bb0bf1668916e6efd",
+    "gitBlobSha": "4816dff63d028c08d1211dcb8724ebf06309582c"
+  },
+  "media/ed2b110da369-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Secret%20of%20Mana%20%28France%29%20%28Rev%201%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "7bc9f4fc74d0f9f091963711f0b9661466abd62b48139c4543506b3b1f4069c9",
+    "gitBlobSha": "9ea74c1fa865418a6357823f8c8e6e9b99ea43f9"
+  },
+  "media/0bb09d80600e-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Shadow%2C%20The%20%28USA%29%20%28Proto%201%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "0ea0cc92367ac93745aed7e04c82b12a72ce28eee1d57052fe3c49a3e1f2aea6",
+    "gitBlobSha": "f24fa2c4be7bde029bbd492bf36a25af4af2ef0b"
+  },
+  "media/0bb09d80600e-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Shadow%2C%20The%20%28USA%29%20%28Proto%201%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "5bc71ada29d6fe3fe862e3f0dcc665732f9abc2cd554b45449d826be28c42e25",
+    "gitBlobSha": "8bb4553dd4cd1619df1d283063c5360576c8f712"
+  },
+  "media/df6a9c41e008-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Shin%20Nekketsu%20Kouha%20-%20Kunio-tachi%20no%20Banka%20%28Japan%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "8c6925a534d8aa55d335489b6e224e5095822aa5c93718ed98f1cbc49908b5d6",
+    "gitBlobSha": "cb4d755177a2d5e8dbaa13627edc94003a5e658f"
+  },
+  "media/df6a9c41e008-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Shin%20Nekketsu%20Kouha%20-%20Kunio-tachi%20no%20Banka%20%28Japan%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "4900dea89a2744744c9c02b1941962b80194ed064e73df180524f03533053923",
+    "gitBlobSha": "b98168e10747dfa1ade808ab7c449701d735a6c0"
+  },
+  "media/8da5f0c6799a-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Shodai%20Nekketsu%20Kouha%20Kunio-kun%20%28Japan%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "69ecb8c684d7b2692a5b4b435ec0e9e75caf6a481be1b6d6e0ad8965379fc918",
+    "gitBlobSha": "c160eb6e9cf6d48b20300d2bafbda6b79f158497"
+  },
+  "media/8da5f0c6799a-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Shodai%20Nekketsu%20Kouha%20Kunio-kun%20%28Japan%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "91204d8fce9eacf786920e2c6fbdcc0593e7d49be5601144b3361d0b72fa60cf",
+    "gitBlobSha": "2393469ecf35db70613084dd0cb8a0c3efc8b7ef"
+  },
+  "media/ce68dd3d14ec-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Skyblazer%20%28USA%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "a2c01a227baac8151e251f3aa606b4d3d69022b987ae564b4a638ff121dfd8b4",
+    "gitBlobSha": "6c70ea2f977265ba09bc7c57e3e2053754863192"
+  },
+  "media/ce68dd3d14ec-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Skyblazer%20%28USA%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "51289c1f53cdbb82100e4871c9dd3d697a01f5c44f16606f9a699ed0d77b8a71",
+    "gitBlobSha": "38c57f9075719b03faabf4cd1c99436041f8cfbd"
+  },
+  "media/7f8493d92682-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Slayers%20%28Japan%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "d39fb301bc6a95c4e08506f726ef1e0c32f2e122575e989215eb2e1cbcf28def",
+    "gitBlobSha": "97792bcfdd598d9fe5b5906bb9f0faa57bcc9506"
+  },
+  "media/7f8493d92682-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Slayers%20%28Japan%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "4ce2eb9b1128077e6507d7f1a4abeaec9c6f4b6e578ffbec92fff5125e34f13d",
+    "gitBlobSha": "64b2f73171309c69588639eb51908dc73c22208f"
+  },
+  "media/c420f0c0c763-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/SpellCraft%20-%20Aspects%20of%20Valor%20%28USA%29%20%28Proto%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "253b9f735768a4978d97c7f91ccf41be775a8adfb96f4098ee62ed33109f3580",
+    "gitBlobSha": "eea1232df2fc050b69b9a328325edf75413b9e27"
+  },
+  "media/c420f0c0c763-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/SpellCraft%20-%20Aspects%20of%20Valor%20%28USA%29%20%28Proto%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "a9e9d041c1efae97dd938acbd61486a2b475abf91448f10e1da241101027a819",
+    "gitBlobSha": "69be5d958bc93b8d631ba4b5b4581d2ccaf20e8f"
+  },
+  "media/0eabf8d3dcae-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Star%20Fox%20%28USA%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "4a8bd187805f24f56b41479f672f9673f738e70a2e30efe6634c2c9844add603",
+    "gitBlobSha": "a3b168f8fb8361776792b597d5c9359ac9c9fe98"
+  },
+  "media/0eabf8d3dcae-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Star%20Fox%20%28USA%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "3842515292e7486ac06dbb92573a4ca36967a75a105808a170f1bcaeb514a7fd",
+    "gitBlobSha": "a18c8399597c3a47ba6bc302cc591ee4c049055d"
+  },
+  "media/891f26b0146e-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Star%20Fox%202%20%28Japan%29%20%28Classic%20Mini%2C%20Switch%20Online%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "b9ee939556d93aa6e6554b4d0e0288e87effa0c9cc6da92e3c7f2c07210944a2",
+    "gitBlobSha": "81e86e415fee9c13013699ac291bf66d6a2ec77a"
+  },
+  "media/891f26b0146e-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Star%20Fox%202%20%28Japan%29%20%28Classic%20Mini%2C%20Switch%20Online%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "0664c037c5487ac4a6303580d362cdaed3c33b764408a83905f9d5f53ff4b358",
+    "gitBlobSha": "68d105d15aa28684d7d5c5cfbb83f98f87953dde"
+  },
+  "media/01e5f9c78005-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Star%20Ocean%20%28Japan%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "29c2bb4f69e04c04e7d1c2ac96628a6fe4cbba5c640c74c010b96b337b4e4a57",
+    "gitBlobSha": "91134993bfb210cf2f28232be6f7d79456af34dd"
+  },
+  "media/01e5f9c78005-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Star%20Ocean%20%28Japan%29%20%5BT-En%20by%20DeJap%20v1.0%5D.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "472e841d858020b443ebae7bd5d2fdafdf22d8012ba97365de4325aebb6e1039",
+    "gitBlobSha": "38487ceb87d3688e6c87c5936c75a51f95693f62"
+  },
+  "media/233101eb81a9-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Super%20Back%20to%20the%20Future%20Part%20II%20%28Japan%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "2bbc2ea9cc7b62a8f2df653c4aa17faad9907178653eaa01cab59ddf754c284e",
+    "gitBlobSha": "9a295bc77da51e9e79a0c0b2c67ad91de02ac6f2"
+  },
+  "media/233101eb81a9-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Super%20Back%20to%20the%20Future%20Part%20II%20%28Japan%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "957ed2690fc1e66e107d4af0a127e2610bd1cba69175e4ec04e4223d6884bf47",
+    "gitBlobSha": "9c7c34ea422e4132e4b197448f966b585aaf5e00"
+  },
+  "media/ee18cb265a20-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Super%20Valis%20IV%20%28USA%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "48ce2c578bd42beff7027e09d350f1a77141e08d0066bafd22e2d8fbf1e7e305",
+    "gitBlobSha": "0dcd7630206d2fcff07a12d6464d354525e777ff"
+  },
+  "media/ee18cb265a20-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Super%20Valis%20IV%20%28USA%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "b5a697e9b8ef318a6f8ee47f562e515c4ddb5fd6d0000d746ec014325a99cb02",
+    "gitBlobSha": "2370dec9394b62fd4336c19ff2589974fd70e2b9"
+  },
+  "media/72c4e4580058-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Tales%20of%20Phantasia%20%28Japan%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "bd83c17c2a0737d67b6f3f572c6886c32a94f379244b78df69ab29b18e079878",
+    "gitBlobSha": "102a9e9a5d600c60ac488b719c1345cafbf23457"
+  },
+  "media/72c4e4580058-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Tales%20of%20Phantasia%20%28Japan%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "2956020b61ce78cc8ae3f4bbd5ad3754f8e63083f92dab42d20cbfac2ae1e768",
+    "gitBlobSha": "3c7b8887ff25db27e81e27b9024c19249e8020ff"
+  },
+  "media/65e2ec4aad60-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Timecop%20%28USA%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "6c93f5fa43f51dade9f1a52994d51b56052acc8e37ef7c20dd98c4d0f5370980",
+    "gitBlobSha": "a05e3badc745159b307bdbfc8192e0613cfa65e8"
+  },
+  "media/65e2ec4aad60-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Timecop%20%28USA%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "98415aabf6495d232b155298730a4521db587a7487424fb5a388aab61bd3e447",
+    "gitBlobSha": "dad3f78ad56c5bb031e55b6039d1e05c16705247"
+  },
+  "media/8797c4f3b898-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Timeslip%20%28USA%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "2b9ef9fc78ea0ecc3f921c1d9e7b8372415af57ea8a9d397ce770367848f3a7d",
+    "gitBlobSha": "ea57f0ca65760cab55b8a2f35345b2b3e319b68d"
+  },
+  "media/8797c4f3b898-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Timeslip%20%28Europe%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "83ff0e545a4581a658dadbc85fc65fad115b7e4a49755449fcd37690a0f80e1e",
+    "gitBlobSha": "cece79a34d776a26b8e7d54fdd7f0f14c3ac4cc2"
+  },
+  "media/1b40f0d26e89-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Venom%20-%20Spider-Man%20-%20Separation%20Anxiety%20%28USA%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "d4c2e4c819d56d4cfc433894c42c6daac52575e9943dbbf79c1bd9dc78ed3215",
+    "gitBlobSha": "cf1ce487a781be0e7202aa28b216ebab56f8ed00"
+  },
+  "media/1b40f0d26e89-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Venom%20-%20Spider-Man%20-%20Separation%20Anxiety%20%28USA%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "5551ce3439b487c7a7927c2b7b37506ad2bca59922010ad05900794c3bc07751",
+    "gitBlobSha": "18f1902bd4044dda5f1885e2db7a57350d433936"
+  },
+  "media/cbbd61e420ba-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Wolfenstein%203-D%20%28USA%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "09dfc21cd90c97feda87dd3eb62b5ae3d6342dd6d78ce8687e8db455f402eaca",
+    "gitBlobSha": "91b30994b1e7798d9e03e08c78b9e0160d651a13"
+  },
+  "media/cbbd61e420ba-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Wolfenstein%203-D%20%28USA%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "ac130a44adde61a33d1f973561f293e12fc668623b0952fa08219ec29e44ae3b",
+    "gitBlobSha": "3b8463c93eb20c4ae3cb99d4b7d010f59e436b28"
+  },
+  "media/bd959e654c4f-boxFront.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Worms%20%28Europe%29.png",
+    "kind": "box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "29d4b9d10195a2dbbf1bbe77ebe5b3116fcda6eb5b3617d5edea564087b52413",
+    "gitBlobSha": "82f5626e96584c9aa8f4a8c9f5b08321883300f7"
+  },
+  "media/bd959e654c4f-screenshot.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Snaps/Worms%20%28Europe%29.png",
+    "kind": "gameplay screenshot",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "d0fabe8189a3f7f27bf1241ac590ff4eb817faddb278a39afa929244ef13671e",
+    "gitBlobSha": "a648be3916a9871f8a9881de637424674c6c723e"
+  },
+  "media/metadata-4459ab7adcfc-cover.png": {
+    "sourceName": "libretro-thumbnails",
+    "url": "https://github.com/libretro-thumbnails/Nintendo_-_Nintendo_DS/blob/a119dcab8fa04c9974b9c229eda824318d923322/Named_Boxarts/Castlevania%20-%20Portrait%20of%20Ruin%20%28Europe%29%20%28En%2CFr%2CDe%2CEs%2CIt%29.png",
+    "kind": "European box-art scan",
+    "copyright": "Artwork belongs to the game’s respective rights holders. The repository does not grant an open license to the underlying game artwork.",
+    "sha256": "aa0cfd1f959773b5cb748b30b5d28bd8874f31635525e7d702f9d26653aa986e",
+    "gitBlobSha": "5d473619caa2b1af27b827ce8d24f66982251be4",
+    "game": "Castlevania - Portrait of Ruin",
+    "platform": "Nintendo DS"
+  }
+}

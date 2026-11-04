@@ -1,0 +1,640 @@
+{
+  "schemaVersion": 1,
+  "artworks": [
+    {
+      "id": "aurora-hyrule",
+      "theme": "games",
+      "asset": "art/aurora-hyrule.png",
+      "title": {
+        "en": "The silent temple of Hyrule",
+        "ru": "Тихий храм Хайрула",
+        "es": "El templo silencioso de Hyrule"
+      },
+      "reference": {
+        "en": "The Legend of Zelda · Master Sword",
+        "ru": "The Legend of Zelda · Master Sword",
+        "es": "The Legend of Zelda · Master Sword"
+      },
+      "source": "https://zelda.nintendo.com/",
+      "reveal": {
+        "anchors": [
+          {
+            "x": 0.44,
+            "y": 0.4,
+            "radiusX": 0.14,
+            "radiusY": 0.12,
+            "delay": 0.0
+          },
+          {
+            "x": 0.12,
+            "y": 0.3,
+            "radiusX": 0.2,
+            "radiusY": 0.3,
+            "delay": 0.12
+          },
+          {
+            "x": 0.61,
+            "y": 0.48,
+            "radiusX": 0.12,
+            "radiusY": 0.3,
+            "delay": 0.2
+          },
+          {
+            "x": 0.71,
+            "y": 0.48,
+            "radiusX": 0.08,
+            "radiusY": 0.22,
+            "delay": 0.28
+          },
+          {
+            "x": 0.53,
+            "y": 0.83,
+            "radiusX": 0.5,
+            "radiusY": 0.18,
+            "delay": 0.4
+          }
+        ],
+        "development": "light"
+      },
+      "world": "hyrule",
+      "direction": {
+        "kind": "painting",
+        "treatments": [
+          {
+            "style": "scene",
+            "columns": 160,
+            "rows": 90
+          },
+          {
+            "style": "focus",
+            "columns": 32,
+            "rows": 18
+          },
+          {
+            "style": "still",
+            "columns": 160,
+            "rows": 90
+          }
+        ]
+      }
+    },
+    {
+      "id": "amber-droids",
+      "theme": "media",
+      "asset": "art/amber-droids.png",
+      "title": {
+        "en": "Twin suns of Tatooine",
+        "ru": "Два солнца Татуина",
+        "es": "Los dos soles de Tatooine"
+      },
+      "reference": {
+        "en": "Star Wars · R2-D2 & C-3PO",
+        "ru": "Star Wars · R2-D2 & C-3PO",
+        "es": "Star Wars · R2-D2 & C-3PO"
+      },
+      "source": "https://www.starwars.com/databank/r2-d2",
+      "reveal": {
+        "anchors": [
+          {
+            "x": 0.665,
+            "y": 0.28,
+            "radiusX": 0.14,
+            "radiusY": 0.15,
+            "delay": 0.0
+          },
+          {
+            "x": 0.48,
+            "y": 0.45,
+            "radiusX": 0.38,
+            "radiusY": 0.12,
+            "delay": 0.12
+          },
+          {
+            "x": 0.31,
+            "y": 0.65,
+            "radiusX": 0.32,
+            "radiusY": 0.22,
+            "delay": 0.2
+          },
+          {
+            "x": 0.82,
+            "y": 0.57,
+            "radiusX": 0.14,
+            "radiusY": 0.25,
+            "delay": 0.34
+          },
+          {
+            "x": 0.65,
+            "y": 0.88,
+            "radiusX": 0.32,
+            "radiusY": 0.15,
+            "delay": 0.4
+          }
+        ],
+        "development": "light"
+      },
+      "world": "tatooine",
+      "direction": {
+        "kind": "painting",
+        "treatments": [
+          {
+            "style": "ink",
+            "columns": 160,
+            "rows": 90
+          },
+          {
+            "style": "weave",
+            "columns": 64,
+            "rows": 36
+          },
+          {
+            "style": "scene",
+            "columns": 160,
+            "rows": 90
+          },
+          {
+            "style": "still",
+            "columns": 160,
+            "rows": 90
+          }
+        ]
+      }
+    },
+    {
+      "id": "gotham-watch",
+      "theme": "comics",
+      "asset": "art/gotham.png",
+      "title": {
+        "en": "Watching over Gotham",
+        "ru": "На страже Готэма",
+        "es": "Vigilando Gotham"
+      },
+      "reference": {
+        "en": "Batman · Gotham City",
+        "ru": "Бэтмен · Готэм-сити",
+        "es": "Batman · Ciudad de Gotham"
+      },
+      "source": "https://www.dc.com/characters/batman",
+      "reveal": {
+        "anchors": [
+          {
+            "x": 0.49,
+            "y": 0.5,
+            "radiusX": 0.18,
+            "radiusY": 0.23,
+            "delay": 0.0
+          },
+          {
+            "x": 0.64,
+            "y": 0.12,
+            "radiusX": 0.15,
+            "radiusY": 0.13,
+            "delay": 0.1
+          },
+          {
+            "x": 0.16,
+            "y": 0.39,
+            "radiusX": 0.15,
+            "radiusY": 0.4,
+            "delay": 0.17
+          },
+          {
+            "x": 0.84,
+            "y": 0.43,
+            "radiusX": 0.14,
+            "radiusY": 0.24,
+            "delay": 0.22
+          },
+          {
+            "x": 0.46,
+            "y": 0.88,
+            "radiusX": 0.5,
+            "radiusY": 0.13,
+            "delay": 0.35
+          }
+        ],
+        "development": "contours"
+      },
+      "world": "gotham",
+      "direction": {
+        "kind": "painting",
+        "treatments": [
+          {
+            "style": "scene",
+            "columns": 160,
+            "rows": 90
+          },
+          {
+            "style": "ink",
+            "columns": 160,
+            "rows": 90
+          },
+          {
+            "style": "still",
+            "columns": 160,
+            "rows": 90
+          }
+        ]
+      }
+    },
+    {
+      "id": "weekly-games",
+      "theme": "games",
+      "title": {
+        "en": "City of tetrominoes",
+        "ru": "Город тетромино",
+        "es": "Ciudad de tetrominós"
+      },
+      "reference": {
+        "en": "Tetris · tetrominoes",
+        "ru": "Тетрис · тетрамино",
+        "es": "Tetris · tetrominós"
+      },
+      "source": "https://play.tetris.com/about",
+      "reveal": {
+        "anchors": [
+          {
+            "x": 0.53,
+            "y": 0.39,
+            "radiusX": 0.1,
+            "radiusY": 0.2,
+            "delay": 0.0
+          },
+          {
+            "x": 0.24,
+            "y": 0.57,
+            "radiusX": 0.22,
+            "radiusY": 0.27,
+            "delay": 0.12
+          },
+          {
+            "x": 0.8,
+            "y": 0.6,
+            "radiusX": 0.22,
+            "radiusY": 0.28,
+            "delay": 0.2
+          },
+          {
+            "x": 0.5,
+            "y": 0.87,
+            "radiusX": 0.45,
+            "radiusY": 0.18,
+            "delay": 0.36
+          }
+        ],
+        "development": "contours"
+      },
+      "world": "tetromino",
+      "direction": {
+        "kind": "painting",
+        "treatments": [
+          {
+            "style": "blocks",
+            "columns": 64,
+            "rows": 36,
+            "retainPixelGrid": true
+          },
+          {
+            "style": "tiles",
+            "columns": 160,
+            "rows": 90
+          },
+          {
+            "style": "focus",
+            "columns": 20,
+            "rows": 12
+          },
+          {
+            "style": "still",
+            "columns": 160,
+            "rows": 90
+          }
+        ]
+      }
+    },
+    {
+      "id": "weekly-media",
+      "theme": "media",
+      "title": {
+        "en": "Midnight in London",
+        "ru": "Полночь в Лондоне",
+        "es": "Medianoche en Londres"
+      },
+      "reference": {
+        "en": "Doctor Who · TARDIS",
+        "ru": "Доктор Кто · ТАРДИС",
+        "es": "Doctor Who · TARDIS"
+      },
+      "source": "https://www.doctorwho.tv/characters/the-tardis",
+      "reveal": {
+        "anchors": [
+          {
+            "x": 0.52,
+            "y": 0.43,
+            "radiusX": 0.12,
+            "radiusY": 0.26,
+            "delay": 0.0
+          },
+          {
+            "x": 0.18,
+            "y": 0.48,
+            "radiusX": 0.2,
+            "radiusY": 0.35,
+            "delay": 0.12
+          },
+          {
+            "x": 0.87,
+            "y": 0.45,
+            "radiusX": 0.17,
+            "radiusY": 0.35,
+            "delay": 0.2
+          },
+          {
+            "x": 0.805,
+            "y": 0.63,
+            "radiusX": 0.08,
+            "radiusY": 0.2,
+            "delay": 0.28
+          },
+          {
+            "x": 0.52,
+            "y": 0.84,
+            "radiusX": 0.3,
+            "radiusY": 0.18,
+            "delay": 0.4
+          }
+        ],
+        "development": "contours"
+      },
+      "world": "london",
+      "direction": {
+        "kind": "painting",
+        "treatments": [
+          {
+            "style": "tiles",
+            "columns": 160,
+            "rows": 90
+          },
+          {
+            "style": "scene",
+            "columns": 160,
+            "rows": 90
+          },
+          {
+            "style": "still",
+            "columns": 160,
+            "rows": 90
+          }
+        ]
+      }
+    },
+    {
+      "id": "weekly-comics",
+      "theme": "comics",
+      "title": {
+        "en": "Night over Gotham",
+        "ru": "Ночь над Готэмом",
+        "es": "Noche sobre Gotham"
+      },
+      "reference": {
+        "en": "Batman · Bat-Signal",
+        "ru": "Бэтмен · Бэт-сигнал",
+        "es": "Batman · Batseñal"
+      },
+      "source": "https://www.dc.com/characters/batman",
+      "reveal": {
+        "anchors": [
+          {
+            "x": 0.38,
+            "y": 0.55,
+            "radiusX": 0.3,
+            "radiusY": 0.18,
+            "delay": 0.0
+          },
+          {
+            "x": 0.815,
+            "y": 0.21,
+            "radiusX": 0.12,
+            "radiusY": 0.14,
+            "delay": 0.1
+          },
+          {
+            "x": 0.12,
+            "y": 0.42,
+            "radiusX": 0.12,
+            "radiusY": 0.28,
+            "delay": 0.18
+          },
+          {
+            "x": 0.635,
+            "y": 0.65,
+            "radiusX": 0.09,
+            "radiusY": 0.17,
+            "delay": 0.28
+          },
+          {
+            "x": 0.6,
+            "y": 0.9,
+            "radiusX": 0.45,
+            "radiusY": 0.15,
+            "delay": 0.4
+          }
+        ],
+        "development": "contours"
+      },
+      "world": "gotham",
+      "direction": {
+        "kind": "painting",
+        "treatments": [
+          {
+            "style": "scene",
+            "columns": 160,
+            "rows": 90
+          },
+          {
+            "style": "ink",
+            "columns": 160,
+            "rows": 90
+          },
+          {
+            "style": "still",
+            "columns": 160,
+            "rows": 90
+          }
+        ]
+      }
+    },
+    {
+      "id": "weekly-books",
+      "theme": "books",
+      "title": {
+        "en": "Sunset on B-612",
+        "ru": "Закат на B-612",
+        "es": "Atardecer en B-612"
+      },
+      "reference": {
+        "en": "The Little Prince · the rose",
+        "ru": "Маленький принц · роза",
+        "es": "El principito · la rosa"
+      },
+      "source": "https://www.lepetitprince.com/en/new-products-from-our-licensees/three-new-martube-creations-to-keep-the-magic-of-the-little-prince-alive/",
+      "reveal": {
+        "anchors": [
+          {
+            "x": 0.24,
+            "y": 0.27,
+            "radiusX": 0.15,
+            "radiusY": 0.22,
+            "delay": 0.0
+          },
+          {
+            "x": 0.68,
+            "y": 0.79,
+            "radiusX": 0.27,
+            "radiusY": 0.18,
+            "delay": 0.15
+          },
+          {
+            "x": 0.58,
+            "y": 0.64,
+            "radiusX": 0.09,
+            "radiusY": 0.17,
+            "delay": 0.24
+          },
+          {
+            "x": 0.71,
+            "y": 0.56,
+            "radiusX": 0.09,
+            "radiusY": 0.18,
+            "delay": 0.3
+          },
+          {
+            "x": 0.55,
+            "y": 0.17,
+            "radiusX": 0.45,
+            "radiusY": 0.25,
+            "delay": 0.4
+          }
+        ],
+        "development": "light"
+      },
+      "world": "b612",
+      "direction": {
+        "kind": "painting",
+        "treatments": [
+          {
+            "style": "focus",
+            "columns": 24,
+            "rows": 14
+          },
+          {
+            "style": "ink",
+            "columns": 160,
+            "rows": 90
+          },
+          {
+            "style": "still",
+            "columns": 160,
+            "rows": 90
+          }
+        ]
+      }
+    },
+    {
+      "id": "weekly-history",
+      "theme": "history",
+      "title": {
+        "en": "Stillness at Tranquility Base",
+        "ru": "Тишина Моря Спокойствия",
+        "es": "Silencio en la Base Tranquilidad"
+      },
+      "reference": {
+        "en": "Apollo · lunar module",
+        "ru": "Аполлон · лунный модуль",
+        "es": "Apolo · módulo lunar"
+      },
+      "source": "https://www.nasa.gov/wp-content/uploads/2023/03/apollo-lunar-lander-technical-brief-ochmo.pdf",
+      "reveal": {
+        "anchors": [
+          {
+            "x": 0.27,
+            "y": 0.22,
+            "radiusX": 0.13,
+            "radiusY": 0.2,
+            "delay": 0.0
+          },
+          {
+            "x": 0.45,
+            "y": 0.6,
+            "radiusX": 0.4,
+            "radiusY": 0.13,
+            "delay": 0.12
+          },
+          {
+            "x": 0.76,
+            "y": 0.62,
+            "radiusX": 0.14,
+            "radiusY": 0.23,
+            "delay": 0.28
+          },
+          {
+            "x": 0.58,
+            "y": 0.74,
+            "radiusX": 0.08,
+            "radiusY": 0.17,
+            "delay": 0.35
+          },
+          {
+            "x": 0.5,
+            "y": 0.89,
+            "radiusX": 0.4,
+            "radiusY": 0.15,
+            "delay": 0.42
+          }
+        ],
+        "development": "light"
+      },
+      "world": "tranquility",
+      "direction": {
+        "kind": "painting",
+        "treatments": [
+          {
+            "style": "tiles",
+            "columns": 160,
+            "rows": 90
+          },
+          {
+            "style": "scene",
+            "columns": 160,
+            "rows": 90
+          },
+          {
+            "style": "still",
+            "columns": 160,
+            "rows": 90
+          }
+        ]
+      }
+    },
+    {
+      "id": "arcade-snakes",
+      "theme": "games",
+      "world": "snake",
+      "title": {
+        "en": "The neon arcade",
+        "ru": "Неоновая аркада",
+        "es": "El arcade de neón"
+      },
+      "reference": {
+        "en": "Snake · a pixel interlude",
+        "ru": "Змейка · пиксельная интермедия",
+        "es": "Snake · un interludio de píxeles"
+      },
+      "source": "https://www.hmd.com/en_int/nokia-3310",
+      "direction": {
+        "kind": "snakes",
+        "treatments": []
+      }
+    }
+  ]
+}

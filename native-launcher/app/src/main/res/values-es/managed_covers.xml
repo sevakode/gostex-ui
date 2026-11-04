@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="network_disconnected">Red desconectada</string>
+    <string name="network_no_internet">Conectado · sin internet</string>
+    <string name="network_ethernet">Ethernet · con internet</string>
+    <string name="network_wifi">Wi-Fi · con internet</string>
+    <string name="network_connected">Internet conectado</string>
+    <string name="network_settings">Ajustes de red</string>
+    <string name="network_status_visibility">Estado de red en la cabecera</string>
+    <string name="covers_title">Carátulas de juegos</string>
+    <string name="covers_summary">Elegir carátulas y conectar una carpeta</string>
+    <string name="covers_hint">Mantén pulsado un juego para cambiar su carátula. Las selecciones manuales se conservan al actualizar.</string>
+    <string name="cover_manage">Carátula</string>
+    <string name="covers_no_folder">Sin conectar</string>
+    <string name="covers_folder_selected">Carpeta conectada</string>
+    <string name="covers_shared_folder">Carpeta compartida de carátulas</string>
+    <string name="covers_automatic">Importar actualizaciones automáticamente</string>
+    <string name="covers_syncing">Procesando…</string>
+    <string name="covers_sync_now">Aplicar cambios y exportar biblioteca</string>
+    <string name="covers_exchange_hint">La carpeta recibe library.json e imágenes de los juegos instalados. GOSTEX importa updates.json mientras está abierto.</string>
+    <string name="covers_disconnect">Desconectar carpeta</string>
+    <string name="covers_games">Tus juegos</string>
+    <string name="covers_empty">Añade juegos para gestionar sus carátulas.</string>
+    <string name="covers_choose_game">Elegir un juego</string>
+    <string name="covers_hold_hint">También al mantener pulsado un juego</string>
+    <string name="cover_saved">Carátula guardada</string>
+    <string name="cover_error">Error al actualizar la carátula: %1$s</string>
+    <string name="covers_sync_result">Carpeta revisada · actualizadas: %1$d · omitidas: %2$d</string>
+    <string name="cover_choice_manual">Usando tu imagen</string>
+    <string name="cover_choice_original">Usando la carátula original</string>
+    <string name="cover_choice_auto">Automático · carpeta compartida y carátulas incluidas</string>
+    <string name="cover_choose_file">Elegir una imagen</string>
+    <string name="cover_use_manual">Usar mi imagen</string>
+    <string name="cover_use_auto">Usar carátula automática</string>
+    <string name="cover_use_original">Usar carátula original</string>
+    <string name="cover_original_hint">Los originales se conservan. Puedes volver a ellos cuando quieras.</string>
+    <string name="cover_choose_shared">Elegir de la carpeta compartida</string>
+    <string name="covers_no_images">Aún no hay imágenes en la carpeta compartida.</string>
+</resources>

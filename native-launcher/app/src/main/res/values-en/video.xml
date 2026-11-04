@@ -1,0 +1,10 @@
+<resources>
+    <string name="video_settings">Video apps</string>
+    <string name="video_settings_hint">Choose the apps on your Video shelf and keep your favorites first.</string>
+    <string name="video_choose_apps">Choose apps</string>
+    <string name="video_selected_count">Selected: %1$d</string>
+    <string name="video_apply">Apply</string>
+    <string name="video_order_hint">Select an app below to move it to the front.</string>
+    <string name="video_position">Position %1$d</string>
+    <string name="video_empty">Choose apps in Settings → Video apps.</string>
+</resources>

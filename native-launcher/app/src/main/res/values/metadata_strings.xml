@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="metadata_adapted">Adapted summary / translation</string>
+    <string name="metadata_art_credit">Artwork · %1$s</string>
+    <string name="metadata_description_source">Description · %1$s</string>
+    <string name="metadata_art_rights">Game artwork remains the property of its respective rights holders; it is not covered by the description’s text license.</string>
+</resources>

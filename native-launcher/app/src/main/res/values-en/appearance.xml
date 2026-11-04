@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="appearance_title">Appearance</string>
+    <string name="appearance_hint">Choose card size, cover style, and favorite marks for your games and apps.</string>
+    <string name="cover_style_title">Game covers</string>
+    <string name="cover_style_generated">Extended artwork</string>
+    <string name="cover_style_generated_hint">AI-extended covers fill wide cards. When unavailable, the original cover is shown with a background in its own colors.</string>
+    <string name="cover_style_ambient">Cover colors</string>
+    <string name="cover_style_ambient_hint">The whole cover stays visible, with a soft background in its own colors.</string>
+    <string name="cover_style_plain">Original format</string>
+    <string name="cover_style_plain_hint">The whole cover on a plain background, keeping its original proportions.</string>
+    <string name="cover_style_crop">Fill the card</string>
+    <string name="cover_style_crop_hint">The cover fills the card. Some edges may be cropped.</string>
+    <string name="tile_size_title">Card size</string>
+    <string name="tile_size_large">Large · 4 per row</string>
+    <string name="tile_size_balanced">Balanced · 5 per row</string>
+    <string name="tile_size_compact">Compact · 6 per row</string>
+    <string name="tile_size_hint">The same size applies to games and apps, on the home screen and in the library. Text size stays the same.</string>
+</resources>

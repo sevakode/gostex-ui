@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="network_disconnected">Сеть отключена</string>
+    <string name="network_no_internet">Подключено · нет интернета</string>
+    <string name="network_ethernet">Ethernet · интернет подключён</string>
+    <string name="network_wifi">Wi-Fi · интернет подключён</string>
+    <string name="network_connected">Интернет подключён</string>
+    <string name="network_settings">Настройки сети</string>
+    <string name="network_status_visibility">Статус сети в шапке</string>
+    <string name="covers_title">Обложки игр</string>
+    <string name="covers_summary">Выбор обложек и общая папка обновлений</string>
+    <string name="covers_hint">Удерживай плитку игры, чтобы изменить обложку. Ручной выбор сохраняется при автоматических обновлениях.</string>
+    <string name="cover_manage">Обложка</string>
+    <string name="covers_no_folder">Не подключена</string>
+    <string name="covers_folder_selected">Папка подключена</string>
+    <string name="covers_shared_folder">Общая папка обложек</string>
+    <string name="covers_automatic">Принимать обновления автоматически</string>
+    <string name="covers_syncing">Обработка…</string>
+    <string name="covers_sync_now">Применить обновления и выгрузить библиотеку</string>
+    <string name="covers_exchange_hint">В папку выгружаются library.json и исходные обложки установленных игр. Готовые обложки из updates.json применяются, пока открыт GOSTEX.</string>
+    <string name="covers_disconnect">Отключить папку</string>
+    <string name="covers_games">Твои игры</string>
+    <string name="covers_empty">Добавь игры, чтобы настраивать их обложки.</string>
+    <string name="covers_choose_game">Выбрать игру</string>
+    <string name="covers_hold_hint">Также доступно по удержанию плитки</string>
+    <string name="cover_saved">Обложка сохранена</string>
+    <string name="cover_error">Не удалось обновить обложку: %1$s</string>
+    <string name="covers_sync_result">Папка проверена · обновлено: %1$d · пропущено: %2$d</string>
+    <string name="cover_choice_manual">Используется выбранная тобой картинка</string>
+    <string name="cover_choice_original">Используется исходная обложка</string>
+    <string name="cover_choice_auto">Автоматически · общая папка и встроенные обложки</string>
+    <string name="cover_choose_file">Выбрать картинку</string>
+    <string name="cover_use_manual">Использовать мою картинку</string>
+    <string name="cover_use_auto">Использовать автоматическую обложку</string>
+    <string name="cover_use_original">Использовать исходную обложку</string>
+    <string name="cover_original_hint">Оригиналы сохраняются. Можно в любой момент переключиться обратно.</string>
+    <string name="cover_choose_shared">Выбрать из общей папки</string>
+    <string name="covers_no_images">В общей папке пока нет картинок.</string>
+</resources>

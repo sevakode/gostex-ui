@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sections_title">Разделы главного экрана</string>
+    <string name="sections_hint">Создавай свои разделы с приложениями и играми. Меняй их порядок и скрывай любые разделы, в том числе «Приложения».</string>
+    <string name="sections_create">Создать раздел</string>
+    <string name="sections_create_hint">Например: Видео, Настройки или подборка игр</string>
+    <string name="sections_name_hint">Название раздела</string>
+    <string name="sections_name_error">Введи название от 1 до %1$d символов без переноса строк.</string>
+    <string name="sections_save_error">Не удалось сохранить раздел. Проверь название и количество разделов.</string>
+    <string name="sections_save">Сохранить</string>
+    <string name="sections_apply">Применить</string>
+    <string name="sections_choose_contents">Выбрать приложения и игры</string>
+    <string name="sections_order_contents">Порядок содержимого</string>
+    <string name="sections_app_label">%1$s · Приложение</string>
+    <string name="sections_game_label">%1$s · Игра</string>
+    <string name="sections_unavailable_item">Недоступно · %1$s</string>
+    <string name="sections_remove_item">Убрать из раздела</string>
+    <string name="sections_rename">Переименовать раздел</string>
+    <string name="sections_hide">Скрыть на главном экране</string>
+    <string name="sections_show">Показать на главном экране</string>
+    <string name="sections_delete">Удалить раздел</string>
+    <string name="sections_delete_hint">Удалить «%1$s»? Приложения, игры и их файлы останутся на устройстве.</string>
+    <string name="sections_item_count">Элементов: %1$d</string>
+    <string name="sections_automatic">Автоматический раздел</string>
+    <string name="sections_position_description">Позиция %1$d · %2$s</string>
+    <string name="sections_hidden_description">Скрыт · %1$s</string>
+    <string name="sections_automatic_hint">Избранное объединяет приложения и игры. Недавние игры, Игры и Приложения обновляются автоматически. Свои разделы сохраняют выбранное содержимое и порядок.</string>
+    <string name="sections_assign">Добавить в разделы</string>
+    <string name="sections_no_custom">Создай первый раздел, затем нажми «Применить», чтобы добавить этот элемент.</string>
+    <string name="favorites_order_title">Порядок избранного</string>
+    <string name="favorites_order_description">Элементов: %1$d · Настроить порядок</string>
+    <string name="favorites_order_hint">Выбери элемент и перемести его левее, правее, в начало или в конец. Изменения сохраняются сразу.</string>
+    <string name="favorites_order_empty">Добавь приложения или игры в избранное через меню удержания, затем расставь их здесь.</string>
+    <string name="favorites_order_single">В избранном пока один элемент. Добавь ещё приложение или игру, чтобы менять их порядок.</string>
+    <string name="favorites_move_left">Переместить левее</string>
+    <string name="favorites_move_right">Переместить правее</string>
+    <string name="favorites_move_first">Переместить в начало</string>
+    <string name="favorites_move_last">Переместить в конец</string>
+</resources>

@@ -1,0 +1,21 @@
+<resources>
+    <string name="media_player">Mini player</string>
+    <string name="media_listener_label">GOSTEX · media controls</string>
+    <string name="media_playing">Playing</string>
+    <string name="media_paused">Paused</string>
+    <string name="media_pause">Pause</string>
+    <string name="media_resume">Resume playback</string>
+    <string name="media_previous">Previous track</string>
+    <string name="media_next">Next track</string>
+    <string name="media_open_app">Open %1$s</string>
+    <string name="media_visibility">Show in the top bar</string>
+    <string name="media_access">Media access</string>
+    <string name="media_access_granted">Enabled</string>
+    <string name="media_access_required">Enable notification access for GOSTEX</string>
+    <string name="media_access_hint">To show playback from other apps, enable notification access for GOSTEX in Android settings.</string>
+    <string name="media_empty">Nothing is playing. Start music or video in an app that supports Android media controls.</string>
+    <string name="media_hint">Shows active playback and paused sessions. Controls depend on the app. Updates only while GOSTEX is visible; no notifications are saved.</string>
+    <string name="media_settings_summary">Playback in the top bar and media controls</string>
+    <string name="media_action_failed">The app did not accept this command. Open it and try again.</string>
+    <string name="media_settings_unavailable">Notification access settings are unavailable on this device.</string>
+</resources>

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="grafana_catalog_title">Paneles</string>
+    <string name="grafana_catalog_hint">Elige un panel para el salvapantallas. Los favoritos se guardan en este televisor para este servidor y organización.</string>
+    <string name="grafana_catalog_all">Todos</string>
+    <string name="grafana_catalog_favorites">Favoritos</string>
+    <string name="grafana_catalog_reload">Actualizar lista</string>
+    <string name="grafana_catalog_login">Abrir Grafana</string>
+    <string name="grafana_catalog_empty">No se encontraron paneles accesibles en esta organización.</string>
+    <string name="grafana_catalog_empty_favorites">Todavía no hay favoritos. Abre Todos y añade paneles con ☆.</string>
+    <string name="grafana_catalog_signin_needed">Inicia sesión en Abrir Grafana y vuelve a abrir esta lista. Tu cuenta necesita acceso a esta organización.</string>
+    <string name="grafana_catalog_network_error">No se pudo conectar con Grafana. Comprueba la conexión o la VPN y actualiza la lista.</string>
+    <string name="grafana_catalog_response_error">Grafana no devolvió una lista de paneles válida. Comprueba la dirección del servidor y la organización.</string>
+    <string name="grafana_catalog_add_favorite">Añadir %1$s a favoritos</string>
+    <string name="grafana_catalog_remove_favorite">Quitar %1$s de favoritos</string>
+    <string name="grafana_catalog_limit">Se muestran hasta 5000 paneles. El servidor también puede limitar la lista.</string>
+</resources>

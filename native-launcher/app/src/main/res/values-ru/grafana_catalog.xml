@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="grafana_catalog_title">Дашборды</string>
+    <string name="grafana_catalog_hint">Выберите дашборд для заставки. Избранное хранится на телевизоре отдельно для каждого сервера и организации.</string>
+    <string name="grafana_catalog_all">Все</string>
+    <string name="grafana_catalog_favorites">Избранное</string>
+    <string name="grafana_catalog_reload">Обновить список</string>
+    <string name="grafana_catalog_login">Открыть Grafana</string>
+    <string name="grafana_catalog_empty">В этой организации нет доступных дашбордов.</string>
+    <string name="grafana_catalog_empty_favorites">Пока нет избранного. Откройте «Все» и добавьте дашборды кнопкой ☆.</string>
+    <string name="grafana_catalog_signin_needed">Войдите через «Открыть Grafana» и снова откройте список. У аккаунта должен быть доступ к этой организации.</string>
+    <string name="grafana_catalog_network_error">Не удалось связаться с Grafana. Проверьте подключение или VPN и обновите список.</string>
+    <string name="grafana_catalog_response_error">Grafana не вернула подходящий список дашбордов. Проверьте адрес сервера и организацию.</string>
+    <string name="grafana_catalog_add_favorite">Добавить %1$s в избранное</string>
+    <string name="grafana_catalog_remove_favorite">Убрать %1$s из избранного</string>
+    <string name="grafana_catalog_limit">Показано не более 5000 дашбордов. Сервер также может ограничивать список.</string>
+</resources>

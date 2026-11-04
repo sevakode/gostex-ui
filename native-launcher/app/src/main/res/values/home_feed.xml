@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_feed_empty">No rows to show yet. Add games or choose the rows you want on Home.</string>
+    <string name="home_feed_customize">Customize Home</string>
+</resources>

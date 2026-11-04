@@ -1,0 +1,9 @@
+.tools/
+.reports/
+.backups/
+.downloads/
+.codex-attachments/
+tmp/
+**/.DS_Store
+**/__pycache__/
+*.py[cod]

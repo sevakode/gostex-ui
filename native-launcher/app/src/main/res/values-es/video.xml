@@ -1,0 +1,10 @@
+<resources>
+    <string name="video_settings">Apps de vídeo</string>
+    <string name="video_settings_hint">Elige las apps de Vídeo y coloca tus favoritas primero.</string>
+    <string name="video_choose_apps">Elegir apps</string>
+    <string name="video_selected_count">Seleccionadas: %1$d</string>
+    <string name="video_apply">Aplicar</string>
+    <string name="video_order_hint">Selecciona una app para moverla al principio.</string>
+    <string name="video_position">Posición %1$d</string>
+    <string name="video_empty">Elige apps en Ajustes → Apps de vídeo.</string>
+</resources>

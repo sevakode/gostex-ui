@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_appearance_group">Оформление</string>
+    <string name="settings_appearance_summary">Карточки и заставка</string>
+    <string name="settings_media_group">Медиа и библиотека</string>
+    <string name="settings_media_summary">Игры и папки с ROM</string>
+    <string name="settings_controls_group">Управление</string>
+    <string name="settings_controls_summary">Кнопки геймпада и подсказки</string>
+    <string name="settings_locale_group">Язык и часы</string>
+    <string name="settings_locale_summary">Язык, время и часовые пояса</string>
+    <string name="settings_system_group">Система</string>
+    <string name="settings_system_summary">Настройки SHIELD и удалённый доступ</string>
+    <string name="settings_cards_title">Карточки</string>
+</resources>

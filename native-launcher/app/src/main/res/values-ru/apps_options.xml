@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="apps_tab_visibility">Вкладка «Приложения»</string>
+    <string name="apps_tab_hint">Показывать или скрыть вкладку приложений. Ряд приложений на главном экране настраивается в «Разделах главного экрана».</string>
+    <string name="apps_loading">Загрузка приложений…</string>
+    <string name="apps_empty">Приложения для запуска не найдены</string>
+    <plurals name="apps_count">
+        <item quantity="one">%d приложение</item>
+        <item quantity="few">%d приложения</item>
+        <item quantity="many">%d приложений</item>
+        <item quantity="other">%d приложения</item>
+    </plurals>
+</resources>

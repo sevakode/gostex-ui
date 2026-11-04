@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tile_game_options">OPCIONES DEL JUEGO</string>
+    <string name="tile_app_options">OPCIONES DE LA APLICACIÓN</string>
+    <string name="tile_play">Jugar</string>
+    <string name="tile_details">Detalles del juego</string>
+    <string name="tile_favorite_add">Añadir a favoritos</string>
+    <string name="tile_favorite_remove">Quitar de favoritos</string>
+    <string name="tile_open">Abrir</string>
+    <string name="tile_sections">Gestionar secciones…</string>
+    <string name="tile_section_first">Poner primero en «%1$s»</string>
+    <string name="tile_app_info">Información de la aplicación</string>
+</resources>

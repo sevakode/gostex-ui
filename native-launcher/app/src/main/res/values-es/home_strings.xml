@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_settings">Pantalla de inicio</string>
+    <string name="home_hint">Elige el orden de los juegos en tu pantalla de inicio.</string>
+    <string name="home_order">Orden de juegos</string>
+    <string name="home_order_recent">Jugados recientemente</string>
+    <string name="home_order_favorites">Favoritos primero</string>
+    <string name="home_order_title">Por título</string>
+    <string name="home_recent_hint">Los juegos que has abierto más recientemente aparecen primero. Los que aún no has jugado van después, ordenados por título.</string>
+    <string name="home_favorites_hint">Los favoritos aparecen primero. Dentro de cada grupo, los juegos abiertos más recientemente van al principio.</string>
+    <string name="home_title_hint">Todos los juegos aparecen en orden alfabético.</string>
+</resources>

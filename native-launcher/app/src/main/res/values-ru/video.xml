@@ -1,0 +1,10 @@
+<resources>
+    <string name="video_settings">Приложения для видео</string>
+    <string name="video_settings_hint">Выбери приложения для раздела «Видео» и поставь любимые первыми.</string>
+    <string name="video_choose_apps">Выбрать приложения</string>
+    <string name="video_selected_count">Выбрано: %1$d</string>
+    <string name="video_apply">Применить</string>
+    <string name="video_order_hint">Нажми на приложение ниже, чтобы переместить его в начало.</string>
+    <string name="video_position">Место %1$d</string>
+    <string name="video_empty">Выбери приложения в «Настройки → Приложения для видео».</string>
+</resources>

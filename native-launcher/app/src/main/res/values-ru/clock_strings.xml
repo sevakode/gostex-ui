@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="clock_title">Часы и часовые пояса</string>
+    <string name="clock_format_system">Как в системе</string>
+    <string name="clock_format_12">12 часов</string>
+    <string name="clock_format_24">24 часа</string>
+    <string name="clock_local">Время приставки</string>
+    <string name="clock_manage_title">Управление часами</string>
+    <string name="clock_add_title">Добавить часовой пояс</string>
+    <string name="clock_hint">Выбери часы для главного экрана. Часовой пояс самой приставки останется прежним.</string>
+    <string name="clock_visibility">Показывать часы</string>
+    <string name="clock_format">Формат времени</string>
+    <string name="clock_add">Добавить часовой пояс</string>
+    <string name="clock_order_hint">Часы показываются в этом порядке. Выбери пояс, чтобы переместить или убрать его.</string>
+    <string name="clock_empty">Часов пока нет. Добавь часовой пояс, чтобы показывать время.</string>
+    <string name="clock_order_value">%1$d · %2$s</string>
+    <string name="clock_picker_hint">Выбери регион, затем часовой пояс. Названия и правила летнего времени берутся из системы.</string>
+    <string name="clock_group_count">Часовых поясов: %1$d</string>
+    <string name="clock_page">Страница %1$d из %2$d</string>
+    <string name="clock_back_to_groups">Назад к регионам</string>
+    <string name="clock_previous_page">Предыдущая страница</string>
+    <string name="clock_next_page">Следующая страница</string>
+    <string name="clock_back_to_clocks">Назад к часам</string>
+    <string name="clock_move_hint">Измени порядок или убери эти часы. Время самой приставки не изменится.</string>
+    <string name="clock_move_earlier">Переместить раньше</string>
+    <string name="clock_move_later">Переместить позже</string>
+    <string name="clock_remove">Убрать часы</string>
+    <string name="clock_group_africa">Африка</string>
+    <string name="clock_group_america">Америка</string>
+    <string name="clock_group_antarctica">Антарктида</string>
+    <string name="clock_group_arctic">Арктика</string>
+    <string name="clock_group_asia">Азия</string>
+    <string name="clock_group_atlantic">Атлантический океан</string>
+    <string name="clock_group_australia">Австралия</string>
+    <string name="clock_group_europe">Европа</string>
+    <string name="clock_group_indian">Индийский океан</string>
+    <string name="clock_group_pacific">Тихий океан</string>
+    <string name="clock_group_utc">Смещения UTC</string>
+    <string name="clock_group_other">Другие идентификаторы</string>
+</resources>

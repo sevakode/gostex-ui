@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="metadata_adapted">Адаптация / перевод</string>
+    <string name="metadata_art_credit">Изображение · %1$s</string>
+    <string name="metadata_description_source">Описание · %1$s</string>
+    <string name="metadata_art_rights">Права на изображения игр принадлежат их правообладателям; лицензия текста описания на них не распространяется.</string>
+</resources>

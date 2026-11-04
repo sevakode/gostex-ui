@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="favorite_badge_title">Marcas de favoritos</string>
+    <string name="favorite_badge_hint">Muestra un corazón pequeño de contorno en tus juegos y apps favoritos. Ocultarlo no cambia tus favoritos.</string>
+    <string name="favorite_badge_description">En favoritos</string>
+</resources>

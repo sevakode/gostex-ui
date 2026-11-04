@@ -56,7 +56,10 @@ internal object UpdatePreferences {
     fun setFeed(context: Context, value: String): Boolean {
         val normalized = value.trim()
         if (!validFeed(normalized)) return false
-        preferences(context).edit().putString("updates.feedUrl", normalized).remove("updates.lastCheckAt").apply()
+        val prefs = preferences(context)
+        val edit = prefs.edit().putString("updates.feedUrl", normalized).remove("updates.lastCheckAt")
+        if (prefs.readStringOrDefault("updates.feedUrl", "") != normalized) AndroidUpdateCache.fields.forEach { edit.remove("updates.cached.$it") }
+        edit.apply()
         return true
     }
     fun setBoolean(context: Context, key: String, value: Boolean) {
@@ -67,6 +70,31 @@ internal object UpdatePreferences {
         require(hours in listOf(1, 6, 24))
         preferences(context).edit().putInt("updates.checkIntervalHours", hours).apply()
     }
+}
+
+/** Pure cache codec: only app-private metadata from a successfully authenticated feed is written. */
+internal object AndroidUpdateCache {
+    val fields = listOf("feed", "platform", "code", "name", "url", "sha256", "size")
+    fun encode(feed: String, release: Release): Map<String, String> = mapOf(
+        "feed" to feed, "platform" to release.platform, "code" to release.versionCode.toString(),
+        "name" to release.versionName, "url" to release.url, "sha256" to release.sha256, "size" to release.size.toString()
+    )
+    fun decode(values: Map<String, String>, feed: String, installedCode: Long): Release? = runCatching {
+        require(values.keys == fields.toSet() && values["feed"] == feed && validHttps(feed, 2048, false))
+        val platform = values.getValue("platform").also { require(it == "android-arm64") }
+        val code = values.getValue("code").toLong().also { require(it > installedCode && it > 0) }
+        val name = values.getValue("name").also { require(it.isNotBlank() && it.length <= 128 && it.none(Char::isISOControl)) }
+        val url = values.getValue("url").also { require(validHttps(it, 8192, true)) }
+        val hash = values.getValue("sha256").also { require(it.matches(Regex("[a-fA-F0-9]{64}"))) }
+        val size = values.getValue("size").toLong().also { require(it in 1..1_073_741_824L) }
+        Release(platform, code, name, url, hash, size)
+    }.getOrNull()
+    private fun validHttps(value: String, max: Int, queryAllowed: Boolean): Boolean =
+        value.length <= max && value.none { it.isWhitespace() || it.isISOControl() } && runCatching {
+            val uri = URI(value)
+            uri.scheme.equals("https", true) && !uri.host.isNullOrEmpty() && uri.rawUserInfo == null && uri.rawFragment == null &&
+                (queryAllowed || uri.rawQuery == null) && uri.port in -1..65535 && uri.port != 0
+        }.getOrDefault(false)
 }
 
 /** App-owned bounded diagnostics; payloads deliberately contain no titles, URIs or preference dumps. */
@@ -104,6 +132,7 @@ internal class LauncherUpdates(private val activity: MainActivity) {
     private var foreground = false
     private var closed = false
     private var download: File? = null
+    private var cacheRestored = false
     var options by mutableStateOf(UpdatePreferences.read(activity))
         private set
     var release by mutableStateOf<Release?>(null)
@@ -122,10 +151,13 @@ internal class LauncherUpdates(private val activity: MainActivity) {
             diagnostics.enabled = options.debugEnabled
             if (previous.feedUrl != options.feedUrl) {
                 stopOperation()
+                clearCachedRelease()
+                cacheRestored = true
                 release = null; download = null; ready = false
                 status = if (options.feedUrl.isEmpty()) R.string.updates_no_channel else R.string.updates_idle
             } else if ((!options.checksEnabled && previous.checksEnabled) || (!options.autoDownload && previous.autoDownload)) stopOperation()
-            if (foreground && options.autoDownload && !previous.autoDownload && release != null && !ready && !busy) downloadUpdate()
+            if (foreground && !cacheRestored) restoreCachedRelease()
+            else if (foreground && options.autoDownload && !previous.autoDownload && release != null && !ready && !busy) downloadUpdate()
             else if (foreground && options.checksEnabled) check(false)
         }
         if (key == "updates.installResultPending") consumeInstallResult()
@@ -141,7 +173,7 @@ internal class LauncherUpdates(private val activity: MainActivity) {
         foreground = true
         AndroidDiagnostics.event("launcher.resume")
         consumeInstallResult()
-        check(false)
+        if (!cacheRestored) restoreCachedRelease() else resumeUpdateWork()
     }
     fun onStop() { foreground = false; stopOperation(); AndroidDiagnostics.event("launcher.stop") }
     fun close() {
@@ -161,6 +193,62 @@ internal class LauncherUpdates(private val activity: MainActivity) {
             else -> R.string.updates_idle
         }
     }
+    private fun clearCachedRelease() {
+        val edit = prefs.edit()
+        AndroidUpdateCache.fields.forEach { edit.remove("updates.cached.$it") }
+        edit.apply()
+    }
+    private fun cacheRelease(feed: String, release: Release?) {
+        if (release == null) { clearCachedRelease(); return }
+        val edit = prefs.edit()
+        AndroidUpdateCache.encode(feed, release).forEach { (field, value) -> edit.putString("updates.cached.$field", value) }
+        edit.apply()
+    }
+    private fun artifactFile(release: Release): File = File(File(activity.cacheDir, "updates"), "gostex-${release.versionCode}.apk")
+    /** Offline recovery rechecks the APK itself; a saved ready flag is never trusted. */
+    private fun restoreCachedRelease() {
+        if (busy || closed || !foreground) return
+        val source = options.feedUrl
+        val generation = ++operationId
+        busy = true
+        operation = scope.launch {
+            var resumed = false
+            try {
+                val restored = runInterruptible(Dispatchers.IO) {
+                    val fields = AndroidUpdateCache.fields.mapNotNull { field ->
+                        prefs.readStringOrDefault("updates.cached.$field")?.let { field to it }
+                    }.toMap()
+                    val candidate = AndroidUpdateCache.decode(fields, source, installedInfo().longVersionCode)
+                    if (candidate == null) null
+                    else {
+                        val file = artifactFile(candidate)
+                        val verified = if (!file.isFile) false else try { verifyArchive(file, candidate); true }
+                        catch (error: InterruptedException) { throw error }
+                        catch (error: Exception) { AndroidDiagnostics.failure("update.cache", error); false }
+                        candidate to file.takeIf { verified }
+                    }
+                }
+                currentCoroutineContext().ensureActive()
+                if (generation != operationId || source != options.feedUrl) return@launch
+                if (restored == null) clearCachedRelease()
+                release = restored?.first
+                download = restored?.second
+                ready = download != null
+                cacheRestored = true
+                if (release != null) status = if (ready) R.string.updates_ready else R.string.updates_available_status
+                resumed = true
+            } catch (error: CancellationException) { throw error }
+            catch (error: Exception) {
+                if (generation == operationId) { cacheRestored = true; status = R.string.updates_check_failed }
+                AndroidDiagnostics.failure("update.cache", error)
+            } finally { if (generation == operationId) { busy = false; operation = null } }
+            if (resumed && generation == operationId && foreground && !closed) resumeUpdateWork()
+        }
+    }
+    private fun resumeUpdateWork() {
+        if (release != null && !ready && options.autoDownload) downloadUpdate()
+        else check(false)
+    }
     fun check(manual: Boolean) {
         if (busy || closed || !foreground) return
         if (options.feedUrl.isEmpty()) { status = R.string.updates_no_channel; return }
@@ -179,6 +267,8 @@ internal class LauncherUpdates(private val activity: MainActivity) {
                 val result = runInterruptible(Dispatchers.IO) { client.check(feed, PLATFORM, current) }
                 currentCoroutineContext().ensureActive()
                 if (generation != operationId) return@launch
+                cacheRelease(feed, result)
+                cacheRestored = true
                 release = result; ready = false; download = null
                 if (result == null) status = R.string.updates_current
                 else {
@@ -209,7 +299,7 @@ internal class LauncherUpdates(private val activity: MainActivity) {
         status = R.string.updates_downloading
         val file = runInterruptible(Dispatchers.IO) {
             val folder = File(activity.cacheDir, "updates").apply { mkdirs() }
-            val destination = File(folder, "gostex-${target.versionCode}.apk")
+            val destination = artifactFile(target)
             folder.listFiles()?.filter { it.name.matches(Regex("gostex-[0-9]+\\.apk")) && it != destination }?.forEach { it.delete() }
             client.download(target, destination).also { verifyArchive(it, target) }
         }

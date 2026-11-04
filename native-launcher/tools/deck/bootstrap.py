@@ -325,6 +325,50 @@ def install_archive(archive: Path, version_code: int, expected_sha256: str, data
         return _install_archive(Path(archive), version_code, expected_sha256, data_dir)
 
 
+def _rejected_version(data_dir: Path) -> int:
+    marker = data_dir / "rejected-version.properties"
+    if not marker.exists() and not marker.is_symlink():
+        return 0
+    if marker.is_symlink() or not marker.is_file() or marker.stat().st_size > MAX_PENDING_BYTES:
+        raise InstallError("Rejected release marker is linked or too large")
+    try:
+        value = parse_properties(marker.read_text(encoding="utf-8"))["versionCode"]
+        if not re.fullmatch(r"[1-9][0-9]{0,9}", value):
+            raise InstallError("Invalid rejected versionCode")
+        return _version(int(value))
+    except (KeyError, ValueError, OSError, UnicodeError) as error:
+        raise InstallError("Rejected release marker could not be read") from error
+
+
+def _pointer_version(data_dir: Path, name: str) -> int | None:
+    """Read the release identity even if its launcher/runtime has been damaged."""
+    pointer = data_dir / name
+    if not pointer.is_symlink():
+        return None
+    try:
+        relative = pointer.resolve().relative_to((data_dir / "releases").resolve())
+        if len(relative.parts) == 2 and relative.parts[1] == "GOSTEX" and relative.parts[0].isdigit():
+            return _version(int(relative.parts[0]))
+    except (ValueError, OSError, RuntimeError, InstallError):
+        pass
+    return None
+
+
+def _record_rejected(data_dir: Path, code: int) -> None:
+    code = max(_rejected_version(data_dir), _version(code))
+    descriptor, temporary_name = tempfile.mkstemp(prefix=".rejected-", dir=data_dir)
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+            output.write(f"versionCode={code}\n")
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(temporary, data_dir / "rejected-version.properties")
+        _sync_dir(data_dir)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def apply_pending(data_dir: Path) -> bool:
     data_dir = Path(data_dir).resolve()
     with _install_lock(data_dir):
@@ -339,6 +383,12 @@ def apply_pending(data_dir: Path) -> bool:
             if not re.fullmatch(r"[1-9][0-9]{0,9}", value):
                 raise InstallError("Invalid pending versionCode")
             code = _version(int(value))
+            if code <= _rejected_version(data_dir):
+                # An older application may have downloaded the failed release
+                # again. Quarantine its metadata instead of undoing the rollback.
+                os.replace(pending, data_dir / "pending.rejected.properties")
+                _sync_dir(data_dir)
+                return False
             if not properties["versionName"].strip():
                 raise InstallError("Pending versionName is empty")
             archive = Path(properties["path"])
@@ -360,6 +410,10 @@ def rollback(data_dir: Path) -> Path:
         previous = _pointer(data_dir, "previous")
         if previous is None:
             raise InstallError("No previous release is installed")
+        rejected = _pointer_version(data_dir, "current")
+        if rejected is not None:
+            # Persist before activation: a crash cannot erase the user's rollback.
+            _record_rejected(data_dir, rejected)
         _activate(data_dir, previous)
         # Do not immediately reapply the update the user just rolled back.
         pending = data_dir / "pending.properties"

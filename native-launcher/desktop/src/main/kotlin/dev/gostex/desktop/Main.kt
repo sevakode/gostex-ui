@@ -152,8 +152,8 @@ fun main(args: Array<String>) {
             var active by remember { mutableStateOf(window.isFocused) }
             DisposableEffect(window) {
                 val listener = object : WindowAdapter() {
-                    override fun windowGainedFocus(event: WindowEvent) { active = true; model.restore++ }
-                    override fun windowLostFocus(event: WindowEvent) { active = false }
+                    override fun windowGainedFocus(event: WindowEvent) { active = true; model.restore++; updates.log.event("window.focus", "gained") }
+                    override fun windowLostFocus(event: WindowEvent) { active = false; updates.setForeground(false); updates.log.event("window.focus", "lost") }
                 }
                 window.addWindowFocusListener(listener)
                 onDispose { window.removeWindowFocusListener(listener) }
@@ -161,6 +161,8 @@ fun main(args: Array<String>) {
             LaunchedEffect(active, model.busy, model.settings.feedUrl, model.settings.updatesEnabled,
                 model.settings.autoDownload, model.settings.debugEnabled, model.settings.updateIntervalHours) {
                 updates.log.enabled = model.settings.debugEnabled
+                updates.setForeground(active && !model.busy)
+                updates.configure(model.settings)
                 if (active && !model.busy) updates.check(model.settings)
             }
             MaterialTheme(colorScheme = darkColorScheme(primary = Lime, background = Ink, surface = Panel, onPrimary = Ink)) {

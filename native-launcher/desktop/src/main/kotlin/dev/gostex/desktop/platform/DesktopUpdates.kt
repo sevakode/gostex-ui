@@ -26,7 +26,11 @@ fun desktopDataPath(): Path {
 }
 
 /** UI owns the coroutine. There is no timer or network activity while hidden or in a game. */
-class DesktopUpdates(val root: Path = desktopDataPath()) {
+class DesktopUpdates(
+    val root: Path = desktopDataPath(),
+    private val clientFactory: () -> SignedReleaseClient = { SignedReleaseClient() },
+    private val platformProvider: () -> String? = { platform() }
+) {
     val log = DiagnosticLog(root.resolve("diagnostics").toFile())
     var release by mutableStateOf<Release?>(null)
         private set
@@ -38,47 +42,88 @@ class DesktopUpdates(val root: Path = desktopDataPath()) {
         private set
     private var lastCheck = 0L
     private var endpoint = ""
+    @Volatile private var foreground = true
+    private var operation: Job? = null
+    private var configuration = 0L
+
+    fun setForeground(visible: Boolean) {
+        foreground = visible
+        if (!visible) operation?.cancel()
+    }
+
+    suspend fun configure(settings: DesktopSettings) {
+        log.enabled = settings.debugEnabled
+        if (settings.feedUrl == endpoint) return
+        val previous = operation
+        val clearPending = endpoint.isNotEmpty()
+        configuration++
+        release = null; ready = false; lastCheck = 0
+        if (previous != currentCoroutineContext()[Job]) previous?.cancelAndJoin()
+        lastCheck = withContext(Dispatchers.IO) {
+            if (clearPending) Files.deleteIfExists(root.resolve("pending.properties"))
+            readLastCheck(settings.feedUrl)
+        }
+        endpoint = settings.feedUrl
+        status = if (endpoint.isEmpty()) "updates_unconfigured" else "updates_paused"
+    }
 
     suspend fun check(settings: DesktopSettings, force: Boolean = false) {
-        log.enabled = settings.debugEnabled
-        if (working) return
+        configure(settings)
+        if (working || !foreground) return
         if (!force && !settings.updatesEnabled) return
         if (settings.feedUrl.isBlank()) { status = "updates_unconfigured"; return }
-        if (settings.feedUrl != endpoint) { release = null; ready = false; endpoint = settings.feedUrl; lastCheck = 0 }
         val now = System.currentTimeMillis()
-        if (!force && now - lastCheck < settings.updateIntervalHours * 3_600_000L) return
-        val platform = platform() ?: run { status = "updates_linux_only"; return }
+        if (!force && now >= lastCheck && now - lastCheck < settings.updateIntervalHours * 3_600_000L) return
+        val platform = platformProvider() ?: run { status = "updates_linux_only"; return }
         working = true
+        operation = currentCoroutineContext()[Job]
+        val revision = configuration
         status = "updates_checking"
         try {
-            val next = withContext(Dispatchers.IO) { SignedReleaseClient().check(settings.feedUrl, platform, DesktopBuild.code) }
             lastCheck = now
+            withContext(Dispatchers.IO) { recordLastCheck(endpoint, now) }
+            val next = runInterruptible(Dispatchers.IO) { clientFactory().check(settings.feedUrl, platform, DesktopBuild.code) }
+            currentCoroutineContext().ensureActive()
+            if (revision != configuration || !foreground) return
             release = next
             status = if (next == null) "updates_current" else "updates_available"
             log.event("update.check", if (next == null) "current" else "available:${next.versionCode}")
-            if (next != null && settings.autoDownload) downloadInternal(next)
-        } catch (cancel: CancellationException) { throw cancel }
+            val rejected = next != null && withContext(Dispatchers.IO) { next.versionCode <= rejectedCode() }
+            if (rejected) status = "updates_skipped"
+            if (next != null && settings.autoDownload && !rejected) downloadInternal(next)
+        } catch (cancel: CancellationException) {
+            if (revision == configuration) status = if (ready) "updates_ready" else if (release != null) "updates_available" else "updates_paused"
+            throw cancel
+        }
         catch (error: Exception) { status = "updates_error"; log.failure("update.check", error) }
-        finally { working = false }
+        finally { working = false; operation = null }
     }
 
     suspend fun download() {
         val next = release ?: return
-        if (working) return
+        if (working || !foreground) return
         working = true
-        try { downloadInternal(next) }
-        catch (cancel: CancellationException) { throw cancel }
+        operation = currentCoroutineContext()[Job]
+        try {
+            // A deliberate Download action permits retrying a rolled-back version.
+            withContext(Dispatchers.IO) { Files.deleteIfExists(root.resolve("rejected-version.properties")) }
+            downloadInternal(next)
+        }
+        catch (cancel: CancellationException) { status = "updates_available"; throw cancel }
         catch (error: Exception) { status = "updates_error"; log.failure("update.download", error) }
-        finally { working = false }
+        finally { working = false; operation = null }
     }
 
     private suspend fun downloadInternal(next: Release) {
         status = "updates_downloading"
-        withContext(Dispatchers.IO) {
+        val owner = currentCoroutineContext()[Job]
+        val revision = configuration
+        runInterruptible(Dispatchers.IO) {
             val updates = root.resolve("updates")
             Files.createDirectories(updates)
             val archive = updates.resolve("${next.versionCode}.zip")
-            SignedReleaseClient().download(next, archive.toFile())
+            clientFactory().download(next, archive.toFile())
+            if (!foreground || owner?.isActive == false || revision != configuration) throw CancellationException()
             // The stable Linux bootstrap consumes this only on the next launcher start.
             val pending = Properties().apply {
                 setProperty("versionCode", next.versionCode.toString())
@@ -89,12 +134,40 @@ class DesktopUpdates(val root: Path = desktopDataPath()) {
             val temporary = Files.createTempFile(updates, ".pending-", ".tmp")
             try {
                 Files.newBufferedWriter(temporary, Charsets.UTF_8).use { pending.store(it, "Verified GOSTEX release") }
+                if (!foreground || owner?.isActive == false || revision != configuration) throw CancellationException()
                 Files.move(temporary, root.resolve("pending.properties"), ATOMIC_MOVE, REPLACE_EXISTING)
             } finally { Files.deleteIfExists(temporary) }
         }
         ready = true
         status = "updates_ready"
         log.event("update.staged", next.versionCode.toString())
+    }
+
+    private fun rejectedCode(): Long = runCatching {
+        val file = root.resolve("rejected-version.properties")
+        if (!Files.isRegularFile(file) || Files.size(file) > 4096) return@runCatching 0L
+        Properties().apply { Files.newBufferedReader(file).use { load(it) } }.getProperty("versionCode").toLongOrNull() ?: 0L
+    }.getOrDefault(0L)
+
+    private fun channelHash(value: String) = MessageDigest.getInstance("SHA-256")
+        .digest(value.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+
+    private fun readLastCheck(feed: String): Long = runCatching {
+        val file = root.resolve("last-check.properties")
+        if (!Files.isRegularFile(file) || Files.size(file) > 4096) return@runCatching 0L
+        val data = Properties().apply { Files.newBufferedReader(file).use { load(it) } }
+        if (data.getProperty("channel") != channelHash(feed)) 0L else data.getProperty("time").toLongOrNull()?.coerceAtLeast(0) ?: 0L
+    }.getOrDefault(0L)
+
+    private fun recordLastCheck(feed: String, now: Long) {
+        Files.createDirectories(root)
+        val temporary = Files.createTempFile(root, ".check-", ".tmp")
+        try {
+            Files.newBufferedWriter(temporary).use { output ->
+                Properties().apply { setProperty("channel", channelHash(feed)); setProperty("time", now.toString()) }.store(output, null)
+            }
+            Files.move(temporary, root.resolve("last-check.properties"), ATOMIC_MOVE, REPLACE_EXISTING)
+        } finally { Files.deleteIfExists(temporary) }
     }
 
     suspend fun export(destination: File, settings: DesktopSettings): File = withContext(Dispatchers.IO) {

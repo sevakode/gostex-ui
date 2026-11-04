@@ -56,7 +56,13 @@ import java.net.URI
             }
         }
     }
-    Action(s["debug_clear"]) { model.scope.launch(Dispatchers.IO) { updates.log.clear() } }
+    Action(s["debug_clear"]) {
+        model.scope.launch {
+            try { withContext(Dispatchers.IO) { updates.log.clear() }; reportState = "debug_cleared" }
+            catch (cancel: CancellationException) { throw cancel }
+            catch (_: Exception) { reportState = "debug_clear_error" }
+        }
+    }
     reportState?.let { Text(s[it], color = GostexBrand.White) }
     Action(s["back"], onClick = onBack)
 }

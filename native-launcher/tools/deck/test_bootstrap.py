@@ -148,6 +148,92 @@ class BootstrapTest(unittest.TestCase):
         self.assertEqual(updated, bootstrap.current_release(self.data_dir))
         self.assertEqual(original, (self.data_dir / "previous").resolve())
 
+    def rejected_version(self) -> int:
+        marker = self.data_dir / "rejected-version.properties"
+        return int(bootstrap.parse_properties(marker.read_text(encoding="utf-8"))["versionCode"])
+
+    def test_rollback_blocks_recreated_pending_version_and_accepts_newer_release(self):
+        archive41 = self.make_archive(destination=self.data_dir / "updates" / "41.zip")
+        original = self.install(41, archive41)
+        archive42 = self.make_archive(destination=self.data_dir / "updates" / "42.zip")
+        self.install(42, archive42)
+
+        self.assertEqual(original, bootstrap.rollback(self.data_dir))
+        self.assertEqual(42, self.rejected_version())
+        before = self.active_state()
+
+        # Keep the original ZIP bytes, so a rejected version cannot be confused
+        # with a conflicting archive that happens to use the same versionCode.
+        for code, archive in ((41, archive41), (42, archive42)):
+            with self.subTest(rejected_code=code):
+                archive_digest = self.digest(archive)
+                pending = self.write_pending(code, archive)
+                metadata = pending.read_bytes()
+
+                self.assertFalse(bootstrap.apply_pending(self.data_dir))
+
+                self.assertEqual(before, self.active_state())
+                self.assertFalse(pending.exists())
+                self.assertEqual(
+                    metadata,
+                    (self.data_dir / "pending.rejected.properties").read_bytes(),
+                )
+                self.assertEqual(archive_digest, self.digest(archive))
+                self.assertEqual(42, self.rejected_version())
+
+        archive43 = self.make_archive(destination=self.data_dir / "updates" / "43.zip")
+        self.write_pending(43, archive43)
+
+        self.assertTrue(bootstrap.apply_pending(self.data_dir))
+        self.assertEqual(self.expected_release(43), bootstrap.current_release(self.data_dir))
+        self.assertEqual(original, (self.data_dir / "previous").resolve())
+        self.assertEqual(42, self.rejected_version())
+
+    def test_rejected_marker_is_monotonic_across_rollback_toggles(self):
+        original = self.install(41)
+        updated = self.install(42)
+
+        self.assertEqual(original, bootstrap.rollback(self.data_dir))
+        self.assertEqual(42, self.rejected_version())
+        # Rolling away from the lower current version must retain the high mark.
+        self.assertEqual(updated, bootstrap.rollback(self.data_dir))
+        self.assertEqual(42, self.rejected_version())
+
+        newer = self.install(43)
+        self.assertEqual(updated, bootstrap.rollback(self.data_dir))
+        self.assertEqual(43, self.rejected_version())
+        self.assertEqual(newer, bootstrap.rollback(self.data_dir))
+        self.assertEqual(43, self.rejected_version())
+
+    def test_explicit_install_can_retry_a_rolled_back_version(self):
+        archive41 = self.make_archive()
+        original = self.install(41, archive41)
+        archive42 = self.make_archive()
+        updated = self.install(42, archive42)
+        self.assertEqual(original, bootstrap.rollback(self.data_dir))
+        self.assertEqual(42, self.rejected_version())
+
+        self.assertEqual(updated, self.install(42, archive42))
+
+        self.assertEqual(updated, bootstrap.current_release(self.data_dir))
+        self.assertEqual(original, (self.data_dir / "previous").resolve())
+        self.assertEqual(42, self.rejected_version())
+        # The explicit retry bypasses only rejection, not the downgrade guard.
+        before = self.active_state()
+        with self.assertRaises(bootstrap.InstallError):
+            self.install(41, archive41)
+        self.assertEqual(before, self.active_state())
+
+    def test_rollback_records_version_when_current_launcher_is_missing(self):
+        original = self.install(41)
+        broken = self.install(42)
+        (broken / "bin/GOSTEX").unlink()
+
+        self.assertEqual(original, bootstrap.rollback(self.data_dir))
+
+        self.assertEqual(original, bootstrap.current_release(self.data_dir))
+        self.assertEqual(42, self.rejected_version())
+
     def test_bad_hash_does_not_change_published_release(self):
         self.install(41)
         self.install(42)

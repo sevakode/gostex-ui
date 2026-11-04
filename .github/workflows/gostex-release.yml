@@ -83,4 +83,4 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           printf '%s\n' 'GOSTEX development update for Android TV and native Linux / Steam Deck.' '' 'Signed update manifests and verified platform artifacts are included. Android uses system installation confirmation. Linux applies staged updates at the next launcher start.' > "$RUNNER_TEMP/release-body.md"
-          gh release create "build-$GITHUB_RUN_NUMBER" release-assets/* --title "GOSTEX 0.33.$GITHUB_RUN_NUMBER" --notes-file "$RUNNER_TEMP/release-body.md" --latest
+          gh release create "build-$GITHUB_RUN_NUMBER" release-assets/* --target "$GITHUB_SHA" --title "GOSTEX 0.33.$GITHUB_RUN_NUMBER" --notes-file "$RUNNER_TEMP/release-body.md" --latest

@@ -11,4 +11,4 @@ Gamepad-first launcher for Android TV / NVIDIA SHIELD and native Linux / Steam D
 
 Development uses the existing Android application id and signing identity, and preserves owner preferences, ROMs and saves. A working host prototype is not Steam Deck Gaming Mode QA; actual device checks are recorded separately.
 
-The source repository is private. Releases need an accessible HTTPS distribution channel before automatic checks can be enabled on a device. Signing secrets, local reports, user attachments and device data are excluded from source control.
+The owner-approved public repository is [sevakode/gostex-ui](https://github.com/sevakode/gostex-ui). Android's default signed update channel is `https://github.com/sevakode/gostex-ui/releases/latest/download/android-arm64.properties`; the channel remains editable and an explicitly saved empty value disables network checks. Signing secrets, local reports, user attachments and device data are excluded from source control.

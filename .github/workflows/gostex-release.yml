@@ -46,12 +46,17 @@ jobs:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
           test -n "$ANDROID_KEYSTORE_BASE64"
-          mkdir -p "$HOME/.android"
-          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$HOME/.android/debug.keystore"
-          chmod 600 "$HOME/.android/debug.keystore"
+          export GOSTEX_ANDROID_KEYSTORE="$RUNNER_TEMP/gostex-android.keystore"
+          umask 077
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$GOSTEX_ANDROID_KEYSTORE"
+          chmod 600 "$GOSTEX_ANDROID_KEYSTORE"
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.2' 'build-tools;36.0.0'
           gradle -p native-launcher --no-daemon :release-runtime:test :app:assembleRelease :app:lintRelease
+          python3 native-launcher/checks/check_update_state.py
+          python3 native-launcher/checks/check_install_session.py
+          actual_certificate=$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs native-launcher/app/build/outputs/apk/release/app-release.apk | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+          test "$actual_certificate" = '8dfd10419f9cd24209f4771e083cd33c4fd78375e6b19aea0453257be1016898'
           python3 native-launcher/tools/release/publish_feed.py --platform android-arm64 --artifact native-launcher/app/build/outputs/apk/release/app-release.apk --output release-assets --private-key "$RUNNER_TEMP/gostex-release.pem" --base-url "https://github.com/$GITHUB_REPOSITORY/releases/download/build-$GITHUB_RUN_NUMBER"
       - name: Build native Linux image
         if: matrix.platform == 'linux-x64'

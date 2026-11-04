@@ -15,17 +15,21 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import dev.gostex.release.DiagnosticLog
 import dev.gostex.release.Release
+import dev.gostex.release.ReleaseChannels
 import dev.gostex.release.SignedReleaseClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.net.URI
@@ -33,7 +37,7 @@ import java.security.MessageDigest
 import java.util.UUID
 
 internal data class UpdateOptions(
-    val feedUrl: String = "",
+    val feedUrl: String = ReleaseChannels.ANDROID_ARM64_FEED,
     val checksEnabled: Boolean = true,
     val autoDownload: Boolean = true,
     val debugEnabled: Boolean = true,
@@ -48,7 +52,8 @@ internal object UpdatePreferences {
     }.getOrDefault(false))
     fun read(context: Context): UpdateOptions {
         val prefs = preferences(context)
-        val feed = prefs.readStringOrDefault("updates.feedUrl", "").orEmpty().takeIf(::validFeed).orEmpty()
+        val storedFeed = if (prefs.contains("updates.feedUrl")) prefs.readStringOrDefault("updates.feedUrl", "") else ReleaseChannels.ANDROID_ARM64_FEED
+        val feed = storedFeed.orEmpty().takeIf(::validFeed).orEmpty()
         val interval = runCatching { prefs.getInt("updates.checkIntervalHours", 6) }.getOrDefault(6).takeIf { it in listOf(1, 6, 24) } ?: 6
         return UpdateOptions(feed, prefs.readBooleanOrDefault("updates.checksEnabled", true),
             prefs.readBooleanOrDefault("updates.autoDownload", true), prefs.readBooleanOrDefault("updates.debugEnabled", true), interval)
@@ -70,6 +75,43 @@ internal object UpdatePreferences {
         require(hours in listOf(1, 6, 24))
         preferences(context).edit().putInt("updates.checkIntervalHours", hours).apply()
     }
+}
+
+/** Install recovery never commits a session merely because the launcher resumed. */
+internal object AndroidInstallRecovery {
+    data class Record(val id: Int, val token: String, val requested: Boolean, val versionCode: Long)
+    enum class Action { CLEAR, KEEP, RECREATE }
+    fun decide(record: Record, sessionExists: Boolean, installedCode: Long, explicitInstall: Boolean): Action = when {
+        record.id < 0 || record.token.isBlank() || !record.requested || record.versionCode < 0 -> Action.CLEAR
+        !sessionExists || (record.versionCode > 0 && record.versionCode <= installedCode) -> Action.CLEAR
+        explicitInstall -> Action.RECREATE
+        else -> Action.KEEP
+    }
+}
+
+/** Main-thread handoff permit, not user state: a hidden or replaced Activity cannot open consent. */
+internal class AndroidInstallGate {
+    private var owner: Any? = null
+    private var awaitingToken: String? = null
+    private var confirmationOpened = false
+    fun resume(value: Any) {
+        if (owner !== value) { awaitingToken = null; confirmationOpened = false }
+        owner = value
+    }
+    fun stop(value: Any) { if (owner === value) { cancel(value); owner = null } }
+    fun cancel(value: Any) { if (owner === value) { awaitingToken = null; confirmationOpened = false } }
+    fun canStart(value: Any): Boolean = owner === value && awaitingToken == null
+    fun arm(value: Any, token: String): Boolean {
+        if (!canStart(value) || token.isBlank()) return false
+        awaitingToken = token; confirmationOpened = false
+        return true
+    }
+    fun takeConfirmation(token: String): Boolean {
+        if (owner == null || awaitingToken != token || confirmationOpened) return false
+        confirmationOpened = true
+        return true
+    }
+    fun finish(token: String) { if (awaitingToken == token) { awaitingToken = null; confirmationOpened = false } }
 }
 
 /** Pure cache codec: only app-private metadata from a successfully authenticated feed is written. */
@@ -133,6 +175,7 @@ internal class LauncherUpdates(private val activity: MainActivity) {
     private var closed = false
     private var download: File? = null
     private var cacheRestored = false
+    private val installOwner = Any()
     var options by mutableStateOf(UpdatePreferences.read(activity))
         private set
     var release by mutableStateOf<Release?>(null)
@@ -171,20 +214,24 @@ internal class LauncherUpdates(private val activity: MainActivity) {
 
     fun onResume() {
         foreground = true
+        installGate.resume(installOwner)
         AndroidDiagnostics.event("launcher.resume")
         consumeInstallResult()
+        reconcileInstallSession()
         if (!cacheRestored) restoreCachedRelease() else resumeUpdateWork()
     }
-    fun onStop() { foreground = false; stopOperation(); AndroidDiagnostics.event("launcher.stop") }
+    fun onStop() { foreground = false; installGate.stop(installOwner); stopOperation(); AndroidDiagnostics.event("launcher.stop") }
     fun close() {
         if (closed) return
         closed = true; foreground = false
+        installGate.stop(installOwner)
         prefs.unregisterOnSharedPreferenceChangeListener(preferenceListener)
         scope.cancel()
         AndroidDiagnostics.event("launcher.destroy")
     }
     private fun stopOperation() {
         operationId++
+        installGate.cancel(installOwner)
         operation?.cancel(); operation = null; busy = false
         status = when {
             ready -> R.string.updates_ready
@@ -326,16 +373,36 @@ internal class LauncherUpdates(private val activity: MainActivity) {
         val newSigners = archive.signingInfo?.apkContentsSigners?.map { it.toByteArray().toList() }?.toSet().orEmpty()
         require(oldSigners.isNotEmpty() && oldSigners == newSigners) { "Wrong APK signing identity" }
     }
+    private fun installRecord() = AndroidInstallRecovery.Record(
+        runCatching { prefs.getInt(INSTALL_SESSION, -1) }.getOrDefault(-1),
+        prefs.readStringOrDefault(INSTALL_TOKEN).orEmpty(), prefs.readBooleanOrDefault(INSTALL_REQUESTED, false),
+        runCatching { prefs.getLong(INSTALL_VERSION, 0L) }.getOrDefault(-1L)
+    )
+    private fun ownedInstallSession(record: AndroidInstallRecovery.Record): PackageInstaller.SessionInfo? =
+        if (record.id < 0) null else activity.packageManager.packageInstaller.getSessionInfo(record.id)?.takeIf {
+            it.installerPackageName == activity.packageName && it.appPackageName == activity.packageName
+        }
+    private fun clearInstallRecord(record: AndroidInstallRecovery.Record) {
+        // A delayed cancellation/result must never remove a newer attempt's marker.
+        val current = installRecord()
+        if (current.id != record.id || current.token != record.token) return
+        prefs.edit().remove(INSTALL_SESSION).remove(INSTALL_TOKEN).remove(INSTALL_REQUESTED).remove(INSTALL_VERSION).apply()
+    }
+    private fun reconcileInstallSession() {
+        try {
+            val record = installRecord()
+            val session = ownedInstallSession(record)
+            if (AndroidInstallRecovery.decide(record, session != null, installedInfo().longVersionCode, false) == AndroidInstallRecovery.Action.CLEAR) {
+                clearInstallRecord(record)
+                if (session != null) activity.packageManager.packageInstaller.abandonSession(record.id)
+            }
+        } catch (error: Exception) { AndroidDiagnostics.failure("update.install-recovery", error) }
+    }
     fun installUpdate() {
         val target = release ?: return
         val apk = download ?: return
         if (!ready || busy || !foreground || closed) return
-        val existingSession = runCatching { prefs.getInt(INSTALL_SESSION, -1) }.getOrDefault(-1)
-        if (existingSession >= 0 && prefs.readBooleanOrDefault(INSTALL_REQUESTED, false) &&
-            activity.packageManager.packageInstaller.getSessionInfo(existingSession) != null) {
-            status = R.string.updates_confirm_install
-            return
-        }
+        if (!installGate.canStart(installOwner)) { status = R.string.updates_confirm_install; return }
         if (!activity.packageManager.canRequestPackageInstalls()) {
             status = R.string.updates_permission_required
             try { activity.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${activity.packageName}"))) }
@@ -346,26 +413,46 @@ internal class LauncherUpdates(private val activity: MainActivity) {
         busy = true; status = R.string.updates_installing
         operation = scope.launch {
             try {
-                runInterruptible(Dispatchers.IO) {
-                    verifyArchive(apk, target)
+                // Also serializes a cancelled old Activity's cleanup against its replacement.
+                installMutex.withLock {
                     val installer = activity.packageManager.packageInstaller
-                    val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
-                        setAppPackageName(activity.packageName); setSize(apk.length())
-                        if (Build.VERSION.SDK_INT >= 31) setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_REQUIRED)
-                    }
-                    val id = installer.createSession(params)
+                    var id = -1
+                    val token = UUID.randomUUID().toString()
                     var committed = false
                     try {
-                        installer.openSession(id).use { session ->
-                            session.openWrite("base.apk", 0, apk.length()).use { output ->
-                                apk.inputStream().use { input -> val bytes = ByteArray(64 * 1024); while (true) {
-                                    if (Thread.currentThread().isInterrupted) throw InterruptedException()
-                                    val read = input.read(bytes); if (read < 0) break; output.write(bytes, 0, read)
-                                } }; session.fsync(output)
+                        currentCoroutineContext().ensureActive()
+                        val previous = installRecord()
+                        val previousSession = ownedInstallSession(previous)
+                        val recovery = AndroidInstallRecovery.decide(previous, previousSession != null, installedInfo().longVersionCode, true)
+                        check(recovery != AndroidInstallRecovery.Action.KEEP)
+                        clearInstallRecord(previous)
+                        runInterruptible(Dispatchers.IO) {
+                            // Recreate sealed/pending and pre-commit sessions alike. Android 11
+                            // need not replay a lost consent Intent; this is an explicit retry.
+                            if (previousSession != null) installer.abandonSession(previous.id)
+                            verifyArchive(apk, target)
+                            val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
+                                setAppPackageName(activity.packageName); setSize(apk.length())
+                                if (Build.VERSION.SDK_INT >= 31) setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_REQUIRED)
                             }
-                            if (Thread.currentThread().isInterrupted) throw InterruptedException()
-                            val token = UUID.randomUUID().toString()
-                            check(prefs.edit().putInt(INSTALL_SESSION, id).putString(INSTALL_TOKEN, token).putBoolean(INSTALL_REQUESTED, true).commit())
+                            id = installer.createSession(params)
+                            installer.openSession(id).use { session ->
+                                session.openWrite("base.apk", 0, apk.length()).use { output ->
+                                    apk.inputStream().use { input -> val bytes = ByteArray(64 * 1024); while (true) {
+                                        if (Thread.currentThread().isInterrupted) throw InterruptedException()
+                                        val read = input.read(bytes); if (read < 0) break; output.write(bytes, 0, read)
+                                    } }; session.fsync(output)
+                                }
+                            }
+                        }
+                        currentCoroutineContext().ensureActive()
+                        if (generation != operationId || !foreground || closed) return@withLock
+                        // These final Main-thread steps do not suspend: onStop/feed cancellation
+                        // cannot interleave between the visibility check and commit.
+                        check(installGate.arm(installOwner, token))
+                        check(prefs.edit().putInt(INSTALL_SESSION, id).putString(INSTALL_TOKEN, token)
+                            .putBoolean(INSTALL_REQUESTED, true).putLong(INSTALL_VERSION, target.versionCode).commit())
+                        installer.openSession(id).use { session ->
                             val callback = Intent(activity, UpdateInstallReceiver::class.java).setAction(INSTALL_ACTION)
                                 .setData(Uri.parse("gostex-update://session/$id")).putExtra("token", token)
                             val flags = PendingIntent.FLAG_UPDATE_CURRENT or if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0
@@ -374,7 +461,13 @@ internal class LauncherUpdates(private val activity: MainActivity) {
                             committed = true
                         }
                     } finally {
-                        if (!committed) { runCatching { installer.abandonSession(id) }; prefs.edit().remove(INSTALL_SESSION).remove(INSTALL_TOKEN).remove(INSTALL_REQUESTED).apply() }
+                        if (!committed) withContext(NonCancellable) {
+                            installGate.finish(token)
+                            if (id >= 0) {
+                                runInterruptible(Dispatchers.IO) { runCatching { installer.abandonSession(id) } }
+                                clearInstallRecord(AndroidInstallRecovery.Record(id, token, true, target.versionCode))
+                            }
+                        }
                     }
                 }
                 if (generation == operationId) status = R.string.updates_confirm_install
@@ -418,6 +511,9 @@ internal class LauncherUpdates(private val activity: MainActivity) {
         const val INSTALL_SESSION = "updates.installSessionId"
         const val INSTALL_TOKEN = "updates.installToken"
         const val INSTALL_REQUESTED = "updates.installRequested"
+        const val INSTALL_VERSION = "updates.installVersionCode"
+        internal val installGate = AndroidInstallGate()
+        private val installMutex = Mutex()
         private val OPTION_KEYS = setOf("updates.feedUrl", "updates.checksEnabled", "updates.autoDownload", "updates.debugEnabled", "updates.checkIntervalHours")
     }
 }
@@ -428,21 +524,27 @@ class UpdateInstallReceiver : BroadcastReceiver() {
         if (intent.action != LauncherUpdates.INSTALL_ACTION) return
         val prefs = UpdatePreferences.preferences(context)
         val expected = runCatching { prefs.getInt(LauncherUpdates.INSTALL_SESSION, -1) }.getOrDefault(-1)
+        val token = intent.getStringExtra("token").orEmpty()
         if (expected < 0 || intent.getIntExtra(PackageInstaller.EXTRA_SESSION_ID, -1) != expected ||
-            intent.getStringExtra("token") != prefs.readStringOrDefault(LauncherUpdates.INSTALL_TOKEN) ||
+            token.isBlank() || token != prefs.readStringOrDefault(LauncherUpdates.INSTALL_TOKEN) ||
             !prefs.readBooleanOrDefault(LauncherUpdates.INSTALL_REQUESTED, false)) return
         val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
         AndroidDiagnostics.initialize(context, UpdatePreferences.read(context).debugEnabled)
         AndroidDiagnostics.event("update.install-result", "status=$status")
         if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
+            // Only the still-visible explicit Install attempt may open system consent.
+            // Otherwise keep the session for a later explicit abandon/recreate retry.
+            if (!LauncherUpdates.installGate.takeConfirmation(token)) return
             @Suppress("DEPRECATION") val confirmation = intent.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)
             if (confirmation != null) {
                 try { context.startActivity(confirmation.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); return }
                 catch (error: Exception) { AndroidDiagnostics.failure("update.confirmation", error) }
             }
+            runCatching { context.packageManager.packageInstaller.abandonSession(expected) }
         }
+        LauncherUpdates.installGate.finish(token)
         prefs.edit().putInt("updates.installResult", if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) PackageInstaller.STATUS_FAILURE else status)
             .putBoolean("updates.installResultPending", true).remove(LauncherUpdates.INSTALL_SESSION)
-            .remove(LauncherUpdates.INSTALL_TOKEN).remove(LauncherUpdates.INSTALL_REQUESTED).apply()
+            .remove(LauncherUpdates.INSTALL_TOKEN).remove(LauncherUpdates.INSTALL_REQUESTED).remove(LauncherUpdates.INSTALL_VERSION).apply()
     }
 }

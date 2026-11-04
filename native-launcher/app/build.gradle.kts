@@ -16,6 +16,13 @@ android {
         versionName = releaseVersion.getProperty("name")
     }
     buildFeatures { compose = true }
+    signingConfigs {
+        // CI supplies the same verified keystore as the existing SHIELD installation.
+        // An explicit path avoids a runner's unrelated automatically generated debug key.
+        getByName("debug") {
+            providers.environmentVariable("GOSTEX_ANDROID_KEYSTORE").orNull?.let { storeFile = file(it) }
+        }
+    }
     buildTypes {
         release {
             isMinifyEnabled = true

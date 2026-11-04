@@ -5,6 +5,7 @@ APK signing, lifecycle cancellation, offline recovery and install UI still need 
 from datetime import datetime, timezone
 import hashlib
 import json
+import os
 from pathlib import Path
 import subprocess
 import tempfile
@@ -12,8 +13,10 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "native-launcher/app/src/main/java/tv/orbit/shield/LauncherUpdates.kt"
 RELEASE = ROOT / "native-launcher/release-runtime/src/main/kotlin/dev/gostex/release/SignedReleaseClient.kt"
-CACHE = ROOT / ".tools/native/gradle-cache/caches/modules-2/files-2.1"
-JAVA = ROOT / ".tools/native/jdk/jdk-21.0.13+9/Contents/Home/bin/java"
+local_gradle = ROOT / ".tools/native/gradle-cache"
+gradle_home = Path(os.environ["GRADLE_USER_HOME"]) if os.environ.get("GRADLE_USER_HOME") else local_gradle if local_gradle.exists() else Path.home() / ".gradle"
+CACHE = gradle_home / "caches/modules-2/files-2.1"
+JAVA = Path(os.environ.get("JAVA_HOME", str(ROOT / ".tools/native/jdk/jdk-21.0.13+9/Contents/Home"))) / "bin/java"
 text = SOURCE.read_text()
 production = text[text.index("internal object AndroidUpdateCache"):text.index("/** App-owned bounded diagnostics")]
 

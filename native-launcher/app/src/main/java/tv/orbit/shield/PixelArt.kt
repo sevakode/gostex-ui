@@ -10,7 +10,6 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.os.Bundle
 import android.service.dreams.DreamService
-import android.view.WindowInsets
 import java.time.LocalDate
 import java.time.temporal.TemporalAdjusters
 import java.time.DayOfWeek
@@ -121,7 +120,7 @@ class PixelArtPreviewActivity : Activity() {
         super.onCreate(savedInstanceState)
         art = PixelArtView(Language.context(this))
         setContentView(art)
-        window.decorView.post { window.insetsController?.hide(WindowInsets.Type.systemBars()) }
+        window.hidePreviewSystemBars()
     }
     override fun onResume() { super.onResume(); art.start() }
     override fun onPause() { art.stop(); super.onPause() }

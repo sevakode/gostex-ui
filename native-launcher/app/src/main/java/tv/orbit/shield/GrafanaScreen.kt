@@ -13,7 +13,6 @@ import android.os.SystemClock
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
-import android.view.WindowInsets
 import android.webkit.CookieManager
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.SslErrorHandler
@@ -505,7 +504,7 @@ class GrafanaPreviewActivity : Activity() {
             LinearLayout.LayoutParams.MATCH_PARENT, (60 * resources.displayMetrics.density).toInt()))
         column.addView(screen, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         setContentView(column)
-        window.decorView.post { window.insetsController?.hide(WindowInsets.Type.systemBars()) }
+        window.hidePreviewSystemBars()
     }
 
     override fun onStart() {

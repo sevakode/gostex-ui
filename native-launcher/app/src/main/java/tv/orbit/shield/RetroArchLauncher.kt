@@ -3,6 +3,8 @@ package tv.orbit.shield
 import android.content.ComponentName
 import android.content.Context
 import android.net.Uri
+import android.os.Build
+import android.os.Environment
 import android.os.storage.StorageManager
 import android.provider.DocumentsContract
 import android.provider.Settings
@@ -13,11 +15,25 @@ internal object RetroArchLauncher {
     fun arguments(context: Context, spec: PlatformSpec, gameUri: Uri, treeUri: Uri?): RetroArchLaunchArguments {
         fun unsupported(): Nothing = throw IllegalArgumentException(context.getString(R.string.nds_retroarch_location_error))
         val storage = context.getSystemService(StorageManager::class.java) ?: unsupported()
-        val volumes = storage.storageVolumes.mapNotNull { volume ->
-            val id = if (volume.isPrimary) "primary" else volume.uuid ?: return@mapNotNull null
-            val directory = volume.directory ?: return@mapNotNull null
-            id to directory.absolutePath
-        }.toMap()
+        val volumes = if (Build.VERSION.SDK_INT >= 30) {
+            storage.storageVolumes.mapNotNull { volume ->
+                val id = if (volume.isPrimary) "primary" else volume.uuid ?: return@mapNotNull null
+                val directory = volume.directory ?: return@mapNotNull null
+                id to directory.absolutePath
+            }.toMap()
+        } else {
+            @Suppress("DEPRECATION")
+            val primary = Environment.getExternalStorageDirectory().absolutePath
+            val suffix = "/Android/data/${context.packageName}/files"
+            val paths = context.getExternalFilesDirs(null).mapNotNull { file ->
+                val path = file?.absolutePath ?: return@mapNotNull null
+                if (!path.endsWith(suffix)) return@mapNotNull null
+                val volume = storage.getStorageVolume(file) ?: return@mapNotNull null
+                val id = if (volume.isPrimary) "primary" else volume.uuid ?: return@mapNotNull null
+                id to path.removeSuffix(suffix)
+            }.toMap()
+            paths + ("primary" to primary)
+        }
         val romPath = when (gameUri.scheme) {
             "content" -> {
                 if (gameUri.authority != RetroArchPath.EXTERNAL_STORAGE_AUTHORITY) unsupported()

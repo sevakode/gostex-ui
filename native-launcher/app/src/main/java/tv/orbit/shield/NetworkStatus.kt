@@ -100,7 +100,9 @@ private data class NetworkState(val transport: String = "offline", val validated
             if (registered) return
             registered = true
             runCatching {
-                connectivity?.registerNetworkCallback(NetworkRequest.Builder().clearCapabilities().build(), callback, handler)
+                if (Build.VERSION.SDK_INT >= 30)
+                    connectivity?.registerNetworkCallback(NetworkRequest.Builder().clearCapabilities().build(), callback, handler)
+                else connectivity?.registerDefaultNetworkCallback(callback, handler)
             }.onFailure { registered = false }
             if (registered) {
                 val filter = IntentFilter(WifiManager.RSSI_CHANGED_ACTION)

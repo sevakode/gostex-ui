@@ -54,6 +54,8 @@ jobs:
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.2' 'build-tools;36.0.0'
           gradle -p native-launcher --no-daemon :release-runtime:test :app:assembleRelease :app:lintRelease
+          actual_min_sdk=$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging native-launcher/app/build/outputs/apk/release/app-release.apk | sed -n "s/^sdkVersion:'\([0-9]*\)'$/\1/p")
+          test "$actual_min_sdk" = 28
           python3 native-launcher/checks/check_release_boundary.py
           python3 native-launcher/checks/check_translations.py
           python3 native-launcher/checks/check_archive_admission.py

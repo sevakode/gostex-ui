@@ -10,7 +10,7 @@ android {
     compileSdk { version = release(37) { minorApiLevel = 2 } }
     defaultConfig {
         applicationId = "tv.orbit.shield"
-        minSdk = 30
+        minSdk = 28
         targetSdk = 36
         versionCode = releaseVersion.getProperty("code").toInt()
         versionName = releaseVersion.getProperty("name")

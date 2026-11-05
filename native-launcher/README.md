@@ -1,6 +1,6 @@
 # GOSTEX UI for Android TV
 
-GOSTEX UI is a launcher for apps and a local game library on Android TV. Its first stable release is in preparation. The current development version targets Android 11 or later; NVIDIA SHIELD is the main tested device. Compatibility with other Android TV devices and all emulators has not yet been established.
+GOSTEX UI is a launcher for apps and a local game library on Android TV. Its first stable release is in preparation. The current development version targets Android TV 9 or later; NVIDIA SHIELD is the main tested device and Android 9 startup has been checked on an emulator. Compatibility with other physical Android TV devices and all emulators has not yet been established.
 
 ## Get started
 

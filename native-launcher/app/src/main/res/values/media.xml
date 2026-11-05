@@ -14,8 +14,13 @@
     <string name="media_access_required">Enable notification access for GOSTEX</string>
     <string name="media_access_hint">To show playback from other apps, enable notification access for GOSTEX in Android settings.</string>
     <string name="media_empty">Nothing is playing. Start music or video in an app that supports Android media controls.</string>
-    <string name="media_hint">Shows active playback and paused sessions. Controls depend on the app. Updates only while GOSTEX is visible; no notifications are saved.</string>
+    <string name="media_hint">Shows the app currently playing music or video. Paused players are hidden unless enabled above. Controls depend on the app. Updates only while GOSTEX is visible; no notifications are saved.</string>
     <string name="media_settings_summary">Playback in the top bar and media controls</string>
     <string name="media_action_failed">The app did not accept this command. Open it and try again.</string>
     <string name="media_settings_unavailable">Notification access settings are unavailable on this device.</string>
+    <string name="media_show_paused">Show paused players</string>
+    <string name="media_pip">Picture in picture</string>
+    <string name="media_pip_settings">Player permissions</string>
+    <string name="media_pip_hint">Enable picture in picture in your video player, then press Home during playback. Availability depends on the player. Audio stays in the mini player.</string>
+    <string name="media_pip_unavailable">Picture-in-picture settings are unavailable on this device.</string>
 </resources>

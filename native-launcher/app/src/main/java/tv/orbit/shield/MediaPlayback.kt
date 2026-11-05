@@ -72,13 +72,13 @@ internal data class NowPlayingSession(
     }
 }
 
-/** The system's session order breaks ties; an active player takes priority over paused apps. */
-internal fun mediaPlaybackPriority(state: Int): Int? = when (state) {
+/** The system's session order breaks ties. Idle/paused sessions are hidden by default. */
+internal fun mediaPlaybackPriority(state: Int, showPaused: Boolean = false): Int? = when (state) {
     PlaybackState.STATE_PLAYING, PlaybackState.STATE_BUFFERING, PlaybackState.STATE_CONNECTING,
     PlaybackState.STATE_FAST_FORWARDING, PlaybackState.STATE_REWINDING,
     PlaybackState.STATE_SKIPPING_TO_NEXT, PlaybackState.STATE_SKIPPING_TO_PREVIOUS,
     PlaybackState.STATE_SKIPPING_TO_QUEUE_ITEM -> 0
-    PlaybackState.STATE_PAUSED -> 1
+    PlaybackState.STATE_PAUSED -> if (showPaused) 1 else null
     else -> null
 }
 
@@ -114,11 +114,15 @@ private object MediaAccessEvents {
 }
 
 /** One observer per visible launcher. No timers, position polling, artwork downloads, or playback service. */
-@Composable internal fun rememberMediaPlayback(activity: MainActivity, enabled: Boolean): MediaPlaybackState {
+@Composable internal fun rememberMediaPlayback(
+    activity: MainActivity,
+    enabled: Boolean,
+    showPaused: Boolean = false,
+): MediaPlaybackState {
     val context = activity.applicationContext
     var state by remember(context) { mutableStateOf(MediaPlaybackState(MediaAccess.isGranted(context))) }
-    DisposableEffect(activity, enabled) {
-        val playback = MediaPlaybackObserver(context, enabled) { state = it }
+    DisposableEffect(activity, enabled, showPaused) {
+        val playback = MediaPlaybackObserver(context, enabled, showPaused) { state = it }
         val lifecycleObserver = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_START) playback.start()
             if (event == Lifecycle.Event.ON_STOP) playback.stop()
@@ -134,20 +138,18 @@ private object MediaAccessEvents {
 internal class MediaPlaybackObserver(
     private val context: Context,
     private val enabled: Boolean,
+    private val showPaused: Boolean = false,
     private val onChanged: (MediaPlaybackState) -> Unit,
 ) {
     private val manager = context.getSystemService(MediaSessionManager::class.java)
     private val handler = Handler(Looper.getMainLooper())
     private var running = false
-    private var sessionsRegistered = false
+    private var sessionsChanged: MediaSessionManager.OnActiveSessionsChangedListener? = null
     private var accessGranted = false
     private val sessions = linkedMapOf<MediaSession.Token, ObservedSession>()
     private var order = emptyList<MediaSession.Token>()
     private val appNames = mutableMapOf<String, String>()
     private val accessChanged: () -> Unit = { if (running) refreshAccess() }
-    private val sessionsChanged = MediaSessionManager.OnActiveSessionsChangedListener { controllers ->
-        if (running && sessionsRegistered) reconcile(controllers.orEmpty())
-    }
 
     fun start() {
         if (running) return
@@ -174,9 +176,15 @@ internal class MediaPlaybackObserver(
             return
         }
         try {
-            if (!sessionsRegistered) {
-                sessionsRegistered = true
-                manager.addOnActiveSessionsChangedListener(sessionsChanged, MediaAccess.component(context), handler)
+            if (sessionsChanged == null) {
+                // A new listener identity also rejects queued callbacks from a previous visible lifecycle.
+                val listener = object : MediaSessionManager.OnActiveSessionsChangedListener {
+                    override fun onActiveSessionsChanged(controllers: List<MediaController>?) {
+                        if (running && sessionsChanged === this) reconcile(controllers.orEmpty())
+                    }
+                }
+                sessionsChanged = listener
+                manager.addOnActiveSessionsChangedListener(listener, MediaAccess.component(context), handler)
             }
             reconcile(manager.getActiveSessions(MediaAccess.component(context)))
         } catch (_: SecurityException) {
@@ -190,8 +198,9 @@ internal class MediaPlaybackObserver(
     }
 
     private fun clearSessions() {
-        if (sessionsRegistered) runCatching { manager?.removeOnActiveSessionsChangedListener(sessionsChanged) }
-        sessionsRegistered = false
+        val listener = sessionsChanged
+        sessionsChanged = null
+        if (listener != null) runCatching { manager?.removeOnActiveSessionsChangedListener(listener) }
         sessions.values.forEach { runCatching { it.controller.unregisterCallback(it.callback) } }
         sessions.clear()
         order = emptyList()
@@ -204,15 +213,15 @@ internal class MediaPlaybackObserver(
         }
         for (controller in controllers) {
             val token = controller.sessionToken
-            if (sessions.containsKey(token)) continue
-            val observed = ObservedSession(controller)
-            sessions[token] = observed
+            val existing = sessions[token]
+            val observed = existing ?: ObservedSession(controller).also { sessions[token] = it }
             try {
-                controller.registerCallback(observed.callback, handler)
-                observed.playback = controller.playbackState
-                observed.metadata = controller.metadata
+                if (existing == null) controller.registerCallback(observed.callback, handler)
+                // A fresh platform session list is also a new snapshot: apps may miss a final callback.
+                observed.playback = observed.controller.playbackState
+                observed.metadata = observed.controller.metadata
             } catch (_: RuntimeException) {
-                runCatching { controller.unregisterCallback(observed.callback) }
+                runCatching { observed.controller.unregisterCallback(observed.callback) }
                 sessions.remove(token)
             }
         }
@@ -223,8 +232,8 @@ internal class MediaPlaybackObserver(
     private fun publish() {
         if (!running) return
         val chosen = order.mapNotNull { sessions[it] }
-            .filter { mediaPlaybackPriority(it.playback?.state ?: PlaybackState.STATE_NONE) != null }
-            .minByOrNull { mediaPlaybackPriority(it.playback?.state ?: PlaybackState.STATE_NONE) ?: Int.MAX_VALUE }
+            .filter { mediaPlaybackPriority(it.playback?.state ?: PlaybackState.STATE_NONE, showPaused) != null }
+            .minByOrNull { mediaPlaybackPriority(it.playback?.state ?: PlaybackState.STATE_NONE, showPaused) ?: Int.MAX_VALUE }
         val session = chosen?.let {
             val packageName = it.controller.packageName
             val appName = appNames.getOrPut(packageName) {

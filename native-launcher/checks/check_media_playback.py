@@ -1,7 +1,8 @@
 """Exercise production media-session observation against a deterministic Android boundary.
 
-Tests event selection, permission changes, callback disposal and transport capability guards.
-Real notification-access UI and third-party playback are separately verified on Shield.
+Tests active-only/paused selection, session switching, stale callbacks, permission changes,
+callback disposal and transport capability guards. This is a host boundary test; real
+notification-access UI, third-party playback and lifecycle behavior need device verification.
 """
 from pathlib import Path
 from datetime import datetime, timezone
@@ -155,15 +156,38 @@ fun main() {
  pass("Playing session supports pause and declared skip actions",live.isPlaying && live.canPlayPause && live.canSkipPrevious && live.canSkipNext)
  pass("Transport commands target the selected controller",live.togglePlayback() && live.skipPrevious() && live.skipNext() && playing.transportControls.calls==listOf("pause","previous","next"))
  playing.playback(PlaybackState(2,4))
- pass("Equal paused sessions retain the platform's priority",output.last().session?.packageName=="paused")
- pass("Paused transport issues play",output.last().session!!.togglePlayback() && paused.transportControls.calls==listOf("play"))
+ pass("Paused-only sessions disappear by default",output.last().session==null)
  paused.playback(PlaybackState(1))
- pass("Stopped sessions are hidden",output.last().session?.packageName=="playing")
+ pass("Stopped and paused sessions leave no stale player",output.last().session==null)
  playing.playback(PlaybackState(7))
  pass("Error-only sessions leave no mini player",output.last().session==null)
  playing.playback(PlaybackState(6,512))
  pass("Buffering session remains visible with pause capability",output.last().session?.let{it.isPlaying && it.canPlayPause}==true)
  pass("Toggle-only sessions receive a balanced media button press",output.last().session!!.togglePlayback() && playing.mediaKeys.map{it.action}==listOf(0,1) && playing.mediaKeys.all{it.keyCode==85} && playing.transportControls.calls.size==3)
+ val video=MediaController("another.video.player",PlaybackState(3,2),MediaMetadata(mapOf("title" to "Film")))
+ manager.emit(listOf(playing,video))
+ pass("Equal active sessions follow system priority",output.last().session?.packageName=="playing")
+ playing.playback(PlaybackState(2,4))
+ pass("Another app replaces a paused player without launcher-specific package rules",output.last().session?.packageName=="another.video.player" && output.last().session?.title=="Film")
+ video.playback(PlaybackState(1))
+ pass("Stopping the replacement does not revive a paused player",output.last().session==null)
+ manager.emit(listOf(paused,playing));playing.playback(PlaybackState(3,2))
+ val registrationCount=playing.registrations
+ playing.playbackState=PlaybackState(1)
+ manager.emit(listOf(paused,playing))
+ pass("Fresh platform list resnapshots an existing session after a missed stop callback",output.last().session==null && playing.registrations==registrationCount)
+ playing.playbackState=PlaybackState(3,2);playing.metadata=MediaMetadata(mapOf("title" to "Fresh snapshot"))
+ manager.emit(listOf(paused,playing))
+ pass("Resnapshot restores current state and metadata without duplicate registration",output.last().session?.title=="Fresh snapshot" && playing.registrations==registrationCount)
+ playing.playback(null)
+ pass("Null playback state clears the player",output.last().session==null)
+ playing.playback(PlaybackState(3,2))
+ val removedCallback=playing.callbacks.single()
+ manager.emit(emptyList());val removedCount=output.size
+ pass("Force-stopped or removed sessions clear selection and unregister controllers",output.last().session==null && paused.callbacks.isEmpty() && playing.callbacks.isEmpty())
+ removedCallback.onPlaybackStateChanged(PlaybackState(3,2))
+ pass("Removed session callbacks cannot revive a stopped app",output.size==removedCount)
+ manager.emit(listOf(paused,playing))
  playing.playback(PlaybackState(3,0))
  val unsupported=output.last().session!!
  pass("Unsupported controls never dispatch commands",!unsupported.togglePlayback() && !unsupported.skipPrevious() && !unsupported.skipNext() && playing.transportControls.calls.size==3)
@@ -183,11 +207,30 @@ fun main() {
  pass("Stopped observer has no access-change subscription",output.size==stoppedCount)
  observer.start()
  pass("Resume registers once and reads latest playback",manager.listeners.size==1 && playing.callbacks.size==1 && output.last().session?.packageName=="playing")
+ val resumedCount=output.size
+ staleSessions.onActiveSessionsChanged(emptyList());staleCallback.onPlaybackStateChanged(PlaybackState(1))
+ pass("Callbacks queued before stop cannot replace the new visible lifecycle",output.size==resumedCount && output.last().session?.packageName=="playing")
+ observer.stop();manager.active=emptyList();observer.start()
+ pass("App stopped while launcher was hidden is absent on resume",output.last().session==null && playing.callbacks.isEmpty())
+ manager.emit(listOf(paused,playing))
  grants.granted=false;service.onListenerDisconnected()
  pass("Permission revocation clears playback and all callbacks",!output.last().accessGranted && output.last().session==null && manager.listeners.isEmpty() && playing.callbacks.isEmpty())
  grants.granted=true;service.onListenerConnected();playing.destroy()
  pass("Destroyed session disappears without polling",output.last().session==null && playing.callbacks.isEmpty())
+ manager.emit(listOf(playing,video));video.playback(PlaybackState(3,2));playing.destroy()
+ pass("Destroying one player immediately selects another active app",output.last().session?.packageName=="another.video.player" && playing.callbacks.isEmpty())
  observer.stop()
+ paused.playbackState=PlaybackState(2,4);playing.playbackState=PlaybackState(2,4)
+ manager.active=listOf(paused,playing)
+ val pausedOutput=mutableListOf<MediaPlaybackState>();val withPaused=MediaPlaybackObserver(ctx,true,true){pausedOutput+=it}
+ withPaused.start()
+ pass("Explicit paused option retains the platform's priority",pausedOutput.last().session?.packageName=="paused" && !pausedOutput.last().session!!.isPlaying)
+ pass("Paused opt-in transport issues play",pausedOutput.last().session!!.togglePlayback() && paused.transportControls.calls==listOf("play"))
+ playing.playback(PlaybackState(3,2))
+ pass("Active app always wins when paused visibility is enabled",pausedOutput.last().session?.packageName=="playing")
+ playing.playback(PlaybackState(1));paused.playback(PlaybackState(1))
+ pass("Stopped sessions stay hidden even with paused visibility enabled",pausedOutput.last().session==null)
+ withPaused.stop()
  val disabledOutput=mutableListOf<MediaPlaybackState>();val disabled=MediaPlaybackObserver(ctx,false){disabledOutput+=it}
  val queryCount=manager.queries;disabled.start()
  pass("Hidden feature reports access without observing media",disabledOutput.last().accessGranted && disabledOutput.last().session==null && manager.queries==queryCount && manager.listeners.isEmpty())
@@ -216,7 +259,7 @@ with tempfile.TemporaryDirectory(prefix="gostex-media-") as directory:
     if result.returncode == 0:
         result = subprocess.run([str(java), "-cp", str(folder / "classes") + ":" + runtime, "tv.orbit.shield.ChecksKt"], capture_output=True, text=True)
         report.update({"runCode": result.returncode, "stdout": result.stdout, "stderr": result.stderr})
-out = root / ".reports/media35"
+out = root / ".reports/media45"
 out.mkdir(parents=True, exist_ok=True)
 (out / "backend-checks.json").write_text(json.dumps(report, indent=2) + "\n")
 print(json.dumps(report))

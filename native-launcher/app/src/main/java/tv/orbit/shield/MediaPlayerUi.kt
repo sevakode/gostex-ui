@@ -37,25 +37,34 @@ import androidx.tv.material3.*
 
 internal object MediaPlayerPreferences {
     const val KEY = "status.mediaPlayerVisible"
+    const val PAUSED_KEY = "status.mediaPlayerShowPaused"
     fun visible(context: Context) = context.getSharedPreferences("orbit", 0).readBooleanOrDefault(KEY, true)
     fun visible(context: Context, value: Boolean) {
         context.getSharedPreferences("orbit", 0).edit().putBoolean(KEY, value).apply()
     }
+    fun options(context: Context) = MediaPlayerOptions(visible(context),
+        context.getSharedPreferences("orbit", 0).readBooleanOrDefault(PAUSED_KEY, false))
+    fun showPaused(context: Context, value: Boolean) {
+        context.getSharedPreferences("orbit", 0).edit().putBoolean(PAUSED_KEY, value).apply()
+    }
 }
 
-@Composable internal fun rememberMediaPlayerVisible(): Boolean {
+internal data class MediaPlayerOptions(val visible: Boolean = true, val showPaused: Boolean = false)
+
+@Composable internal fun rememberMediaPlayerOptions(): MediaPlayerOptions {
     val context = LocalContext.current
     val prefs = remember(context) { context.getSharedPreferences("orbit", 0) }
-    var visible by remember(context) { mutableStateOf(MediaPlayerPreferences.visible(context)) }
+    var options by remember(context) { mutableStateOf(MediaPlayerPreferences.options(context)) }
     DisposableEffect(context, prefs) {
         val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-            if (key == null || key == MediaPlayerPreferences.KEY) visible = MediaPlayerPreferences.visible(context)
+            if (key == null || key == MediaPlayerPreferences.KEY || key == MediaPlayerPreferences.PAUSED_KEY)
+                options = MediaPlayerPreferences.options(context)
         }
         prefs.registerOnSharedPreferenceChangeListener(listener)
-        visible = MediaPlayerPreferences.visible(context)
+        options = MediaPlayerPreferences.options(context)
         onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
     }
-    return visible
+    return options
 }
 
 /** Only the current app icon is decoded; no artwork downloads, progress timer or animated marquee. */
@@ -167,7 +176,7 @@ internal object MediaPlayerPreferences {
 }
 
 @Composable internal fun MediaPlayerSettings(activity: MainActivity, state: MediaPlaybackState, initialFocus: FocusRequester) {
-    val visible = rememberMediaPlayerVisible()
+    val options = rememberMediaPlayerOptions()
     val session = state.session
     if (session != null) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -184,11 +193,19 @@ internal object MediaPlayerPreferences {
         Text(tr(if (state.accessGranted) R.string.media_empty else R.string.media_access_hint),
             color = Color(0xFFADADB0), fontSize = 13.sp, lineHeight = 19.sp)
     }
-    SettingRow(tr(R.string.media_visibility), tr(if (visible) R.string.enabled else R.string.disabled),
+    SettingRow(tr(R.string.media_visibility), tr(if (options.visible) R.string.enabled else R.string.disabled),
         modifier = if (session == null) Modifier.focusRequester(initialFocus) else Modifier,
-        onClick = { MediaPlayerPreferences.visible(activity, !visible) })
+        onClick = { MediaPlayerPreferences.visible(activity, !options.visible) })
+    SettingRow(tr(R.string.media_show_paused), tr(if (options.showPaused) R.string.enabled else R.string.disabled),
+        onClick = { MediaPlayerPreferences.showPaused(activity, !options.showPaused) })
     SettingRow(tr(R.string.media_access), tr(if (state.accessGranted) R.string.media_access_granted else R.string.media_access_required), onClick = {
         if (!MediaAccess.openSettings(activity)) activity.notice = activity.getString(R.string.media_settings_unavailable)
     })
     Text(tr(R.string.media_hint), color = Color(0xFFADADB0), fontSize = 12.sp, lineHeight = 17.sp)
+    if (MediaPictureInPicture.isSupported(activity)) {
+        SettingRow(tr(R.string.media_pip), tr(R.string.media_pip_settings), onClick = {
+            if (!MediaPictureInPicture.openSettings(activity)) activity.notice = activity.getString(R.string.media_pip_unavailable)
+        })
+        Text(tr(R.string.media_pip_hint), color = Color(0xFFADADB0), fontSize = 12.sp, lineHeight = 17.sp)
+    }
 }

@@ -581,16 +581,19 @@ class MainActivity : ComponentActivity() {
     var platform by remember { mutableStateOf("all") }
     var chosenId by rememberSaveable { mutableStateOf(HomePreferences.selectedId(activity)) }
     var detail by remember { mutableStateOf<Game?>(null) }
-    val mediaVisible = rememberMediaPlayerVisible()
+    val mediaOptions = rememberMediaPlayerOptions()
+    val mediaVisible = mediaOptions.visible
     var mediaOpen by rememberSaveable { mutableStateOf(false) }
-    val mediaPlayback = rememberMediaPlayback(activity, (mediaVisible && detail == null) || settingsOpen || mediaOpen)
+    val mediaPlayback = rememberMediaPlayback(activity, (mediaVisible && detail == null) || settingsOpen || mediaOpen,
+        showPaused = mediaOptions.showPaused || settingsOpen || mediaOpen)
+    val headerMediaSession = mediaPlayback.session?.takeIf { mediaOptions.showPaused || it.isPlaying }
     val mediaFocus = remember { FocusRequester() }
     var mediaWasOpen by remember { mutableStateOf(false) }
     LaunchedEffect(mediaOpen) {
         if (mediaOpen) mediaWasOpen = true
         else if (mediaWasOpen) {
             withFrameNanos { }
-            val restored = if (mediaVisible && mediaPlayback.session != null) runCatching { mediaFocus.requestFocus() }.getOrDefault(false) else false
+            val restored = if (mediaVisible && headerMediaSession != null) runCatching { mediaFocus.requestFocus() }.getOrDefault(false) else false
             if (!restored) runCatching { settingsFocus.requestFocus() }
         }
     }
@@ -751,7 +754,7 @@ class MainActivity : ComponentActivity() {
                     }
                     Row(Modifier.weight(1f).padding(start = 12.dp, end = 8.dp), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
                         HeaderClock(clockOptions, clockInstant)
-                        if (mediaVisible) mediaPlayback.session?.let { session ->
+                        if (mediaVisible) headerMediaSession?.let { session ->
                             Spacer(Modifier.width(10.dp))
                             MediaPlayerButton(session, Modifier.focusRequester(mediaFocus)) { mediaOpen = true }
                         }

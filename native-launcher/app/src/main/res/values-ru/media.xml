@@ -14,8 +14,13 @@
     <string name="media_access_required">Разрешите GOSTEX доступ к уведомлениям</string>
     <string name="media_access_hint">Чтобы видеть воспроизведение из других приложений, разрешите GOSTEX доступ к уведомлениям в настройках Android.</string>
     <string name="media_empty">Сейчас ничего не играет. Включите музыку или видео в приложении с поддержкой медиаплеера Android.</string>
-    <string name="media_hint">Показывает активное воспроизведение и паузу. Кнопки зависят от приложения. Обновляется только пока открыт GOSTEX; уведомления не сохраняются.</string>
+    <string name="media_hint">Показывает приложение, в котором сейчас играет музыка или видео. Пауза скрыта, если не включить её выше. Кнопки зависят от плеера. Обновляется только пока открыт GOSTEX; уведомления не сохраняются.</string>
     <string name="media_settings_summary">Воспроизведение в верхней панели и управление</string>
     <string name="media_action_failed">Приложение не приняло команду. Откройте его и попробуйте ещё раз.</string>
     <string name="media_settings_unavailable">Настройки доступа к уведомлениям недоступны на этом устройстве.</string>
+    <string name="media_show_paused">Показывать плееры на паузе</string>
+    <string name="media_pip">Картинка в картинке</string>
+    <string name="media_pip_settings">Разрешения плееров</string>
+    <string name="media_pip_hint">Включите этот режим в видеоплеере и нажмите Home во время видео. Доступность зависит от плеера. Музыка остаётся в мини-плеере.</string>
+    <string name="media_pip_unavailable">Настройки картинки в картинке недоступны на этом устройстве.</string>
 </resources>

@@ -1,13 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="import_warnings_more">%1$d more issues. Resolve these and scan again to see the rest.</string>
+    <string name="legacy_recovery_title">Restore library information</string>
+    <string name="legacy_recovery_summary">Recover information from a previous GOSTEX version.</string>
+    <string name="legacy_recovery_offline">Connect to the internet and return to GOSTEX to restore library information. Existing games and saves are preserved.</string>
+    <string name="legacy_recovery_metered">Library recovery is paused on this metered connection. Open Settings → Media &amp; library to continue.</string>
+    <string name="legacy_recovery_metered_confirm">Recovery downloads about 33 MB from the previous GOSTEX release. Your games are not uploaded. Continue on this metered connection?</string>
+    <string name="legacy_recovery_continue">Continue</string>
+    <string name="legacy_recovery_failed">Library information could not be restored. Try again in Settings → Media &amp; library. Your existing data is preserved.</string>
+    <string name="legacy_recovery_state_error">The library recovery state cannot be read. Scanning is paused and existing data is preserved.</string>
+    <string name="legacy_recovery_done">Library information restored.</string>
+    <string name="library_roots_unavailable">Saved library sources cannot be read. Your data is preserved; scanning is paused.</string>
+    <string name="library_snapshot_unavailable">Saved library cannot be read. Its data has been preserved; scanning is paused.</string>
+    <string name="document_picker_unavailable">This device has no compatible Android file picker. Install or enable a document picker, then try again.</string>
     <string name="import_source_title">Add games</string>
     <string name="import_one_game">Choose a game file</string>
     <string name="import_game_folder">Choose a folder</string>
     <string name="import_sources_title">Library sources</string>
     <string name="import_remove_file">Remove this game source?</string>
     <string name="import_file_unavailable">The game file is unavailable. Select it again.</string>
+    <string name="import_folder_permission">Folder access is unavailable. Select the folder again in library settings.</string>
     <string name="import_file_cia_hint">CIA is an installation package. Install it in Azahar using Install game content, then return to GOSTEX. Add the Azahar data folder once to see installed games.</string>
     <string name="import_file_companions_hint">This format needs companion files. Choose the game folder so the emulator can also read its tracks or discs.</string>
     <string name="import_file_wrong_type">%1$s is not a supported %2$s game file.</string>
     <string name="import_file_not_game">This file is not a launchable game. Choose the main game image or the installed Azahar source.</string>
+    <string name="import_archive_extract_hint">This archive could not be verified or is unsupported. Choose a valid ZIP containing one game, or extract the game and add its file or folder.</string>
 </resources>

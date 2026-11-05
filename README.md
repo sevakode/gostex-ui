@@ -1,14 +1,14 @@
-# GOSTEX
+# GOSTEX UI
 
-Gamepad-first launcher for Android TV / NVIDIA SHIELD and native Linux / Steam Deck.
+GOSTEX UI is a TV launcher for Android TV and NVIDIA SHIELD. It brings installed apps and a user-managed game library together in a remote- and controller-friendly interface. A native Linux / Steam Deck prototype also lives in this repository; it is not part of the first Android release.
 
-- Android launcher: `native-launcher/app`.
-- Compose Desktop: `native-launcher/desktop`.
-- Platform-neutral catalogue contracts: `native-launcher/shared-core`.
-- Signed updates and bounded diagnostics: `native-launcher/release-runtime`.
+The project is being prepared for its first stable release. Existing GitHub development builds do not by themselves indicate production readiness or compatibility with every TV device. The current Android build requires Android 11 or later and has primarily been tested on NVIDIA SHIELD.
 
-[Desktop development](native-launcher/docs/desktop.md) · [Updates and diagnostics](native-launcher/docs/updates.md) · [Steam Deck install](native-launcher/docs/steam-deck.md)
+- [Android setup and development](native-launcher/README.md)
+- [Updates and diagnostics](native-launcher/docs/updates.md)
+- [Desktop development](native-launcher/docs/desktop.md)
+- [Steam Deck prototype](native-launcher/docs/steam-deck.md)
 
-Development uses the existing Android application id and signing identity, and preserves owner preferences, ROMs and saves. A working host prototype is not Steam Deck Gaming Mode QA; actual device checks are recorded separately.
+Games, console firmware and third-party applications are not included. Users provide their own compatible files and install their preferred emulators and media apps separately.
 
-The owner-approved public repository is [sevakode/gostex-ui](https://github.com/sevakode/gostex-ui). Android's default signed update channel is `https://github.com/sevakode/gostex-ui/releases/latest/download/android-arm64.properties`; the channel remains editable and an explicitly saved empty value disables network checks. Signing secrets, local reports, user attachments and device data are excluded from source control.
+The application source code is licensed under the [MIT License](LICENSE). Third-party dependencies and separately attributed content retain their own licenses and rights.

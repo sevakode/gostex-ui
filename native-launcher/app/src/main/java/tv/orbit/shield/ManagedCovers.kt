@@ -12,8 +12,6 @@ import java.io.InputStream
 import java.security.MessageDigest
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -66,7 +64,7 @@ internal data class CoverSyncResult(val entries: Map<String, ManagedCover>, val 
 internal object ManagedCoverStore {
     private const val MAX_IMAGE_BYTES = 10 * 1024 * 1024
     private const val STORE_BUDGET = 128L * 1024 * 1024
-    private val lock = Mutex()
+    private val gate = CoverOperationGate()
     private var lastImport = ""
     private var lastExport = ""
     private fun directory(context: Context) = File(context.filesDir, "covers").apply { mkdirs() }
@@ -131,16 +129,19 @@ internal object ManagedCoverStore {
         }
         return key
     }
-    suspend fun importManual(context: Context, gameId: String, uri: Uri): Map<String, ManagedCover> = lock.withLock {
+    suspend fun importManual(context: Context, gameId: String, uri: Uri): Map<String, ManagedCover> {
         val bytes = context.contentResolver.openInputStream(uri)?.use { bounded(it, MAX_IMAGE_BYTES) } ?: error("Image unavailable")
         currentCoroutineContext().ensureActive()
-        val key = putImage(context, bytes)
-        val entries = read(context).toMutableMap()
-        entries[gameId] = (entries[gameId] ?: ManagedCover()).copy(manual = key, sourceName = "", sourceUrl = "", author = "")
-        save(context, entries)
-        entries.toMap()
+        return gate.mutate {
+            val key = putImage(context, bytes)
+            val entries = read(context).toMutableMap()
+            entries[gameId] = (entries[gameId] ?: ManagedCover()).copy(manual = key, sourceName = "", sourceUrl = "", author = "")
+            currentCoroutineContext().ensureActive()
+            save(context, entries)
+            entries.toMap()
+        }
     }
-    suspend fun importOnline(context: Context, gameId: String, bytes: ByteArray, image: OnlineCoverImage): Map<String, ManagedCover> = lock.withLock {
+    suspend fun importOnline(context: Context, gameId: String, bytes: ByteArray, image: OnlineCoverImage): Map<String, ManagedCover> = gate.mutate {
         currentCoroutineContext().ensureActive()
         val key = putImage(context, bytes)
         val entries = read(context).toMutableMap()
@@ -208,9 +209,11 @@ internal object ManagedCoverStore {
         walk(tree.rootDoc, "", 0)
         return found.sortedWith(compareBy<Pair<String, Uri>> { !it.first.startsWith("incoming/") }.thenBy { it.first })
     }
-    suspend fun sync(context: Context, games: List<Game>, folder: String, importUpdates: Boolean, forceExport: Boolean = false): CoverSyncResult = lock.withLock {
+    private data class PreparedUpdate(val gameId: String, val original: String?, val wide: String?)
+
+    suspend fun sync(context: Context, games: List<Game>, folder: String, importUpdates: Boolean, forceExport: Boolean = false): CoverSyncResult = gate.synchronize {
         val tree = Tree(context, Uri.parse(folder))
-        var entries = read(context)
+        var entries = gate.mutate { read(context) }
         var applied = 0
         var rejected = 0
         if (importUpdates) {
@@ -221,27 +224,42 @@ internal object ManagedCoverStore {
                     val updates = try { ManagedCoverManifest.parse(bytes.toString(Charsets.UTF_8)) }
                     catch (_: Exception) { rejected++; emptyList() }
                     val ids = games.filterNot { it.demo }.map { it.id }.toSet()
-                    val next = entries.toMutableMap()
+                    val prepared = mutableListOf<PreparedUpdate>()
                     for (update in updates) {
                         currentCoroutineContext().ensureActive()
                         if (update.gameId !in ids) { rejected++; continue }
                         try {
-                            fun load(path: String, sha: String, wide: Boolean = false): String? = path.takeIf { it.isNotEmpty() }?.let {
-                                putImage(context, tree.read(it, MAX_IMAGE_BYTES) ?: error("Image missing"), sha, wide)
+                            suspend fun load(path: String, sha: String, wide: Boolean = false): String? = path.takeIf { it.isNotEmpty() }?.let {
+                                val image = tree.read(it, MAX_IMAGE_BYTES) ?: error("Image missing")
+                                currentCoroutineContext().ensureActive()
+                                gate.mutate { putImage(context, image, sha, wide) }
                             }
-                            val old = next[update.gameId] ?: ManagedCover()
-                            val updated = old.copy(original = load(update.original, update.originalSha256) ?: old.original,
-                                wide = load(update.wide, update.wideSha256, wide = true) ?: old.wide)
-                            if (updated != old) { next[update.gameId] = updated; applied++ }
+                            prepared += PreparedUpdate(update.gameId, load(update.original, update.originalSha256),
+                                load(update.wide, update.wideSha256, wide = true))
                         } catch (e: kotlinx.coroutines.CancellationException) { throw e }
                         catch (_: Exception) { rejected++ }
                     }
-                    if (next != entries) { save(context, next); entries = next.toMap() }
+                    // Merge into the latest index so a manual choice made during slow
+                    // shared-folder IO cannot be overwritten by an older snapshot.
+                    entries = gate.mutate {
+                        val current = read(context)
+                        val next = current.toMutableMap()
+                        prepared.forEach { update ->
+                            val old = next[update.gameId] ?: ManagedCover()
+                            val updated = mergeSharedCover(old, update.original, update.wide)
+                            if (updated != old) { next[update.gameId] = updated; applied++ }
+                        }
+                        currentCoroutineContext().ensureActive()
+                        if (next != current) save(context, next)
+                        next.toMap()
+                    }
                     // Invalid/missing image entries can be retried after their files become ready.
                     if (rejected == 0) lastImport = fingerprint
                 }
             }
         }
+        // Refresh even when updates.json was unchanged: manual edits can occur during IO.
+        entries = gate.mutate { read(context) }
         export(context, tree, games, entries, forceExport)
         CoverSyncResult(entries, applied, rejected)
     }

@@ -1,0 +1,6 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Experimental shell-only inspection is not part of the release surface. -->
+        <provider android:name=".AgentStateProvider" android:authorities="tv.orbit.shield.agent" android:exported="true" />
+    </application>
+</manifest>

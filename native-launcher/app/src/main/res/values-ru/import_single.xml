@@ -1,13 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="import_warnings_more">Ещё проблем: %1$d. Исправьте показанные и запустите поиск снова, чтобы увидеть остальные.</string>
+    <string name="legacy_recovery_title">Восстановить данные библиотеки</string>
+    <string name="legacy_recovery_summary">Восстановить сведения из прежней версии GOSTEX.</string>
+    <string name="legacy_recovery_offline">Подключи интернет и вернись в GOSTEX для восстановления библиотеки. Игры и сохранения останутся на месте.</string>
+    <string name="legacy_recovery_metered">Восстановление приостановлено в лимитной сети. Чтобы продолжить, открой «Настройки → Медиа и библиотека».</string>
+    <string name="legacy_recovery_metered_confirm">Для восстановления потребуется скачать около 33 МБ из прежнего релиза GOSTEX. Твои игры никуда не отправляются. Продолжить через лимитную сеть?</string>
+    <string name="legacy_recovery_continue">Продолжить</string>
+    <string name="legacy_recovery_failed">Не удалось восстановить сведения о библиотеке. Повтори попытку в «Настройки → Медиа и библиотека». Данные сохранены.</string>
+    <string name="legacy_recovery_state_error">Не удалось прочитать состояние восстановления. Сканирование приостановлено, данные сохранены.</string>
+    <string name="legacy_recovery_done">Данные библиотеки восстановлены.</string>
+    <string name="library_roots_unavailable">Не удалось прочитать источники библиотеки. Данные сохранены, сканирование приостановлено.</string>
+    <string name="library_snapshot_unavailable">Не удалось прочитать сохранённую библиотеку. Данные сохранены, сканирование приостановлено.</string>
+    <string name="document_picker_unavailable">На этом устройстве нет подходящего системного выбора файлов. Установите или включите приложение для выбора документов и попробуйте снова.</string>
     <string name="import_source_title">Добавить игры</string>
     <string name="import_one_game">Выбрать игру</string>
     <string name="import_game_folder">Выбрать папку</string>
     <string name="import_sources_title">Источники библиотеки</string>
     <string name="import_remove_file">Убрать эту игру из источников?</string>
     <string name="import_file_unavailable">Файл игры недоступен. Выбери его снова.</string>
+    <string name="import_folder_permission">Нет доступа к папке. Выбери её заново в настройках библиотеки.</string>
     <string name="import_file_cia_hint">CIA — установочный пакет. Установи его в Azahar через «Установить игровой контент» и вернись в GOSTEX. Один раз добавь папку данных Azahar, чтобы видеть установленные игры.</string>
     <string name="import_file_companions_hint">Этому формату нужны соседние файлы. Выбери папку игры, чтобы эмулятор мог прочитать все дорожки или диски.</string>
     <string name="import_file_wrong_type">Файл %1$s не поддерживается для %2$s.</string>
     <string name="import_file_not_game">Этот файл не является запускаемой игрой. Выбери основной образ или источник установленных игр Azahar.</string>
+    <string name="import_archive_extract_hint">Архив не поддерживается или его не удалось проверить. Выбери корректный ZIP с одной игрой либо распакуй игру и добавь файл или папку.</string>
 </resources>

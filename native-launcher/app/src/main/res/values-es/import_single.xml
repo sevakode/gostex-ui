@@ -1,13 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="import_warnings_more">Hay %1$d problemas más. Resuelve los mostrados y vuelve a buscar para ver los demás.</string>
+    <string name="legacy_recovery_title">Restaurar información de la biblioteca</string>
+    <string name="legacy_recovery_summary">Recupera la información de una versión anterior de GOSTEX.</string>
+    <string name="legacy_recovery_offline">Conéctate a internet y vuelve a GOSTEX para restaurar la biblioteca. Tus juegos y partidas se conservan.</string>
+    <string name="legacy_recovery_metered">La restauración está en pausa en esta conexión de uso medido. Abre Ajustes → Multimedia y biblioteca para continuar.</string>
+    <string name="legacy_recovery_metered_confirm">La restauración descarga unos 33 MB de la versión anterior de GOSTEX. Tus juegos no se suben. ¿Continuar con esta conexión de uso medido?</string>
+    <string name="legacy_recovery_continue">Continuar</string>
+    <string name="legacy_recovery_failed">No se pudo restaurar la información. Inténtalo de nuevo en Ajustes → Multimedia y biblioteca. Tus datos se conservan.</string>
+    <string name="legacy_recovery_state_error">No se puede leer el estado de restauración. El análisis está en pausa y tus datos se conservan.</string>
+    <string name="legacy_recovery_done">Información de la biblioteca restaurada.</string>
+    <string name="library_roots_unavailable">No se pueden leer las fuentes guardadas. Tus datos se conservan; el análisis está en pausa.</string>
+    <string name="library_snapshot_unavailable">No se puede leer la biblioteca guardada. Sus datos se han conservado; el análisis está en pausa.</string>
+    <string name="document_picker_unavailable">Este dispositivo no tiene un selector de archivos compatible. Instala o activa un selector de documentos y vuelve a intentarlo.</string>
     <string name="import_source_title">Añadir juegos</string>
     <string name="import_one_game">Elegir un archivo de juego</string>
     <string name="import_game_folder">Elegir una carpeta</string>
     <string name="import_sources_title">Fuentes de la biblioteca</string>
     <string name="import_remove_file">¿Quitar esta fuente de juego?</string>
     <string name="import_file_unavailable">El archivo del juego no está disponible. Selecciónalo de nuevo.</string>
+    <string name="import_folder_permission">No se puede acceder a la carpeta. Vuelve a seleccionarla en los ajustes de la biblioteca.</string>
     <string name="import_file_cia_hint">CIA es un paquete de instalación. Instálalo en Azahar con Instalar contenido de juego y vuelve a GOSTEX. Añade una vez la carpeta de datos de Azahar para ver los juegos instalados.</string>
     <string name="import_file_companions_hint">Este formato necesita archivos adicionales. Elige la carpeta del juego para que el emulador pueda leer sus pistas o discos.</string>
     <string name="import_file_wrong_type">%1$s no es un archivo de juego compatible con %2$s.</string>
     <string name="import_file_not_game">Este archivo no es un juego ejecutable. Elige la imagen principal o la fuente instalada de Azahar.</string>
+    <string name="import_archive_extract_hint">No se pudo verificar el archivo o no es compatible. Elige un ZIP válido con un juego o extrae el juego y añade el archivo o la carpeta.</string>
 </resources>

@@ -6,10 +6,10 @@ Created 2026-11-02 using the built-in `image_gen` tool in **edit** mode (`precis
 
 ## Aurora / The Legend of Zelda
 
-- Edit target: `/Users/seva/Documents/ChatGPT/shield/native-launcher/app/src/main/assets/art/aurora-lake.png`
-- Original now archived at: `/Users/seva/Documents/ChatGPT/shield/native-launcher/design/art-originals/aurora-lake.png`
-- Final project asset: `/Users/seva/Documents/ChatGPT/shield/native-launcher/app/src/main/assets/art/aurora-hyrule.png`
-- Built-in output: `/Users/seva/.codex/generated_images/01a19f03-4986-7022-b4ad-9a8fd97e399c/exec-d507bd3d-8372-43e7-af66-03627f949701.png`
+- Original edit target: `design/art-originals/aurora-lake.png`
+- Original now archived at: `design/art-originals/aurora-lake.png`
+- Final project asset: `app/src/main/assets/art/aurora-hyrule.png`
+- Built-in output: `<local-generated-images>/01a19f03-4986-7022-b4ad-9a8fd97e399c/exec-d507bd3d-8372-43e7-af66-03627f949701.png`
 - Category: games; reference: The Legend of Zelda / Master Sword and Triforce.
 - Visual QA: blue winged hilt, silver blade and gold Triforce are clearly visible on the foreground pedestal. Landscape, cabin and aurora composition preserved. No text or watermark.
 
@@ -27,10 +27,10 @@ Invariants: keep the wide composition, exact aspect ratio, mountains, aurora sha
 
 ## Coast / Star Wars
 
-- Edit target: `/Users/seva/Documents/ChatGPT/shield/native-launcher/app/src/main/assets/art/amber-coast.png`
-- Original now archived at: `/Users/seva/Documents/ChatGPT/shield/native-launcher/design/art-originals/amber-coast.png`
-- Final project asset: `/Users/seva/Documents/ChatGPT/shield/native-launcher/app/src/main/assets/art/amber-droids.png`
-- Built-in output: `/Users/seva/.codex/generated_images/01a19f03-4986-7022-b4ad-9a8fd97e399c/exec-8775c220-a962-4364-8ceb-d5a845bb9ae9.png`
+- Original edit target: `design/art-originals/amber-coast.png`
+- Original now archived at: `design/art-originals/amber-coast.png`
+- Final project asset: `app/src/main/assets/art/amber-droids.png`
+- Built-in output: `<local-generated-images>/01a19f03-4986-7022-b4ad-9a8fd97e399c/exec-8775c220-a962-4364-8ceb-d5a845bb9ae9.png`
 - Category: media; reference: Star Wars / R2-D2 and C-3PO.
 - Visual QA: both recognizable droids fully visible on the foreground rock terrace, with matching sunset lighting and contact shadows. Landscape, lighthouse and sunset composition preserved. No text or watermark.
 

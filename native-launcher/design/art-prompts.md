@@ -26,7 +26,7 @@ Constraints: one coherent landscape, no people, text, words, logos, watermarks, 
 
 ## Asset provenance
 
-- aurora-lake.png: original 1672 × 941 image generated with built-in image_gen and copied to `app/src/main/assets/art/aurora-lake.png` (2,338,984 bytes). Source: `/Users/seva/.codex/generated_images/01a19ef0-f742-7311-9abf-9c637bb9d1f8/exec-40317211-d71d-46cd-8715-3cce6f74d3a9.png`.
-- amber-coast.png: original 1672 × 941 image generated with built-in image_gen and copied to `app/src/main/assets/art/amber-coast.png` (2,542,841 bytes). Source: `/Users/seva/.codex/generated_images/01a19ef0-f742-7311-9abf-9c637bb9d1f8/exec-f5b885ad-fe85-4be9-8708-dbd0e654d2ca.png`.
+- aurora-lake.png: original 1672 × 941 image generated with built-in image_gen and originally copied to the application assets and now archived at `design/art-originals/aurora-lake.png` (2,338,984 bytes). Source: `<local-generated-images>/01a19ef0-f742-7311-9abf-9c637bb9d1f8/exec-40317211-d71d-46cd-8715-3cce6f74d3a9.png`.
+- amber-coast.png: original 1672 × 941 image generated with built-in image_gen and originally copied to the application assets and now archived at `design/art-originals/amber-coast.png` (2,542,841 bytes). Source: `<local-generated-images>/01a19ef0-f742-7311-9abf-9c637bb9d1f8/exec-f5b885ad-fe85-4be9-8708-dbd0e654d2ca.png`.
 
-These are two pre-generated original artworks. Runtime generation or an unlimited feed of new AI images is not implied. The application consumes only project assets, never the default generation paths above.
+These are two pre-generated original artworks. Runtime generation or an unlimited feed of new AI images is not implied. The current application uses the later world-specific assets; these originals are retained only for provenance.

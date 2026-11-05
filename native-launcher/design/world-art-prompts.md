@@ -4,8 +4,8 @@ Created 2026-11-02 with the built-in `image_gen` tool, **generate** mode (`styli
 
 ## Hyrule / The Legend of Zelda
 
-- Final project asset: `/Users/seva/Documents/ChatGPT/shield/native-launcher/app/src/main/assets/art/aurora-hyrule.png`
-- Built-in output: `/Users/seva/.codex/generated_images/01a19f2e-4523-7e60-b48c-6922eef7c783/exec-ea9a061e-4e0e-479e-8361-ddc6b6d023e3.png`
+- Final project asset: `app/src/main/assets/art/aurora-hyrule.png`
+- Built-in output: `<local-generated-images>/01a19f2e-4523-7e60-b48c-6922eef7c783/exec-ea9a061e-4e0e-479e-8361-ddc6b6d023e3.png`
 - Pixel size: 1672 × 941 (approximately 16:9).
 - Visual QA: Master Sword and carved Hylian/Triforce motifs are integral to a ruined forest temple. Distant Hyrule Castle visibly connects the entire scene to the game world. Calm lower-left ground supports captions. No text or watermark; distinct world and palette, no repeated background.
 
@@ -24,8 +24,8 @@ Constraints: every architectural and botanical detail belongs to this world. No 
 
 ## Tatooine / Star Wars
 
-- Final project asset: `/Users/seva/Documents/ChatGPT/shield/native-launcher/app/src/main/assets/art/amber-droids.png`
-- Built-in output: `/Users/seva/.codex/generated_images/01a19f2e-4523-7e60-b48c-6922eef7c783/exec-75cd552c-d89f-4cb3-ad63-4fd12c3d4452.png`
+- Final project asset: `app/src/main/assets/art/amber-droids.png`
+- Built-in output: `<local-generated-images>/01a19f2e-4523-7e60-b48c-6922eef7c783/exec-75cd552c-d89f-4cb3-ad63-4fd12c3d4452.png`
 - Pixel size: 1672 × 941 (approximately 16:9).
 - Visual QA: Twin suns, desert dome architecture, moisture vaporators, R2-D2 and C-3PO form one coherent Tatooine scene. No water, coast or lighthouse remains. Dark shaded lower-left houses support captions. No text or watermark; distinct world and palette, no repeated background.
 
@@ -44,8 +44,8 @@ Constraints: an authentic desert world, with the location integral to the compos
 
 ## Gotham / Batman
 
-- Final project asset: `/Users/seva/Documents/ChatGPT/shield/native-launcher/app/src/main/assets/art/gotham.png`
-- Built-in output: `/Users/seva/.codex/generated_images/01a19f2e-4523-7e60-b48c-6922eef7c783/exec-03c5cf78-4700-4cff-b847-f1d55e8aa734.png`
+- Final project asset: `app/src/main/assets/art/gotham.png`
+- Built-in output: `<local-generated-images>/01a19f2e-4523-7e60-b48c-6922eef7c783/exec-03c5cf78-4700-4cff-b847-f1d55e8aa734.png`
 - Pixel size: 1672 × 941 (approximately 16:9).
 - Visual QA: Art Deco towers, gothic cathedral, rooftop gargoyle, Batman silhouette and Bat-Signal make Gotham the environment itself. Dark rain-washed rooftop supports captions. No text or watermark; distinct world and palette, no repeated background.
 

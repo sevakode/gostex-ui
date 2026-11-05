@@ -1,27 +1,4 @@
 {
   "version": 1,
-  "extensions": {
-    "media/metadata-0be476217836-cover.png": {
-      "image": "media/generated-covers/ace-wo-nerae-wide-v1.webp",
-      "sourceName": "libretro-thumbnails",
-      "sourceUrl": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/Ace%20o%20Nerae%21%20%28Japan%29.png",
-      "sourceSha256": "0c54958baa9b64146fef7576b0d9ee3b21e338c860c3c2d9e5598fd188a91ab1",
-      "generationCredit": "GOSTEX · AI widescreen adaptation using OpenAI image generation; original cover artwork belongs to its respective rights holders",
-      "generatedAt": "2026-11-03",
-      "generatedSha256": "b35cb21dd7828529d1b434d10a05fe277248bfeefd1a8dba84fbf2c862e575a0",
-      "kind": "AI widescreen adaptation of reference cover",
-      "promptRecord": ".reports/cards18/generation-prompts.json"
-    },
-    "media/55adaff88342-boxFront.png": {
-      "image": "media/generated-covers/actraiser-wide-v1.webp",
-      "sourceName": "libretro-thumbnails",
-      "sourceUrl": "https://github.com/libretro-thumbnails/Nintendo_-_Super_Nintendo_Entertainment_System/blob/cdd8f1d44612976cc9d422b0ace53a8542667688/Named_Boxarts/ActRaiser%20%28Europe%29.png",
-      "sourceSha256": "839b49f24a11dfc9d55caa14cc1ebff3dec9222d47aa621adbb157f016b2ce40",
-      "generationCredit": "GOSTEX · AI widescreen adaptation using OpenAI image generation; original cover artwork belongs to its respective rights holders",
-      "generatedAt": "2026-11-03",
-      "generatedSha256": "b55b22711403badace145a3f66096a02286565c692fb3d88a3379930d2c0566f",
-      "kind": "AI widescreen adaptation of reference cover",
-      "promptRecord": ".reports/cards18/generation-prompts.json"
-    }
-  }
+  "extensions": {}
 }

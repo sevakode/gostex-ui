@@ -4,6 +4,12 @@ on:
     branches: [main]
     paths: ['native-launcher/**', '.github/workflows/gostex-release.yml']
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the verified build as the latest release
+        type: boolean
+        required: true
+        default: false
 permissions:
   contents: write
 concurrency:
@@ -12,10 +18,6 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        platform: [android-arm64, linux-x64]
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-java@v6.1.0
@@ -41,7 +43,6 @@ jobs:
           umask 077
           printf '%s' "$RELEASE_SIGNING_KEY" > "$RUNNER_TEMP/gostex-release.pem"
       - name: Build Android with existing installation identity
-        if: matrix.platform == 'android-arm64'
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
@@ -53,39 +54,69 @@ jobs:
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.2' 'build-tools;36.0.0'
           gradle -p native-launcher --no-daemon :release-runtime:test :app:assembleRelease :app:lintRelease
+          python3 native-launcher/checks/check_release_boundary.py
+          python3 native-launcher/checks/check_translations.py
+          python3 native-launcher/checks/check_archive_admission.py
+          python3 native-launcher/checks/check_library_snapshot.py
+          python3 native-launcher/checks/check_import_warnings.py
+          python3 native-launcher/checks/check_remote_install_policy.py
+          python3 native-launcher/checks/check_legacy_catalog_bridge.py
+          python3 native-launcher/checks/check_legacy_catalog_archive.py
+          python3 native-launcher/checks/check_legacy_catalog_recovery.py
+          python3 native-launcher/checks/check_legacy_recovery_state.py
+          python3 native-launcher/checks/check_cover_concurrency.py
+          python3 native-launcher/checks/test_public_release.py
+          python3 native-launcher/checks/test_carry_forward_linux.py
           python3 native-launcher/checks/check_update_state.py
           python3 native-launcher/checks/check_install_session.py
           actual_certificate=$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs native-launcher/app/build/outputs/apk/release/app-release.apk | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
           test "$actual_certificate" = '8dfd10419f9cd24209f4771e083cd33c4fd78375e6b19aea0453257be1016898'
           python3 native-launcher/tools/release/publish_feed.py --platform android-arm64 --artifact native-launcher/app/build/outputs/apk/release/app-release.apk --output release-assets --private-key "$RUNNER_TEMP/gostex-release.pem" --base-url "https://github.com/$GITHUB_REPOSITORY/releases/download/build-$GITHUB_RUN_NUMBER"
-      - name: Build native Linux image
-        if: matrix.platform == 'linux-x64'
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y libgl1 libxrender1 libxtst6 libxi6 libxext6 xvfb
-          xvfb-run -a gradle -p native-launcher --no-daemon -Pgostex.android=false -Pgostex.desktop=true :release-runtime:test :shared-core:jvmTest :desktop:test :desktop:createDistributable
-          python3 native-launcher/tools/deck/test_bootstrap.py
-          python3 native-launcher/tools/release/package_linux.py --image native-launcher/desktop/build/compose/binaries/main/app/GOSTEX --output "$RUNNER_TEMP/gostex-linux.zip"
-          python3 native-launcher/tools/release/publish_feed.py --platform linux-x64 --artifact "$RUNNER_TEMP/gostex-linux.zip" --output release-assets --private-key "$RUNNER_TEMP/gostex-release.pem" --base-url "https://github.com/$GITHUB_REPOSITORY/releases/download/build-$GITHUB_RUN_NUMBER"
-          cp native-launcher/tools/deck/bootstrap.py native-launcher/tools/deck/gostex-install.py native-launcher/tools/deck/gostex.svg release-assets/
+      # A workflow artifact is also a distribution channel. Never upload an
+      # unchecked APK, even when no GitHub Release is being published.
+      - name: Check candidate before any artifact upload
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        run: python3 native-launcher/checks/check_public_release.py --apk release-assets/gostex-android-arm64-*.apk
       - uses: actions/upload-artifact@v7.0.2
+        if: ${{ github.event_name == 'workflow_dispatch' }}
         with:
-          name: release-${{ matrix.platform }}
+          name: release-android-arm64
           path: release-assets/*
           if-no-files-found: error
   publish:
+    # Normal pushes only build and validate. Publishing updates the live feed,
+    # so it requires a separate explicit workflow dispatch.
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
     needs: build
     runs-on: ubuntu-24.04
     steps:
+      - uses: actions/checkout@v7.0.1
       - uses: actions/download-artifact@v8.0.2
         with:
-          pattern: release-*
+          name: release-android-arm64
           path: release-assets
-          merge-multiple: true
+      - name: Block known private content in public APK
+        run: |
+          python3 native-launcher/checks/test_public_release.py
+          python3 native-launcher/checks/check_public_release.py --apk release-assets/gostex-android-arm64-*.apk
+      - name: Preserve the current Linux channel unchanged
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          previous_tag=$(gh release view --repo "$GH_REPO" --json tagName --jq .tagName)
+          [[ "$previous_tag" =~ ^build-[0-9]+$ ]]
+          mkdir -p "$RUNNER_TEMP/prior-linux"
+          gh release download "$previous_tag" --repo "$GH_REPO" --dir "$RUNNER_TEMP/prior-linux" \
+            --pattern 'linux-x64.properties*' --pattern 'gostex-linux-x64-*.zip' \
+            --pattern 'bootstrap.py' --pattern 'gostex-install.py' --pattern 'gostex.svg'
+          python3 native-launcher/tools/release/carry_forward_linux.py --source "$RUNNER_TEMP/prior-linux" --destination release-assets --repo "$GH_REPO" --source-tag "$previous_tag"
+          printf '%s' "$previous_tag" > "$RUNNER_TEMP/previous-release-tag"
       - name: Publish complete signed release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          printf '%s\n' 'GOSTEX development update for Android TV and native Linux / Steam Deck.' '' 'Signed update manifests and verified platform artifacts are included. Android uses system installation confirmation. Linux applies staged updates at the next launcher start.' > "$RUNNER_TEMP/release-body.md"
+          test "$(gh release view --repo "$GH_REPO" --json tagName --jq .tagName)" = "$(cat "$RUNNER_TEMP/previous-release-tag")"
+          printf '%s\n' 'GOSTEX Android TV update. The previous Linux release assets are retained unchanged.' '' 'Android uses system installation confirmation.' > "$RUNNER_TEMP/release-body.md"
           gh release create "build-$GITHUB_RUN_NUMBER" release-assets/* --target "$GITHUB_SHA" --title "GOSTEX 0.33.$GITHUB_RUN_NUMBER" --notes-file "$RUNNER_TEMP/release-body.md" --latest

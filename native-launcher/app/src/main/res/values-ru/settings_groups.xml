@@ -9,6 +9,6 @@
     <string name="settings_locale_group">Язык и часы</string>
     <string name="settings_locale_summary">Язык, время и часовые пояса</string>
     <string name="settings_system_group">Система</string>
-    <string name="settings_system_summary">Настройки SHIELD и удалённый доступ</string>
+    <string name="settings_system_summary">Настройки устройства и удалённый доступ</string>
     <string name="settings_cards_title">Карточки</string>
 </resources>

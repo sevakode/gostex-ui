@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "approved": [
+    {
+      "path": "assets/art/aurora-hyrule.png",
+      "sha256": "2164f4339412c82382a9eb04c8d0ffa3d5db4070a3515532022425e795e435a6",
+      "inclusionBasis": "Owner commissioned the generated fan art and explicitly requested its inclusion in the public release; no ownership of the referenced fictional works is asserted.",
+      "evidence": "Generation prompts and image provenance: native-launcher/design/world-art-prompts.md. Owner requested retaining these screensaver illustrations on 2026-11-05."
+    },
+    {
+      "path": "assets/art/gotham.png",
+      "sha256": "cb69268c2747e7c43c66ce385cbb9c90a4ba2a6231593105b79cc25dcca1d89d",
+      "inclusionBasis": "Owner commissioned the generated fan art and explicitly requested its inclusion in the public release; no ownership of the referenced fictional works is asserted.",
+      "evidence": "Generation prompts and image provenance: native-launcher/design/world-art-prompts.md. Owner requested retaining these screensaver illustrations on 2026-11-05."
+    },
+    {
+      "path": "assets/art/amber-droids.png",
+      "sha256": "48d5d9109c9cb60f7dd89e04a907994298e1416aea8f9aef977c3101c710bc1d",
+      "inclusionBasis": "Owner commissioned the generated fan art and explicitly requested its inclusion in the public release; no ownership of the referenced fictional works is asserted.",
+      "evidence": "Generation prompts and image provenance: native-launcher/design/world-art-prompts.md. Owner requested retaining these screensaver illustrations on 2026-11-05."
+    }
+  ]
+}

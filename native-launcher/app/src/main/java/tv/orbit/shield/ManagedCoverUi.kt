@@ -66,10 +66,10 @@ import androidx.tv.material3.Text
                 Text(tr(when (choice) { CoverChoice.MANUAL -> R.string.cover_choice_manual; CoverChoice.ORIGINAL -> R.string.cover_choice_original; else -> R.string.cover_choice_auto }),
                     color=Color(0xFFADADB0),fontSize=13.sp)
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                SettingRow(tr(R.string.cover_find_online), modifier=Modifier.focusRequester(firstFocus), onClick={ finding=true })
-                if (options.folder.isNotEmpty()) SettingRow(tr(if (activity.coversBusy) R.string.covers_syncing else R.string.cover_choose_shared),
+                SettingRow(tr(R.string.cover_find_online), modifier=Modifier.focusRequester(firstFocus), onClick={ if (!activity.coverEditBusy) finding=true })
+                if (options.folder.isNotEmpty()) SettingRow(tr(if (activity.coverEditBusy) R.string.covers_syncing else R.string.cover_choose_shared),
                     onClick={ activity.chooseSharedCover(game.id) })
-                SettingRow(tr(if (activity.coversBusy) R.string.covers_syncing else R.string.cover_choose_file),
+                SettingRow(tr(if (activity.coverEditBusy) R.string.covers_syncing else R.string.cover_choose_file),
                     
                     onClick={ activity.chooseCover(game.id) })
                 if (!entry?.manual.isNullOrEmpty()) SettingRow(tr(R.string.cover_use_manual),isSelected=choice==CoverChoice.MANUAL,

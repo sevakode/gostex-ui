@@ -93,12 +93,16 @@ data class Game(
     val developer: String, val players: String, val demo: Boolean = false, val description: String = ""
 )
 
+private class LegacyRecoveryNotice(val messageId: Int) : Exception()
+
 class MainActivity : ComponentActivity() {
     internal val updates: LauncherUpdates by lazy { LauncherUpdates(this) }
     private val diagnosticExport = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
         if (uri != null) updates.exportDiagnostics(uri)
     }
-    internal fun chooseDiagnosticExport() { diagnosticExport.launch("gostex-diagnostics.zip") }
+    internal fun chooseDiagnosticExport() {
+        launchDocumentPicker(Intent.ACTION_CREATE_DOCUMENT, "application/zip") { diagnosticExport.launch("gostex-diagnostics.zip") }
+    }
     override fun attachBaseContext(base: android.content.Context) {
         super.attachBaseContext(Language.context(base))
     }
@@ -112,17 +116,42 @@ class MainActivity : ComponentActivity() {
     var notice: String
         get() = notices.current?.message.orEmpty()
         set(value) { notices.show(value) }
+    /** Android TV images may ship a no-op picker stub or no document picker at all. */
+    private fun launchDocumentPicker(action: String, mime: String? = null, launch: () -> Unit): Boolean {
+        val probe = Intent(action).apply {
+            if (action != Intent.ACTION_OPEN_DOCUMENT_TREE) addCategory(Intent.CATEGORY_OPENABLE)
+            if (mime != null) type = mime
+        }
+        val resolved = runCatching { packageManager.resolveActivity(probe, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo }.getOrNull()
+        if (resolved == null || !resolved.enabled || !resolved.applicationInfo.enabled ||
+            resolved.packageName == "com.android.tv.frameworkpackagestubs") {
+            notice = getString(R.string.document_picker_unavailable)
+            return false
+        }
+        return try { launch(); true }
+        catch (_: android.content.ActivityNotFoundException) { notice = getString(R.string.document_picker_unavailable); false }
+        catch (_: SecurityException) { notice = getString(R.string.document_picker_unavailable); false }
+    }
     var resumeVersion by mutableIntStateOf(0)
     var homeVersion by mutableIntStateOf(0)
     var library by mutableStateOf<List<Game>>(emptyList())
     var scanning by mutableStateOf(false)
+    var legacyRecoveryPending by mutableStateOf(false)
+        private set
+    private var legacyRecoveryStateError = false
+    private var allowMeteredRecoveryOnce = false
     internal var managedCovers by mutableStateOf<Map<String, ManagedCover>>(emptyMap())
     var coverEditorId by mutableStateOf<String?>(null)
     var coversBusy by mutableStateOf(false)
+    private var coverEdits by mutableIntStateOf(0)
+    val coverEditBusy: Boolean get() = coverEdits > 0
+    private var coverRevision = 0L
+    private var coverSyncPending = false
     var coversStatus by mutableStateOf("")
     private var pendingCoverId: String? = null
     private var coversLoop: Job? = null
     private var bundled = emptyList<Game>()
+    internal fun metadataCatalogSize(): Int = bundled.size
     private val importScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var importPlatform = ""
     private var importSource = LibrarySource.FILES
@@ -130,12 +159,15 @@ class MainActivity : ComponentActivity() {
     private var refreshPending = false
     private var libraryVisible = false
     private var importJob: Job? = null
-    override fun onResume() { super.onResume(); updates.onResume(); libraryVisible = true; resumeVersion++; refreshLibrary(); startCoverSync() }
+    override fun onResume() { super.onResume(); AgentStateHooks.attach(this); updates.onResume(); libraryVisible = true; resumeVersion++; refreshLibrary(); startCoverSync() }
     override fun onPause() { AndroidDiagnostics.event("launcher.pause"); super.onPause() }
     override fun onStop() {
+        AgentStateHooks.detach(this)
         updates.onStop()
         libraryVisible = false
+        allowMeteredRecoveryOnce = false
         coversLoop?.cancel()
+        coverSyncPending = false
         refreshPending = false
         importJob?.cancel()
         super.onStop()
@@ -163,29 +195,34 @@ class MainActivity : ComponentActivity() {
     }
     private fun importCoverImage(id: String, uri: Uri) {
         importScope.launch {
-            coversBusy = true
+            coverEdits++
             try {
                 managedCovers = withContext(Dispatchers.IO) { ManagedCoverStore.importManual(this@MainActivity, id, uri) }
+                coverRevision++
                 ManagedCoverPreferences.choice(this@MainActivity, id, CoverChoice.MANUAL)
                 coversStatus = getString(R.string.cover_saved)
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
             catch (e: Exception) { notice = getString(R.string.cover_error, e.localizedMessage.orEmpty()) }
-            finally { coversBusy = false }
+            finally { coverEdits-- }
             syncCovers(false)
         }
     }
     internal suspend fun applyOnlineCover(id: String, bytes: ByteArray, image: OnlineCoverImage) {
-        managedCovers = withContext(Dispatchers.IO) { ManagedCoverStore.importOnline(this@MainActivity,id,bytes,image) }
-        ManagedCoverPreferences.choice(this,id,CoverChoice.MANUAL)
-        coversStatus = getString(R.string.cover_saved)
-        syncCovers(false)
+        coverEdits++
+        try {
+            managedCovers = withContext(Dispatchers.IO) { ManagedCoverStore.importOnline(this@MainActivity,id,bytes,image) }
+            coverRevision++
+            ManagedCoverPreferences.choice(this,id,CoverChoice.MANUAL)
+            coversStatus = getString(R.string.cover_saved)
+            syncCovers(false)
+        } finally { coverEdits-- }
     }
     fun chooseSharedCover(id: String) {
-        if (coversBusy) return
+        if (coverEditBusy) return
         val folder = ManagedCoverPreferences.read(this).folder
         if (folder.isEmpty()) { chooseCoversFolder(); return }
         importScope.launch {
-            coversBusy = true
+            coverEdits++
             try {
                 val images = withContext(Dispatchers.IO) { ManagedCoverStore.images(this@MainActivity, folder) }
                 if (images.isEmpty()) notice = getString(R.string.covers_no_images)
@@ -194,32 +231,38 @@ class MainActivity : ComponentActivity() {
                     .setNegativeButton(getString(R.string.cancel), null).show()
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
             catch (e: Exception) { notice = getString(R.string.cover_error, e.localizedMessage.orEmpty()) }
-            finally { coversBusy = false }
+            finally { coverEdits-- }
         }
     }
     fun chooseCover(id: String) {
-        if (coversBusy) return
+        if (coverEditBusy) return
         pendingCoverId = id
-        coverPicker.launch(arrayOf("image/png", "image/jpeg", "image/webp"))
+        if (!launchDocumentPicker(Intent.ACTION_OPEN_DOCUMENT, "*/*") {
+            coverPicker.launch(arrayOf("image/png", "image/jpeg", "image/webp"))
+        }) pendingCoverId = null
     }
     private val coversFolderPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) try {
             contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
             val old = ManagedCoverPreferences.read(this).folder
             ManagedCoverPreferences.folder(this, uri.toString())
-            if (old.isNotEmpty() && old != uri.toString() && LibraryImport.roots(this).none { it.uri == old }) {
+            if (old.isNotEmpty() && old != uri.toString() && runCatching { LibraryImport.roots(this).none { it.uri == old } }.getOrDefault(false)) {
                 runCatching { contentResolver.releasePersistableUriPermission(Uri.parse(old), Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }
             }
             syncCovers(true)
             startCoverSync()
         } catch (e: Exception) { notice = getString(R.string.cover_error, e.localizedMessage.orEmpty()) }
     }
-    fun chooseCoversFolder() { coversFolderPicker.launch(ManagedCoverPreferences.read(this).folder.takeIf { it.isNotEmpty() }?.let(Uri::parse)) }
+    fun chooseCoversFolder() {
+        launchDocumentPicker(Intent.ACTION_OPEN_DOCUMENT_TREE) {
+            coversFolderPicker.launch(ManagedCoverPreferences.read(this).folder.takeIf { it.isNotEmpty() }?.let(Uri::parse))
+        }
+    }
     fun disconnectCoversFolder() {
         val old = ManagedCoverPreferences.read(this).folder
         ManagedCoverPreferences.folder(this, "")
         coversLoop?.cancel()
-        if (old.isNotEmpty() && LibraryImport.roots(this).none { it.uri == old }) runCatching {
+        if (old.isNotEmpty() && runCatching { LibraryImport.roots(this).none { it.uri == old } }.getOrDefault(false)) runCatching {
             contentResolver.releasePersistableUriPermission(Uri.parse(old), Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
         }
         coversStatus = ""
@@ -246,22 +289,28 @@ class MainActivity : ComponentActivity() {
     }
     fun syncCovers(manual: Boolean) { importScope.launch { performCoverSync(manual) } }
     private suspend fun performCoverSync(manual: Boolean) {
-        if (coversBusy) return
+        if (coversBusy) { coverSyncPending = true; return }
         val options = ManagedCoverPreferences.read(this)
         if (options.folder.isEmpty()) return
         coversBusy = true
+        val startedRevision = coverRevision
         try {
             val currentGames = library.toList()
             val result = withContext(Dispatchers.IO) {
                 ManagedCoverStore.sync(this@MainActivity, currentGames, options.folder, manual || options.automatic, forceExport = manual)
             }
-            managedCovers = result.entries
+            if (startedRevision == coverRevision) managedCovers = result.entries
             coversStatus = getString(R.string.covers_sync_result, result.applied, result.rejected)
         } catch (e: kotlinx.coroutines.CancellationException) { throw e }
         catch (e: Exception) {
             coversStatus = getString(R.string.cover_error, e.localizedMessage.orEmpty())
             if (manual) notice = coversStatus
-        } finally { coversBusy = false }
+        } finally {
+            coversBusy = false
+            val retry = coverSyncPending && libraryVisible
+            coverSyncPending = false
+            if (retry) syncCovers(false)
+        }
     }
     private val folderPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null && importPlatform.isNotEmpty()) try {
@@ -343,19 +392,52 @@ class MainActivity : ComponentActivity() {
     private fun chooseLibraryFile(platform: String) {
         importPlatform = platform
         importSource = LibrarySource.SINGLE_FILE
-        gameFilePicker.launch(arrayOf("*/*"))
+        launchDocumentPicker(Intent.ACTION_OPEN_DOCUMENT, "*/*") { gameFilePicker.launch(arrayOf("*/*")) }
     }
     private fun chooseLibraryFolder(platform: String, source: LibrarySource) {
         importPlatform = platform
         importSource = source
-        val existing = LibraryImport.roots(this).lastOrNull { it.platform == platform && it.source == source }?.uri
+        val existing = (rootsOrNotify() ?: return).lastOrNull { it.platform == platform && it.source == source }?.uri
         val initial = existing?.let { Uri.parse(it) } ?: bundled.firstOrNull { it.platform == platform && it.tree.isNotBlank() }?.tree?.let {
             DocumentsContract.buildTreeDocumentUri("com.android.externalstorage.documents", it)
         }
-        folderPicker.launch(initial?.let { DocumentsContract.buildDocumentUriUsingTree(it, DocumentsContract.getTreeDocumentId(it)) })
+        launchDocumentPicker(Intent.ACTION_OPEN_DOCUMENT_TREE) {
+            folderPicker.launch(initial?.let { DocumentsContract.buildDocumentUriUsingTree(it, DocumentsContract.getTreeDocumentId(it)) })
+        }
+    }
+    private fun rootsOrNotify(): List<LibraryImport.Root>? = try { LibraryImport.roots(this) }
+    catch (e: Exception) { notice = e.localizedMessage.orEmpty(); null }
+    private fun legacyNetwork(): LegacyNetworkState = try {
+        val manager = getSystemService(android.net.ConnectivityManager::class.java)
+        val caps = manager?.activeNetwork?.let { manager.getNetworkCapabilities(it) }
+        when {
+            caps?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED) != true -> LegacyNetworkState.OFFLINE
+            manager?.isActiveNetworkMetered != false -> LegacyNetworkState.METERED
+            else -> LegacyNetworkState.UNMETERED
+        }
+    } catch (_: Exception) { LegacyNetworkState.OFFLINE }
+
+    fun retryLegacyRecovery() {
+        if (legacyRecoveryStateError) {
+            try {
+                legacyRecoveryPending = LegacyRecoveryState.initialize(this, bundled)
+                legacyRecoveryStateError = false
+            } catch (_: Exception) { notice = getString(R.string.legacy_recovery_state_error); return }
+        }
+        if (!legacyRecoveryPending) { refreshLibrary(); return }
+        when (legacyNetwork()) {
+            LegacyNetworkState.OFFLINE -> notice = getString(R.string.legacy_recovery_offline)
+            LegacyNetworkState.UNMETERED -> refreshLibrary()
+            LegacyNetworkState.METERED -> android.app.AlertDialog.Builder(this)
+                .setTitle(R.string.legacy_recovery_title).setMessage(R.string.legacy_recovery_metered_confirm)
+                .setPositiveButton(R.string.legacy_recovery_continue) { _, _ ->
+                    allowMeteredRecoveryOnce = true
+                    refreshLibrary()
+                }.setNegativeButton(R.string.cancel, null).show()
+        }
     }
     fun manageFolders() {
-        val roots = LibraryImport.roots(this)
+        val roots = rootsOrNotify() ?: return
         if (roots.isEmpty()) { notice = getString(R.string.add_folder_hint); return }
         val names = roots.map {
             val label = if (it.source == LibrarySource.AZAHAR_INSTALLED) getString(R.string.three_ds_installed) else PlatformRegistry.title(this, it.platform)
@@ -366,17 +448,22 @@ class MainActivity : ComponentActivity() {
         android.app.AlertDialog.Builder(this).setTitle(getString(R.string.import_sources_title)).setItems(names) { _, index ->
             android.app.AlertDialog.Builder(this).setTitle(getString(if (roots[index].source == LibrarySource.SINGLE_FILE) R.string.import_remove_file else R.string.remove_folder)).setMessage(getString(R.string.files_preserved))
                 .setPositiveButton(getString(R.string.remove)) { _, _ ->
-                    LibraryImport.removeRoot(this, roots[index])
-                    refreshLibrary()
+                    try { LibraryImport.removeRoot(this, roots[index]); refreshLibrary() }
+                    catch (e: Exception) { notice = e.localizedMessage.orEmpty() }
                 }.setNegativeButton(getString(R.string.cancel), null).show()
         }.setNegativeButton(getString(R.string.close), null).show()
     }
     fun refreshLibrary() {
         if (!libraryVisible) { refreshPending = true; return }
         if (scanning) { refreshPending = true; return }
+        if (legacyRecoveryStateError) { notice = getString(R.string.legacy_recovery_state_error); return }
         refreshPending = false
-        val roots = LibraryImport.roots(this)
+        val meteredApproved = allowMeteredRecoveryOnce
+        allowMeteredRecoveryOnce = false
+        val roots = rootsOrNotify() ?: return
         val hintRoot = importHintRoot
+        val recoveryRequired = legacyRecoveryPending
+        val initialCatalog = bundled
         scanning = true
         // Enter try/finally before onStop can cancel the queued Main dispatcher work.
         // Otherwise cancellation before coroutine start leaves scanning=true forever.
@@ -384,26 +471,62 @@ class MainActivity : ComponentActivity() {
             try {
                 val result = withContext(Dispatchers.IO) {
                     val previous = LibraryImport.read(this@MainActivity)
-                    val errors = mutableListOf<String>()
-                    val found = roots.flatMap { root ->
-                        val scanned = try { LibraryImport.scan(this@MainActivity, root, bundled, showHints = root == hintRoot) { warning ->
-                            errors += "${PlatformRegistry.title(this@MainActivity, root.platform)}: $warning"
+                    val catalog = if (recoveryRequired) {
+                        val checkpoint = {
+                            val network = legacyNetwork()
+                            if (!legacyRecoveryAllowed(network, meteredApproved)) throw LegacyRecoveryNotice(
+                                if (network == LegacyNetworkState.METERED) R.string.legacy_recovery_metered else R.string.legacy_recovery_offline)
+                        }
+                        try { LegacyCatalogRecovery.restore(this@MainActivity, networkCheckpoint = checkpoint) }
+                        catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                        catch (e: LegacyRecoveryNotice) { throw e }
+                        catch (_: Exception) {
+                            // A network change can close the socket before the next transfer checkpoint.
+                            checkpoint()
+                            throw LegacyRecoveryNotice(R.string.legacy_recovery_failed)
+                        }
+                        LegacyCatalogBridge.load(this@MainActivity).also { recovered ->
+                            check(recovered.any { it.tree.isNotBlank() && it.files.isNotEmpty() })
+                            LibraryImport.migrateGrantedCatalogRoots(this@MainActivity, recovered)
+                        }
+                    } else initialCatalog
+                    // Keep a private, verified bridge before any future catalog cleanup.
+                    // A failed bridge must not erase or block the existing library.
+                    try { LegacyCatalogBridge.capture(this@MainActivity) }
+                    catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                    catch (_: Exception) { AndroidDiagnostics.event("library.legacy_catalog", "unavailable") }
+                    val errors = ImportWarnings()
+                    val activeRoots = if (recoveryRequired) LibraryImport.roots(this@MainActivity) else roots
+                    val found = activeRoots.flatMap { root ->
+                        val scanned = try { LibraryImport.scan(this@MainActivity, root, catalog, showHints = root == hintRoot) { warning ->
+                            errors.add { "${PlatformRegistry.title(this@MainActivity, root.platform)}: $warning" }
                         } }
                         catch (e: kotlinx.coroutines.CancellationException) { throw e }
                         catch (e: Exception) {
-                            errors += "${PlatformRegistry.title(this@MainActivity, root.platform)}: ${e.localizedMessage}"
+                            errors.add(rootFailure = true) {
+                                val reason = if (e is SecurityException) getString(
+                                    if (root.source == LibrarySource.SINGLE_FILE) R.string.import_file_unavailable else R.string.import_folder_permission)
+                                else e.localizedMessage.orEmpty()
+                                "${PlatformRegistry.title(this@MainActivity, root.platform)}: $reason"
+                            }
                             null
                         }
                         libraryRootSnapshot(root.uri, scanned, previous, root.platform)
                     }.let(::mergeImportedVariants)
                     currentCoroutineContext().ensureActive()
                     LibraryImport.write(this@MainActivity, found)
-                    found to errors
+                    val (visibleErrors, omittedErrors) = errors.snapshot()
+                    val noticeErrors = if (omittedErrors > 0) visibleErrors + getString(R.string.import_warnings_more, omittedErrors) else visibleErrors
+                    Triple(found, noticeErrors, catalog)
                 }
                 library = result.first
+                bundled = result.third
+                if (recoveryRequired) legacyRecoveryPending = false
                 if (importHintRoot == hintRoot) importHintRoot = null
                 if (result.second.isNotEmpty()) notice = result.second.joinToString("; ")
+                else if (recoveryRequired) notice = getString(R.string.legacy_recovery_done)
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: LegacyRecoveryNotice) { notice = getString(e.messageId) }
             catch (e: Exception) { notice = getString(R.string.refresh_error, e.localizedMessage.orEmpty()) }
             finally {
                 scanning = false
@@ -436,9 +559,16 @@ class MainActivity : ComponentActivity() {
         @Suppress("DEPRECATION")
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
         bundled = loadGames()
-        LibraryImport.migrateGrantedCatalogRoots(this, bundled)
-        val rootKeys = LibraryImport.roots(this).map { it.uri to it.platform }.toSet()
-        library = LibraryImport.read(this).filter { (it.tree to it.platform) in rootKeys }
+        try { legacyRecoveryPending = LegacyRecoveryState.initialize(this, bundled) }
+        catch (_: Exception) { legacyRecoveryStateError = true; legacyRecoveryPending = true; notice = getString(R.string.legacy_recovery_state_error) }
+        val rootKeys = try {
+            if (!legacyRecoveryPending) LibraryImport.migrateGrantedCatalogRoots(this, bundled)
+            LibraryImport.roots(this).map { it.uri to it.platform }.toSet()
+        } catch (e: Exception) { notice = e.localizedMessage.orEmpty(); null }
+        library = try { LibraryImport.read(this).let { saved ->
+            if (rootKeys == null) saved else saved.filter { (it.tree to it.platform) in rootKeys }
+        } }
+        catch (e: Exception) { notice = e.localizedMessage.orEmpty(); emptyList() }
         ArtSchedule.install(this)
         setContent { MaterialTheme(colorScheme = darkColorScheme(primary = Lime, surface = Ink, onSurface = White)) { ControllerProvider { Orbit(this, library.filterNot { it.demo }) } } }
     }
@@ -451,7 +581,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun loadGames(): List<Game> {
-        return LibraryImport.decode(assets.open("catalog.json").bufferedReader().use { it.readText() })
+        return LegacyCatalogBridge.load(this)
     }
 
     fun launchGame(game: Game, variant: Int = 0) {
@@ -468,7 +598,9 @@ class MainActivity : ComponentActivity() {
                 if (!granted) {
                     pending = game to variant
                     notice = getString(R.string.grant_folder, game.tree.removePrefix("primary:"))
-                    picker.launch(DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree)))
+                    if (!launchDocumentPicker(Intent.ACTION_OPEN_DOCUMENT_TREE) {
+                        picker.launch(DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree)))
+                    }) pending = null
                     return
                 }
                 val documentId = "primary:" + raw.removePrefix("/storage/emulated/0/")
@@ -851,7 +983,7 @@ class MainActivity : ComponentActivity() {
                 }
                 Row(Modifier.fillMaxWidth().padding(horizontal = 36.dp, vertical = 8.dp)) {
                     ControlHints(R.string.control_select, R.string.back, showHomeNavigation = tab == "home", showHoldMenu = true)
-                    Spacer(Modifier.weight(1f)); Text("GOSTEX / SHIELD", color = Lime, fontSize = 10.sp, fontFamily = FontFamily.Monospace, letterSpacing = 1.sp)
+                    Spacer(Modifier.weight(1f)); Text("GOSTEX", color = Lime, fontSize = 10.sp, fontFamily = FontFamily.Monospace, letterSpacing = 1.sp)
                 }
             }
             LaunchedEffect(tab, platform, homeOptions.order, searchQuery, searchOpen, filtered.isEmpty()) {
@@ -1013,12 +1145,7 @@ class MainActivity : ComponentActivity() {
             border = ClickableSurfaceDefaults.border(border = Border(BorderStroke(1.dp, Color(0xFF424244))), focusedBorder = Border(BorderStroke(2.dp, Lime)))
         ) {
             Box(Modifier.fillMaxSize()) {
-                CoverArtwork(game.cover.ifEmpty { game.scene }, Modifier.fillMaxSize(), game.id)
-                if (game.cover.isEmpty() && game.scene.isEmpty() && LocalManagedCovers.current[game.id]?.let { it.manual.isNotEmpty() || it.original.isNotEmpty() || it.wide.isNotEmpty() } != true) {
-                    Box(Modifier.fillMaxSize().background(Panel), contentAlignment = Alignment.Center) {
-                        Text(game.title, Modifier.padding(12.dp), color = White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
+                CoverArtwork(game.cover.ifEmpty { game.scene }, Modifier.fillMaxSize(), game.id, fallbackTitle = game.title)
                 Text(platformTitle(game.platform), Modifier.align(Alignment.BottomStart).padding(6.dp)
                     .background(Ink.copy(alpha = .88f)).padding(horizontal = 5.dp, vertical = 3.dp),
                     color = Lime, fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -1103,7 +1230,7 @@ private fun settingsTitle(section: String): Int = when {
         val info = activity.packageManager.getPackageInfo(activity.packageName, 0)
         info.versionName.orEmpty()
     }
-    var remoteAuto by remember { mutableStateOf(prefs.readBooleanOrDefault("remoteAutostart", true)) }
+    var remoteAuto by remember { mutableStateOf(RemoteStartup.enabled(activity)) }
     val languageCode = LocalConfiguration.current.locales[0].language
     val language = when (languageCode) {
         "ru" -> "Русский"
@@ -1114,7 +1241,8 @@ private fun settingsTitle(section: String): Int = when {
     val rows = when (section) {
         "root" -> listOf("homeOptions", "appearanceGroup", "mediaGroup", "controller", "localeGroup", "systemGroup", "updates")
         "appearanceGroup" -> listOf("appearance", "art", "grafana")
-        "mediaGroup" -> listOf("addGames", "folders", "covers", "nowPlaying", "ndsEmulator", "libraryTab", "appsTab")
+        "mediaGroup" -> (if (activity.legacyRecoveryPending) listOf("legacyRecovery") else emptyList()) +
+            listOf("addGames", "folders", "covers", "nowPlaying", "ndsEmulator", "libraryTab", "appsTab")
         "localeGroup" -> listOf("language", "clock")
         "systemGroup" -> listOf("networkStatus", "network", "shield", "remote")
         else -> emptyList()
@@ -1156,6 +1284,8 @@ private fun settingsTitle(section: String): Int = when {
                 SettingRow(tr(R.string.art_title), modifier = rowFocus("art"), onClick = { onSection("art") })
                 SettingRow(tr(R.string.grafana_settings_title), modifier = rowFocus("grafana"), onClick = { onSection("grafana") })
             } else if (section == "mediaGroup") {
+                if (activity.legacyRecoveryPending) SettingRow(tr(R.string.legacy_recovery_title), tr(R.string.legacy_recovery_summary),
+                    rowFocus("legacyRecovery"), onClick = { activity.retryLegacyRecovery() })
                 SettingRow(tr(R.string.add_games), modifier = rowFocus("addGames"), onClick = { activity.chooseFolder("all") })
                 SettingRow(tr(R.string.folders), modifier = rowFocus("folders"), onClick = { activity.manageFolders() })
                 SettingRow(tr(R.string.covers_title), tr(R.string.covers_summary), rowFocus("covers"), onClick = { onSection("covers") })

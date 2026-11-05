@@ -47,6 +47,22 @@ internal fun libraryFileKey(file: String): String = runCatching {
     } else file
 }.getOrDefault(file)
 
+/** Reuse a persisted card only for the same granted source and exact document.
+ * A previously scanned card owns its stable ID and metadata even if the bundled
+ * catalog changes. Ambiguous snapshots abort the scan instead of guessing. */
+internal fun previousImportIndex(previous: List<Game>, root: String, platform: String): Map<String, Game> {
+    val rootKey = libraryRootKey(root)
+    val candidates = mutableMapOf<String, MutableList<Game>>()
+    previous.asSequence().filter { it.platform == platform && libraryRootKey(it.tree) == rootKey }.forEach { game ->
+        game.files.forEach { file -> candidates.getOrPut(libraryFileKey(file)) { mutableListOf() }.add(game) }
+    }
+    return candidates.mapValues { (_, games) ->
+        val unique = games.distinct()
+        check(unique.size == 1) { "Ambiguous persisted game identity" }
+        unique.single()
+    }
+}
+
 /** Merge variants only within one grant. Overlapping grants for the same document can
  * share a card; legacy cross-root entries with distinct files must retain separate cards. */
 internal fun mergeImportedVariants(games: List<Game>): List<Game> {

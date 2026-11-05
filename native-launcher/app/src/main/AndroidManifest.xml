@@ -11,6 +11,9 @@
         <package android:name="com.termux" />
         <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LEANBACK_LAUNCHER" /></intent>
         <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent>
+        <intent><action android:name="android.intent.action.OPEN_DOCUMENT_TREE" /></intent>
+        <intent><action android:name="android.intent.action.OPEN_DOCUMENT" /><category android:name="android.intent.category.OPENABLE" /><data android:mimeType="*/*" /></intent>
+        <intent><action android:name="android.intent.action.CREATE_DOCUMENT" /><category android:name="android.intent.category.OPENABLE" /><data android:mimeType="*/*" /></intent>
     </queries>
     <application android:label="GOSTEX" android:icon="@drawable/orbit_icon" android:banner="@drawable/orbit_banner" android:theme="@android:style/Theme.Material.NoActionBar" android:allowBackup="false" android:supportsRtl="true" android:usesCleartextTraffic="true">
         <service android:name=".MediaNotificationListenerService" android:exported="true" android:label="@string/media_listener_label" android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">

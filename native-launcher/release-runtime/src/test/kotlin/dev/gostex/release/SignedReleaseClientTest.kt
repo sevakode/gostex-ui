@@ -85,6 +85,23 @@ class SignedReleaseClientTest {
     }
 
     @Test
+    fun `transfer policy change aborts download and preserves previous destination`() = server { host ->
+        val release = host.publish(ByteArray(1_048_576) { (it % 251).toByte() })
+        temporaryDirectory { directory ->
+            val destination = File(directory, "application.bin")
+            val previous = "previous release".toByteArray()
+            destination.writeBytes(previous)
+            var checks = 0
+            val guarded = SignedReleaseClient(keys.public, allowLocalHttpForTests = true,
+                transferCheckpoint = { if (++checks >= 5) throw IOException("network became metered") })
+            assertFailsWith<IOException> { guarded.download(release, destination) }
+            assertTrue(checks >= 5)
+            assertContentEquals(previous, destination.readBytes())
+            assertEquals(listOf(destination.name), directory.listFiles()!!.map { it.name })
+        }
+    }
+
+    @Test
     fun `redirects support relative locations and query strings but are bounded`() = server { host ->
         val release = host.publish("artifact".toByteArray())
         host.redirect("/redirect", "/feed.properties?temporary=token")

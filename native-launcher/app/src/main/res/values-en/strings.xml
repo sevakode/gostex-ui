@@ -37,7 +37,7 @@
     <string name="movies_heading">02 / VIDEO</string>
     <string name="apps_heading">03 / APPS</string>
     <string name="movies_hint">Your video apps, streaming services and media players.</string>
-    <string name="apps_hint">Everything installed on your SHIELD</string>
+    <string name="apps_hint">Everything installed on this device</string>
     <string name="shield_settings">Shield settings</string>
     <string name="remote_on">Remote: auto-start on</string>
     <string name="remote_off">Remote: auto-start off</string>
@@ -50,7 +50,7 @@
     <string name="empty_games">No games yet. Select “＋ Games” and choose a folder on your drive.</string>
     <string name="app_controls">A / OK  Open app       B / Back  Home</string>
     <string name="game_controls">A / OK  Open game       B / Back  Return</string>
-    <string name="play_on_shield">PLAY ON SHIELD</string>
+    <string name="play_on_shield">PLAY ON TV</string>
     <string name="open_game">Open game  →</string>
     <string name="too_deep">Too many nested folders</string>
     <string name="folder_unavailable">Folder unavailable</string>

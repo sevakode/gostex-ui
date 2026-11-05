@@ -8,6 +8,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -16,6 +17,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.tv.material3.Text
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -133,7 +138,7 @@ private data class CoverRenderResult(
 }
 
 /** Wide cards may use authored extensions; portrait views always preserve the original scan. */
-@Composable internal fun CoverArtwork(path: String, modifier: Modifier = Modifier, gameId: String? = null) {
+@Composable internal fun CoverArtwork(path: String, modifier: Modifier = Modifier, gameId: String? = null, fallbackTitle: String = "") {
     val choice = LocalManagedCoverOptions.current.choices[gameId] ?: CoverChoice.AUTO
     val selected = selectManagedCover(path, LocalManagedCovers.current[gameId], choice)
     val style = LocalCoverStyle.current
@@ -149,6 +154,10 @@ private data class CoverRenderResult(
         entry?.bitmap?.let { bitmap ->
             Image(bitmap.asImageBitmap(), null, Modifier.fillMaxSize(),
                 contentScale = if (style == CoverStyle.CROP || resolved.generated) ContentScale.Crop else ContentScale.Fit)
+        }
+        if (entry == null && fallbackTitle.isNotBlank() &&
+            (resolved != null || (selected.original.isEmpty() && selected.wide.isEmpty()))) {
+            Text(fallbackTitle, Modifier.padding(12.dp), color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
         }
     }
 }

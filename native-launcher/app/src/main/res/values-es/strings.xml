@@ -37,7 +37,7 @@
     <string name="movies_heading">02 / VÍDEO</string>
     <string name="apps_heading">03 / APPS</string>
     <string name="movies_hint">Tus apps de vídeo, servicios de streaming y reproductores.</string>
-    <string name="apps_hint">Todo lo instalado en tu SHIELD</string>
+    <string name="apps_hint">Todo lo instalado en este dispositivo</string>
     <string name="shield_settings">Ajustes de Shield</string>
     <string name="remote_on">Remote: inicio automático sí</string>
     <string name="remote_off">Remote: inicio automático no</string>
@@ -50,7 +50,7 @@
     <string name="empty_games">Aún no hay juegos. Pulsa «＋ Juegos» y elige una carpeta de la unidad.</string>
     <string name="app_controls">A / OK  Abrir app       B / Atrás  Inicio</string>
     <string name="game_controls">A / OK  Abrir juego       B / Atrás  Volver</string>
-    <string name="play_on_shield">JUGAR EN SHIELD</string>
+    <string name="play_on_shield">JUGAR EN TV</string>
     <string name="open_game">Abrir juego  →</string>
     <string name="too_deep">Demasiadas carpetas anidadas</string>
     <string name="folder_unavailable">Carpeta no disponible</string>

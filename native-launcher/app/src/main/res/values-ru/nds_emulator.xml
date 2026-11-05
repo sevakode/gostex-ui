@@ -4,6 +4,6 @@
     <string name="nds_emulator_standalone">melonDS · отдельное приложение</string>
     <string name="nds_emulator_retroarch">RetroArch · melonDS DS</string>
     <string name="nds_emulator_hint">Выбери эмулятор для запуска игр Nintendo DS. Каждый эмулятор использует свои сохранения.</string>
-    <string name="nds_retroarch_hint">Установи ядро melonDS DS в RetroArch. Игры должны лежать в доступной RetroArch папке на SHIELD или подключённом накопителе.</string>
-    <string name="nds_retroarch_location_error">RetroArch не может открыть игру из этого расположения напрямую. Выбери папку на SHIELD или подключённом накопителе и разреши RetroArch читать её.</string>
+    <string name="nds_retroarch_hint">Установи ядро melonDS DS в RetroArch. Игры должны лежать в доступной RetroArch папке на устройстве или подключённом накопителе.</string>
+    <string name="nds_retroarch_location_error">RetroArch не может открыть игру из этого расположения напрямую. Выбери папку на устройстве или подключённом накопителе и разреши RetroArch читать её.</string>
 </resources>

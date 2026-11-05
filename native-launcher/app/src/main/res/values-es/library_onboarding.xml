@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="library_empty_title">Tus juegos empiezan aquí</string>
-    <string name="library_import_steps">1. Guarda un juego en SHIELD o en tu unidad.\n2. Selecciona «%1$s», elige la consola y después un juego o una carpeta.\n3. Abre la ficha del juego para iniciarlo en su emulador.</string>
+    <string name="library_import_steps">1. Guarda un juego en este dispositivo o en una unidad conectada.\n2. Selecciona «%1$s», elige la consola y después un juego o una carpeta.\n3. Abre la ficha del juego para iniciarlo en su emulador.</string>
     <string name="library_optional_hint">¿No necesitas juegos? Inicio sigue mostrando tus apps. Oculta la pestaña Biblioteca en Ajustes → Multimedia y biblioteca.</string>
     <string name="library_tab_visibility">Pestaña Biblioteca</string>
     <string name="library_tab_hint">Muestra u oculta la pestaña Biblioteca. Puedes añadir juegos desde aquí; las filas de Inicio se gestionan en Secciones de Inicio.</string>

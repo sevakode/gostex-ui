@@ -9,6 +9,6 @@
     <string name="settings_locale_group">Idioma y relojes</string>
     <string name="settings_locale_summary">Idioma, hora y zonas horarias</string>
     <string name="settings_system_group">Sistema</string>
-    <string name="settings_system_summary">Ajustes de SHIELD y acceso remoto</string>
+    <string name="settings_system_summary">Ajustes del dispositivo y acceso remoto</string>
     <string name="settings_cards_title">Tarjetas</string>
 </resources>

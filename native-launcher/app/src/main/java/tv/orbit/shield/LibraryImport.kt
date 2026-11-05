@@ -11,6 +11,8 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 
 internal object LibraryImport {
+    private val archiveFailures = ArchiveFailureCache<Triple<String, String, String>>()
+    private val archiveSuccesses = ArchiveSuccessCache<Triple<String, String, String>>()
     data class Root(val platform: String, val uri: String, val source: LibrarySource = LibrarySource.FILES)
     private fun writeRoots(context: Context, roots: List<Root>) {
         val encoded = JSONArray()
@@ -35,13 +37,20 @@ internal object LibraryImport {
         writeRoots(context, existing)
         preferences.edit().putBoolean("library.catalogRootsMigrated", true).apply()
     }
-    fun roots(context: Context): List<Root> = runCatching {
-        val a = JSONArray(context.getSharedPreferences("orbit", 0).getString("libraryRoots", "[]"))
+    fun roots(context: Context): List<Root> = try {
+        val preferences = context.getSharedPreferences("orbit", 0)
+        val encoded = if (preferences.contains("libraryRoots")) preferences.getString("libraryRoots", null)
+            ?: error("Missing library roots") else "[]"
+        val a = JSONArray(encoded)
         (0 until a.length()).map { a.getJSONObject(it).let { o ->
-            val platform = o.getString("platform")
-            Root(platform, o.getString("uri"), LibrarySource.read(o.optString("source"), platform))
+            val platform = (o.get("platform") as? String)?.takeIf { it.isNotBlank() } ?: error("Invalid platform")
+            val uri = (o.get("uri") as? String)?.takeIf { it.isNotBlank() } ?: error("Invalid URI")
+            Root(platform, uri, LibrarySource.read(o.optString("source"), platform))
         } }
-    }.getOrDefault(emptyList())
+    } catch (e: Exception) {
+        // An empty fallback would overwrite both source preferences and the saved snapshot.
+        throw IllegalStateException(context.getString(R.string.library_roots_unavailable), e)
+    }
     fun addRoot(context: Context, root: Root) {
         require(PlatformRegistry.find(root.platform) != null) { context.getString(R.string.platform_unknown) }
         val list = roots(context).filter { it.uri != root.uri || it.platform != root.platform } + root
@@ -50,19 +59,32 @@ internal object LibraryImport {
     fun removeRoot(context: Context, root: Root) {
         writeRoots(context, roots(context).filter { it != root })
     }
-    fun read(context: Context): List<Game> = runCatching {
+    fun read(context: Context): List<Game> {
         val file = java.io.File(context.filesDir, "imported-games.json")
-        if (!file.exists()) emptyList() else decode(file.readText())
-    }.getOrDefault(emptyList())
+        val backup = java.io.File(context.filesDir, "imported-games.json.bak")
+        if (!file.exists() && !backup.exists()) return emptyList()
+        return try {
+            decode(android.util.AtomicFile(file).openRead().bufferedReader(Charsets.UTF_8).use { it.readText() })
+        } catch (e: Exception) {
+            // Treating an unreadable snapshot as empty would let the next scan erase it.
+            throw IllegalStateException(context.getString(R.string.library_snapshot_unavailable), e)
+        }
+    }
     fun write(context: Context, games: List<Game>): Boolean {
         val a = JSONArray()
         games.forEach { g -> a.put(JSONObject().put("id",g.id).put("title",g.title).put("platform",g.platform).put("emulator",g.emulator).put("component",g.component).put("files",JSONArray(g.files)).put("tree",g.tree).put("cover",g.cover).put("scene",g.scene).put("genre",g.genre).put("year",g.year).put("developer",g.developer).put("players",g.players).put("demo",g.demo).put("description",g.description)) }
         val target = java.io.File(context.filesDir, "imported-games.json")
         val serialized = a.toString()
         if (target.exists() && target.readText() == serialized) return false
-        val temp = java.io.File(context.filesDir,"imported-games.tmp")
-        temp.writeText(serialized)
-        check(temp.renameTo(target))
+        val atomic = android.util.AtomicFile(target)
+        val output = atomic.startWrite()
+        try {
+            output.write(serialized.toByteArray(Charsets.UTF_8))
+            atomic.finishWrite(output)
+        } catch (e: Exception) {
+            atomic.failWrite(output)
+            throw e
+        }
         return true
     }
     fun decode(text: String): List<Game> {
@@ -86,6 +108,11 @@ internal object LibraryImport {
         var ciaPackages = 0
         val directories = mutableSetOf<String>()
         val known = catalogFiles(bundled, root.platform)
+        val previous = read(context)
+        val previousByFile = previousIndex(context, previous, root)
+        val previousFiles = previous.filter { it.platform == root.platform }
+            .flatMap { it.files }.map(::libraryFileKey).toSet()
+        var unverifiedArchives = 0
         fun walk(id: String, parent: String, depth: Int) {
             scanContext.ensureActive()
             check(depth <= 16) { context.getString(R.string.too_deep) }
@@ -159,8 +186,23 @@ internal object LibraryImport {
             val child = file.id
             val name = file.path.substringAfterLast('/')
             val raw = if (tree.authority == "com.android.externalstorage.documents" && child.startsWith("primary:")) "/storage/emulated/0/" + child.removePrefix("primary:") else Docs.buildDocumentUriUsingTree(tree, child).toString()
-            gameForFile(context, root, bundled, known, child, name, Docs.buildDocumentUriUsingTree(tree, child), raw, installed)
+            val documentUri = Docs.buildDocumentUriUsingTree(tree, child)
+            if (!admitArchiveCandidate(name, libraryFileKey(raw) in previousFiles)) {
+                val key = Triple(root.platform, root.uri, child)
+                val nowMs = System.nanoTime() / 1_000_000
+                val skipped = archiveFailures.skip(key, nowMs)
+                val verified = name.endsWith(".zip", ignoreCase = true) && platform.accepts(name) &&
+                    !skipped && verifyZip(context, documentUri, platform, scanContext, key)
+                if (!verified) {
+                    if (!skipped && name.endsWith(".zip", ignoreCase = true)) archiveFailures.record(key, System.nanoTime() / 1_000_000)
+                    unverifiedArchives++
+                    return@mapNotNull null
+                }
+                archiveFailures.remove(key)
+            }
+            gameForFile(context, root, bundled, known, previousByFile, child, name, documentUri, raw, installed)
         }
+        if (showHints && unverifiedArchives > 0) onWarning(context.getString(R.string.import_archive_extract_hint))
         scanContext.ensureActive()
         if (showHints && threeDs && result.isEmpty() && ciaPackages == 0) onWarning(context.getString(if (installed) R.string.three_ds_installed_empty else R.string.three_ds_roms_empty))
         return mergeImportedVariants(result).sortedBy { it.title.lowercase(Locale.ROOT) }
@@ -171,6 +213,7 @@ internal object LibraryImport {
         val scanContext = currentCoroutineContext()
         scanContext.ensureActive()
         val platform = PlatformRegistry.find(root.platform) ?: error(context.getString(R.string.platform_unknown))
+        val previous = read(context)
         val uri = Uri.parse(root.uri)
         val cursor = context.contentResolver.query(uri, arrayOf(Docs.Document.COLUMN_DOCUMENT_ID, Docs.Document.COLUMN_DISPLAY_NAME, Docs.Document.COLUMN_MIME_TYPE), null, null, null)
             ?: error(context.getString(R.string.import_file_unavailable))
@@ -184,6 +227,14 @@ internal object LibraryImport {
         require(!id.isNullOrBlank() && !name.isNullOrBlank() && mime != Docs.Document.MIME_TYPE_DIR) { context.getString(R.string.import_file_unavailable) }
         require(name !in setOf(".", "..") && '/' !in name && '\\' !in name) { context.getString(R.string.import_file_unavailable) }
         require(!(root.platform == "Nintendo 3DS" && name.endsWith(".cia", ignoreCase = true))) { context.getString(R.string.import_file_cia_hint) }
+        val alreadyImported = previous.any { game ->
+            game.platform == root.platform && game.files.any { libraryFileKey(it) == libraryFileKey(uri.toString()) }
+        }
+        if (!admitArchiveCandidate(name, alreadyImported)) {
+            val verified = name.endsWith(".zip", ignoreCase = true) && platform.accepts(name) &&
+                verifyZip(context, uri, platform, scanContext, Triple(root.platform, root.uri, id))
+            require(verified) { context.getString(R.string.import_archive_extract_hint) }
+        }
         val extension = name.substringAfterLast('.', "").lowercase(Locale.ROOT)
         require(extension !in setOf("cue", "m3u", "gdi")) { context.getString(R.string.import_file_companions_hint) }
         require(platform.accepts(name)) { context.getString(R.string.import_file_wrong_type, name, PlatformRegistry.title(context, root.platform)) }
@@ -192,21 +243,57 @@ internal object LibraryImport {
         val readable = context.contentResolver.openFileDescriptor(uri, "r")
             ?: error(context.getString(R.string.import_file_unavailable))
         readable.use { scanContext.ensureActive() }
-        val game = gameForFile(context, root, bundled, catalogFiles(bundled, root.platform), id, name, uri, uri.toString(), false)
+        val game = gameForFile(context, root, bundled, catalogFiles(bundled, root.platform), previousIndex(context, previous, root), id, name, uri, uri.toString(), false)
             ?: error(context.getString(R.string.import_file_not_game))
         scanContext.ensureActive()
         return listOf(game)
     }
 
+    private fun archiveStamp(context: Context, uri: Uri, scanContext: kotlin.coroutines.CoroutineContext): ArchiveFileStamp? = try {
+        scanContext.ensureActive()
+        context.contentResolver.query(uri, arrayOf(Docs.Document.COLUMN_SIZE, Docs.Document.COLUMN_LAST_MODIFIED), null, null, null)?.use { cursor ->
+            if (!cursor.moveToFirst() || cursor.isNull(0) || cursor.isNull(1)) null else {
+                val size = cursor.getLong(0); val modified = cursor.getLong(1)
+                if (size > 0 && modified > 0) ArchiveFileStamp(size, modified) else null
+            }
+        }
+    } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+    catch (_: Exception) { null }
+
+    private fun verifyZip(context: Context, uri: Uri, platform: PlatformSpec, scanContext: kotlin.coroutines.CoroutineContext,
+                          key: Triple<String, String, String>): Boolean { return try {
+        val before = archiveStamp(context, uri, scanContext)
+        scanContext.ensureActive()
+        if (archiveSuccesses.reuse(key, before, System.nanoTime() / 1_000_000)) return true
+        val verified = context.contentResolver.openFileDescriptor(uri, "r")?.use { descriptor ->
+            verifySelectedZip(java.io.File("/proc/self/fd/${descriptor.fd}"),
+                platform.extensions - setOf("zip", "7z", "rar")) { scanContext.ensureActive() }
+        } ?: false
+        if (!verified) return false
+        val after = archiveStamp(context, uri, scanContext)
+        scanContext.ensureActive()
+        if (before != null && after != null && before != after) return false
+        archiveSuccesses.remember(key, before, after, System.nanoTime() / 1_000_000)
+        true
+    } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+    catch (_: Exception) { false } }
+
     private fun catalogFiles(bundled: List<Game>, platform: String): Map<String, Game> =
         bundled.filter { it.platform == platform }.flatMap { game -> game.files.map { libraryFileKey(it) to game } }.toMap()
 
-    private suspend fun gameForFile(context: Context, root: Root, bundled: List<Game>, known: Map<String, Game>, documentId: String, name: String, uri: Uri, raw: String, installed: Boolean): Game? {
+    private fun previousIndex(context: Context, previous: List<Game>, root: Root): Map<String, Game> =
+        try { previousImportIndex(previous, root.uri, root.platform) }
+        catch (e: IllegalStateException) { throw IllegalStateException(context.getString(R.string.folder_unavailable), e) }
+
+    private suspend fun gameForFile(context: Context, root: Root, bundled: List<Game>, known: Map<String, Game>, previous: Map<String, Game>, documentId: String, name: String, uri: Uri, raw: String, installed: Boolean): Game? {
         val platform = PlatformRegistry.find(root.platform) ?: error(context.getString(R.string.platform_unknown))
         val threeDs = root.platform == "Nintendo 3DS"
         val metadata = if (threeDs) readThreeDsMetadata(context, uri, installed || name.endsWith(".app", ignoreCase = true)) else null
         // Installed numeric data-only contents must never become launch cards.
         if (threeDs && name.endsWith(".app", ignoreCase = true) && metadata == null) return null
+        // The installed snapshot is authoritative for this source's existing cards.
+        // Do not invent missing files: each variant must still be observed in this scan.
+        previous[libraryFileKey(raw)]?.let { return it.copy(files = listOf(raw), tree = root.uri) }
         // Preserve the catalog identity and user cover/preferences when the same ROM is
         // selected as a document. Existing folder identities are unchanged.
         known[libraryFileKey(raw)]?.let { return if (root.source == LibrarySource.SINGLE_FILE) it.copy(files = listOf(raw), tree = root.uri)

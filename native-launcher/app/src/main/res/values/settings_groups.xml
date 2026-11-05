@@ -9,6 +9,6 @@
     <string name="settings_locale_group">Language &amp; clocks</string>
     <string name="settings_locale_summary">Language, time and time zones</string>
     <string name="settings_system_group">System</string>
-    <string name="settings_system_summary">SHIELD settings and remote access</string>
+    <string name="settings_system_summary">Device settings and remote access</string>
     <string name="settings_cards_title">Cards</string>
 </resources>

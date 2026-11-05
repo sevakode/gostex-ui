@@ -42,7 +42,8 @@ object ReleaseTrust {
 /** Blocking adapter: Android/Desktop callers own their IO dispatcher and lifecycle. */
 class SignedReleaseClient(
     private val publicKey: PublicKey = ReleaseTrust.publicKey(),
-    private val allowLocalHttpForTests: Boolean = false
+    private val allowLocalHttpForTests: Boolean = false,
+    private val transferCheckpoint: () -> Unit = {}
 ) {
     fun check(feedUrl: String, platform: String, currentCode: Long): Release? {
         require(currentCode >= 0) { "Invalid current version code" }
@@ -97,14 +98,19 @@ class SignedReleaseClient(
                 connection.inputStream.use { input ->
                     FileOutputStream(temporary).use { output ->
                         val buffer = ByteArray(16_384)
+                        var sinceCheckpoint = 0
                         while (true) {
                             checkInterrupted()
+                            if (sinceCheckpoint == 0) transferCheckpoint()
                             val count = input.read(buffer)
+                            // Check immediately after a blocking read as the active network may have changed.
+                            if (sinceCheckpoint == 0) transferCheckpoint()
                             if (count < 0) break
                             total += count
                             if (total > release.size || total > MAX_ARTIFACT_BYTES) throw IOException("Artifact exceeds the signed size")
                             output.write(buffer, 0, count)
                             digest.update(buffer, 0, count)
+                            sinceCheckpoint = if (sinceCheckpoint + count >= 262_144) 0 else sinceCheckpoint + count
                         }
                         output.fd.sync()
                     }
@@ -148,6 +154,7 @@ class SignedReleaseClient(
         var redirects = 0
         while (true) {
             checkInterrupted()
+            transferCheckpoint()
             val connection = validatedUrl(current.toExternalForm()).openConnection() as HttpURLConnection
             connection.instanceFollowRedirects = false
             connection.connectTimeout = 15_000
@@ -179,7 +186,7 @@ class SignedReleaseClient(
         val connection = open(url)
         return try {
             if (connection.getHeaderFieldLong("Content-Length", -1L) > limit) throw IOException("Release response is too large")
-            connection.inputStream.use { readBounded(it, limit) }
+            connection.inputStream.use { readBounded(it, limit, transferCheckpoint) }
         } finally {
             connection.disconnect()
         }
@@ -221,12 +228,14 @@ private fun checkInterrupted() {
     if (Thread.currentThread().isInterrupted) throw java.io.InterruptedIOException("Release operation interrupted")
 }
 
-private fun readBounded(input: InputStream, limit: Int): ByteArray {
+private fun readBounded(input: InputStream, limit: Int, checkpoint: () -> Unit = {}): ByteArray {
     val output = ByteArrayOutputStream()
     val buffer = ByteArray(8192)
     while (true) {
         checkInterrupted()
+        checkpoint()
         val count = input.read(buffer)
+        checkpoint()
         if (count < 0) return output.toByteArray()
         if (output.size() + count > limit) throw IOException("Release response exceeds the size limit")
         output.write(buffer, 0, count)

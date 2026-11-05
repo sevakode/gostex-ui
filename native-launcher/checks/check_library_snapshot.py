@@ -8,11 +8,9 @@ import json
 from pathlib import Path
 import subprocess
 import tempfile
+from kotlin_toolchain import ROOT, JAVA, COMPILER
 
-ROOT = Path(__file__).resolve().parents[2]
 SOURCES = ROOT / "native-launcher/app/src/main/java/tv/orbit/shield"
-CACHE = ROOT / ".tools/native/gradle-cache/caches/modules-2/files-2.1"
-JAVA = ROOT / ".tools/native/jdk/jdk-21.0.13+9/Contents/Home/bin/java"
 main = (SOURCES / "MainActivity.kt").read_text()
 model = main[main.index("data class Game("):main.index("class MainActivity")]
 snapshot = (SOURCES / "LibrarySnapshot.kt").read_text().removeprefix("package tv.orbit.shield\n")
@@ -78,6 +76,29 @@ fun main() {
     val parentRoot = "content://com.android.externalstorage.documents/tree/primary%3AGames"
     val canonical = catalogImportEntry(legacy, "translation.sfc", canonicalRoot)
     val secondary = catalogImportEntry(legacy, "original.sfc", parentRoot)
+    val oldRaw = "/storage/emulated/0/Games/SNES/A+B.sfc"
+    val oldDocument = "content://com.android.externalstorage.documents/document/primary%3AGames%2FSNES%2FA%2BB.sfc"
+    val retained = legacy.copy(tree = canonicalRoot, files = listOf(oldRaw), description = "kept description")
+    val retainedIndex = previousImportIndex(listOf(retained), canonicalRoot, "SNES")
+    verify("A previous card retains its ID and metadata when its file is observed without a bundled catalog",
+        retainedIndex[libraryFileKey(oldDocument)] == retained && retainedIndex[libraryFileKey(oldDocument)]?.description == "kept description")
+    verify("Equivalent encoded roots resolve the same persisted identity",
+        previousImportIndex(listOf(retained), canonicalRoot.replace("%3A", "%3a"), "SNES")[libraryFileKey(oldRaw)] == retained)
+    verify("Other sources or platforms never inherit a persisted card",
+        previousImportIndex(listOf(retained), parentRoot, "SNES").isEmpty() && previousImportIndex(listOf(retained), canonicalRoot, "NES").isEmpty())
+    verify("A conflicting previous identity aborts the scan instead of replacing stored cards",
+        runCatching { previousImportIndex(listOf(retained, retained.copy(id = "other-id")), canonicalRoot, "SNES") }.isFailure)
+    val retainedVariants = retained.copy(files = listOf(oldRaw, "other.sfc"))
+    val variantIndex = previousImportIndex(listOf(retainedVariants), canonicalRoot, "SNES")
+    verify("Every existing variant resolves to its own preserved card",
+        variantIndex[libraryFileKey(oldRaw)] == retainedVariants && variantIndex[libraryFileKey("other.sfc")] == retainedVariants)
+    val rescannedVariants = listOf(oldRaw, "other.sfc").map { path ->
+        variantIndex.getValue(libraryFileKey(path)).copy(files = listOf(path), tree = canonicalRoot)
+    }
+    verify("Rescanning multiple variants keeps the original single card, identity and metadata",
+        mergeImportedVariants(rescannedVariants) == listOf(retainedVariants))
+    verify("A missing variant is not restored from the previous snapshot during a successful scan",
+        mergeImportedVariants(rescannedVariants.take(1)) == listOf(retained.copy(files = listOf(oldRaw))))
     verify("Original catalog roots retain favorite/history identity", canonical.id == legacy.id && canonical.tree == canonicalRoot)
     verify("Other grants get stable identities before merging", secondary.id != canonical.id && secondary.tree == parentRoot && secondary.files == listOf("original.sfc"))
     verify("Removing or reordering roots never renames imported known variants",
@@ -131,12 +152,7 @@ fun main() {
 }
 '''
 
-def jar(group, artifact, version):
-    return next((CACHE / group / artifact / version).glob("*/*.jar"))
-
-compiler = [jar("org.jetbrains.kotlin", "kotlin-compiler-embeddable", "2.4.21"), jar("org.jetbrains.kotlin", "kotlin-stdlib", "2.4.21"),
-            jar("org.jetbrains.kotlin", "kotlin-script-runtime", "2.4.21"), jar("org.jetbrains.kotlin", "kotlin-reflect", "1.6.10"),
-            jar("org.jetbrains.kotlinx", "kotlinx-coroutines-core-jvm", "1.9.0"), jar("org.jetbrains", "annotations", "13.0")]
+compiler = COMPILER
 report = {"timestamp": datetime.now(timezone.utc).isoformat(), "scope": __doc__, "sourceSha256": hashlib.sha256((model + snapshot + preferences).encode()).hexdigest()}
 with tempfile.TemporaryDirectory(prefix="gostex-library-snapshot-") as folder:
     folder = Path(folder)
@@ -151,7 +167,7 @@ with tempfile.TemporaryDirectory(prefix="gostex-library-snapshot-") as folder:
         run = subprocess.run([str(JAVA), "-cp", str(folder / "classes") + ":" + str(compiler[1]), "tv.orbit.shield.ChecksKt"], capture_output=True, text=True)
         report["run"] = {"code": run.returncode, "stdout": run.stdout, "stderr": run.stderr}
         report["passed"] = run.returncode == 0
-out = ROOT / ".reports/library24"; out.mkdir(exist_ok=True)
+out = ROOT / ".reports/library24"; out.mkdir(parents=True, exist_ok=True)
 (out / "snapshot-checks.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
 print(json.dumps({"passed": report["passed"], "checks": report.get("run", {}).get("stdout", "").count("PASS|"), "errors": report.get("run", report["compile"]).get("stderr", "")}))
 raise SystemExit(0 if report["passed"] else 1)

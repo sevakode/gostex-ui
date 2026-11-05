@@ -17,8 +17,24 @@ class RemoteBootReceiver : BroadcastReceiver() {
     }
 }
 object RemoteStartup {
+    private const val KEY = "remoteAutostart"
+
+    /** Freeze the initial default: a subsequent upgrade of a fresh install must
+     * not silently turn this feature on. Explicit and invalid values are retained. */
+    fun enabled(context: Context): Boolean {
+        val prefs = context.getSharedPreferences("orbit", Context.MODE_PRIVATE)
+        val saved = prefs.all
+        if (saved.containsKey(KEY)) return saved[KEY] as? Boolean ?: false
+        val default = try {
+            @Suppress("DEPRECATION")
+            val info = context.packageManager.getPackageInfo(context.packageName, 0)
+            legacyRemoteDefault(info.firstInstallTime, info.lastUpdateTime)
+        } catch (_: Exception) { null } ?: return false
+        return prefs.edit().putBoolean(KEY, default).commit() && default
+    }
+
     fun start(context: Context): Boolean {
-        if (!context.getSharedPreferences("orbit", Context.MODE_PRIVATE).readBooleanOrDefault("remoteAutostart", true)) return false
+        if (!enabled(context)) return false
         if (context.checkSelfPermission("com.termux.permission.RUN_COMMAND") != PackageManager.PERMISSION_GRANTED) return false
         return try {
             context.startForegroundService(Intent("com.termux.RUN_COMMAND").apply {

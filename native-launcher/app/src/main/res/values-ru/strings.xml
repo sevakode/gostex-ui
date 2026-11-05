@@ -37,7 +37,7 @@
     <string name="movies_heading">02 / ВИДЕО</string>
     <string name="apps_heading">03 / ПРИЛОЖЕНИЯ</string>
     <string name="movies_hint">Твои видеосервисы, онлайн-видео и медиаплееры.</string>
-    <string name="apps_hint">Всё, что установлено на твоём SHIELD</string>
+    <string name="apps_hint">Всё, что установлено на этом устройстве</string>
     <string name="shield_settings">Настройки Shield</string>
     <string name="remote_on">Remote: автозапуск включён</string>
     <string name="remote_off">Remote: автозапуск выключен</string>
@@ -50,7 +50,7 @@
     <string name="empty_games">Игр пока нет. Нажми «＋ Игры» и выбери папку на накопителе.</string>
     <string name="app_controls">A / OK  Открыть приложение       B / Назад  Главная</string>
     <string name="game_controls">A / OK  Открыть игру       B / Назад  Вернуться</string>
-    <string name="play_on_shield">ИГРАТЬ НА SHIELD</string>
+    <string name="play_on_shield">ИГРАТЬ НА ТВ</string>
     <string name="open_game">Открыть игру  →</string>
     <string name="too_deep">Слишком много вложенных папок</string>
     <string name="folder_unavailable">Папка недоступна</string>

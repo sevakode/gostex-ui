@@ -112,7 +112,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/prior-linux"
           gh release download "$previous_tag" --repo "$GH_REPO" --dir "$RUNNER_TEMP/prior-linux" \
             --pattern 'linux-x64.properties*' --pattern 'gostex-linux-x64-*.zip' \
-            --pattern 'bootstrap.py' --pattern 'gostex-install.py' --pattern 'gostex.svg'
+            --pattern 'bootstrap.py' --pattern 'gostex-install.py' --pattern 'gostex-deck-install.py' --pattern 'gostex.svg'
           python3 native-launcher/tools/release/carry_forward_linux.py --source "$RUNNER_TEMP/prior-linux" --destination release-assets --repo "$GH_REPO" --source-tag "$previous_tag"
           printf '%s' "$previous_tag" > "$RUNNER_TEMP/previous-release-tag"
       - name: Publish complete signed release

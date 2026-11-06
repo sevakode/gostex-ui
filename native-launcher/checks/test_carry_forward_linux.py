@@ -57,7 +57,7 @@ class CarryForwardLinuxTest(unittest.TestCase):
 
     def test_exact_assets_copied_and_immutable_url_retained(self):
         names = self.run_carry()
-        self.assertEqual(6, len(names))
+        self.assertEqual(7, len(names))
         for name in names:
             self.assertEqual((self.source / name).read_bytes(), (self.dest / name).read_bytes())
         self.assertIn('/releases/download/build-4/', (self.dest / carry.FEED).read_text())
@@ -94,6 +94,11 @@ class CarryForwardLinuxTest(unittest.TestCase):
         extra.unlink(); extra.write_bytes(b'valid')
         self.dest.mkdir(); (self.dest / carry.FEED).write_bytes(b'existing')
         with self.assertRaises(ValueError): self.run_carry()
+
+    def test_deck_installer_is_required(self):
+        (self.source / 'gostex-deck-install.py').unlink()
+        with self.assertRaisesRegex(ValueError, 'gostex-deck-install.py'):
+            self.run_carry()
 
     def test_older_origin_is_verified_before_copying(self):
         def fake_download(repo, tag, name, destination):

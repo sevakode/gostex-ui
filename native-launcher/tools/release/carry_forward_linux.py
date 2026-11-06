@@ -13,7 +13,7 @@ from urllib.parse import urlsplit
 NATIVE = Path(__file__).resolve().parents[2]
 KEY = NATIVE / 'release-runtime/src/main/resources/gostex-release-public.der'
 BOOTSTRAP = NATIVE / 'tools/deck/bootstrap.py'
-EXTRAS = ('bootstrap.py', 'gostex-install.py', 'gostex.svg')
+EXTRAS = ('bootstrap.py', 'gostex-install.py', 'gostex-deck-install.py', 'gostex.svg')
 FEED = 'linux-x64.properties'
 FIELDS = {'schema.version', 'platform', 'versionCode', 'versionName', 'url', 'sha256', 'size'}
 

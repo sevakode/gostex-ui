@@ -15,9 +15,11 @@ internal object LibraryImport {
     private val archiveSuccesses = ArchiveSuccessCache<Triple<String, String, String>>()
     data class Root(val platform: String, val uri: String, val source: LibrarySource = LibrarySource.FILES)
     private fun writeRoots(context: Context, roots: List<Root>) {
-        val encoded = JSONArray()
-        roots.forEach { encoded.put(JSONObject().put("platform", it.platform).put("uri", it.uri).put("source", it.source.value)) }
-        context.getSharedPreferences("orbit", 0).edit().putString("libraryRoots", encoded.toString()).apply()
+        val prefs = context.getSharedPreferences("orbit", 0)
+        if (roots.any { it.source == LibrarySource.PORTABLE_SNAPSHOT })
+            LibraryRootCodec.requireLosslessLegacy(prefs.getString("libraryRoots", "[]") ?: error("Missing library roots"))
+        val encoded = LibraryRootCodec.encode(roots.map { LibraryRootRecord(it.platform, it.uri, it.source) })
+        prefs.edit().putString("libraryRoots", encoded).apply()
     }
     /** Old releases displayed the metadata catalog directly. Only adopt folders the owner
      * already granted; a catalog entry itself is never proof that a ROM is present. */
@@ -41,19 +43,19 @@ internal object LibraryImport {
         val preferences = context.getSharedPreferences("orbit", 0)
         val encoded = if (preferences.contains("libraryRoots")) preferences.getString("libraryRoots", null)
             ?: error("Missing library roots") else "[]"
-        val a = JSONArray(encoded)
-        (0 until a.length()).map { a.getJSONObject(it).let { o ->
-            val platform = (o.get("platform") as? String)?.takeIf { it.isNotBlank() } ?: error("Invalid platform")
-            val uri = (o.get("uri") as? String)?.takeIf { it.isNotBlank() } ?: error("Invalid URI")
-            Root(platform, uri, LibrarySource.read(o.optString("source"), platform))
-        } }
+        LibraryRootCodec.decode(encoded).map { Root(it.platform, it.uri, it.source) }
     } catch (e: Exception) {
         // An empty fallback would overwrite both source preferences and the saved snapshot.
         throw IllegalStateException(context.getString(R.string.library_roots_unavailable), e)
     }
     fun addRoot(context: Context, root: Root) {
         require(PlatformRegistry.find(root.platform) != null) { context.getString(R.string.platform_unknown) }
-        val list = roots(context).filter { it.uri != root.uri || it.platform != root.platform } + root
+        val existing = roots(context)
+        require(existing.none { it.uri == root.uri && it.platform == root.platform &&
+            (it.source == LibrarySource.PORTABLE_SNAPSHOT) != (root.source == LibrarySource.PORTABLE_SNAPSHOT) }) {
+            context.getString(R.string.portable_root_conflict)
+        }
+        val list = existing.filter { it.uri != root.uri || it.platform != root.platform } + root
         writeRoots(context, list)
     }
     fun removeRoot(context: Context, root: Root) {
@@ -70,11 +72,14 @@ internal object LibraryImport {
             throw IllegalStateException(context.getString(R.string.library_snapshot_unavailable), e)
         }
     }
-    fun write(context: Context, games: List<Game>): Boolean {
+    fun encode(games: List<Game>): String {
         val a = JSONArray()
         games.forEach { g -> a.put(JSONObject().put("id",g.id).put("title",g.title).put("platform",g.platform).put("emulator",g.emulator).put("component",g.component).put("files",JSONArray(g.files)).put("tree",g.tree).put("cover",g.cover).put("scene",g.scene).put("genre",g.genre).put("year",g.year).put("developer",g.developer).put("players",g.players).put("demo",g.demo).put("description",g.description)) }
+        return a.toString()
+    }
+    fun write(context: Context, games: List<Game>): Boolean {
         val target = java.io.File(context.filesDir, "imported-games.json")
-        val serialized = a.toString()
+        val serialized = encode(games)
         if (target.exists() && target.readText() == serialized) return false
         val atomic = android.util.AtomicFile(target)
         val output = atomic.startWrite()
@@ -97,6 +102,8 @@ internal object LibraryImport {
     suspend fun scan(context: Context, root: Root, bundled: List<Game>, showHints: Boolean = true, onWarning: (String) -> Unit = {}): List<Game> {
         val scanContext = currentCoroutineContext()
         scanContext.ensureActive()
+        if (root.source == LibrarySource.PORTABLE_SNAPSHOT)
+            return portableRootSnapshot(root.uri, root.platform, read(context))
         val platform = PlatformRegistry.find(root.platform) ?: error(context.getString(R.string.platform_unknown))
         if (root.source == LibrarySource.SINGLE_FILE) return scanSingle(context, root, bundled)
         val tree = Uri.parse(root.uri)

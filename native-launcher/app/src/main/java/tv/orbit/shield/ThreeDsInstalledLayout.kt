@@ -1,11 +1,12 @@
 package tv.orbit.shield
 
 internal enum class LibrarySource(val value: String) {
-    FILES("files"), SINGLE_FILE("single-file"), AZAHAR_INSTALLED("azahar-installed");
+    FILES("files"), SINGLE_FILE("single-file"), AZAHAR_INSTALLED("azahar-installed"), PORTABLE_SNAPSHOT("portable-snapshot");
 
     companion object {
         fun read(value: String?, platform: String): LibrarySource =
             when {
+                value == PORTABLE_SNAPSHOT.value -> PORTABLE_SNAPSHOT
                 value == SINGLE_FILE.value -> SINGLE_FILE
                 platform == "Nintendo 3DS" && value == AZAHAR_INSTALLED.value -> AZAHAR_INSTALLED
                 else -> FILES

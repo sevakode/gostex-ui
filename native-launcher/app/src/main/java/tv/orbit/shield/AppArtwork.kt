@@ -235,6 +235,7 @@ internal fun AppTile(
             onClick = onClick,
             onLongClick = onLongClick,
             modifier = Modifier.fillMaxWidth().aspectRatio(TileLayout.aspectRatio)
+                .touchSurface(onLongClick = onLongClick, onClick = onClick)
                 .semantics { contentDescription = app.name }
                 .onFocusChanged {
                     focused = it.isFocused

@@ -25,11 +25,14 @@ internal object DiscImport {
     }
     enum class Reason { MALFORMED, MISSING, CASE_MISMATCH, OUTSIDE_ROOT, AMBIGUOUS, NESTED_PLAYLIST, CYCLE, TOO_LARGE, UNSUPPORTED }
     data class Problem(val path: String, val reason: Reason, val reference: String = "")
-    data class Result(val entries: List<File>, val problems: List<Problem>)
+    data class Result(val entries: List<File>, val problems: List<Problem>,
+                      val dependencies: Map<String, List<File>> = emptyMap())
     class Invalid(val reason: Reason, val reference: String = "", val contextual: Boolean = false) : IllegalArgumentException()
     private data class Validated(val file: File, val references: Set<String>)
 
-    fun inspect(files: List<File>, readText: (File) -> String, checkpoint: () -> Unit = {}, providerSupported: Boolean = true): Result {
+    fun inspect(files: List<File>, readText: (File) -> String, checkpoint: () -> Unit = {},
+                providerSupported: Boolean = true, includeDependencies: Boolean = false,
+                pathsToInspect: Set<String>? = null): Result {
         val index = files.groupBy { it.path }
         val folded = files.groupBy { it.path.lowercase(Locale.ROOT) }
         val valid = mutableMapOf<String, Validated>()
@@ -99,7 +102,8 @@ internal object DiscImport {
         }
 
         val problems = mutableListOf<Problem>()
-        val candidates = files.filter { it.extension in singleImages || it.extension == "cue" || it.extension == "m3u" }
+        val candidates = files.filter { (pathsToInspect == null || it.path in pathsToInspect) &&
+            (it.extension in singleImages || it.extension == "cue" || it.extension == "m3u") }
             .sortedBy { it.path }
         candidates.forEach { file ->
             try { validate(file, 0) }
@@ -108,7 +112,11 @@ internal object DiscImport {
         // Only a successfully validated descriptor can consume entries. A broken playlist
         // does not hide an otherwise usable disc, including those in other game folders.
         val consumed = valid.values.flatMap { it.references }.toSet()
-        return Result(candidates.filter { it.path in valid && it.path !in consumed }.distinctBy { it.path }, problems)
+        val dependencies = if (!includeDependencies) emptyMap() else valid.mapValues { (_, item) ->
+            checkpoint()
+            listOf(item.file) + item.references.map { path -> index.getValue(path).single() }
+        }
+        return Result(candidates.filter { it.path in valid && it.path !in consumed }.distinctBy { it.path }, problems, dependencies)
     }
 
     /** Resolve '..' only while it remains inside the selected root. No URI/drive/absolute paths. */

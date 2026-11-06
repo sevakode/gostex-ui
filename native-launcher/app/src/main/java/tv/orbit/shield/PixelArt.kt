@@ -39,7 +39,7 @@ internal object ArtSchedule {
 }
 
 class WeeklyArtJob : JobService() {
-    override fun onStartJob(params: JobParameters): Boolean { ArtSchedule.ensure(this); return false }
+    override fun onStartJob(params: JobParameters): Boolean { if (PortableRestoreStartup.ready && !PortableMaintenance.running) ArtSchedule.ensure(this); return false }
     override fun onStopJob(params: JobParameters): Boolean = true
 }
 
@@ -55,6 +55,7 @@ class PixelDreamService : DreamService() {
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
+        if (!PortableRestoreStartup.ready || !PortableMaintenance.registerParticipant(this) { finish() }) { finish(); return }
         isInteractive = false
         isFullscreen = true
         isScreenBright = false
@@ -66,6 +67,7 @@ class PixelDreamService : DreamService() {
     }
 
     private fun applyOptions() {
+        if (PortableMaintenance.running) return
         val options = GrafanaPreferences.read(this)
         if (mode != options.mode) {
             art?.stop()
@@ -90,6 +92,7 @@ class PixelDreamService : DreamService() {
 
     override fun onDreamingStarted() {
         super.onDreamingStarted()
+        if (PortableMaintenance.running) { finish(); return }
         running = true
         art?.start()
         grafana?.start()
@@ -101,6 +104,7 @@ class PixelDreamService : DreamService() {
         super.onDreamingStopped()
     }
     override fun onDetachedFromWindow() {
+        PortableMaintenance.unregisterParticipant(this)
         running = false
         preferences?.unregisterOnSharedPreferenceChangeListener(listener)
         preferences = null
@@ -118,11 +122,12 @@ class PixelArtPreviewActivity : Activity() {
     private lateinit var art: PixelArtView
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (!PortableRestoreStartup.ready || PortableMaintenance.running) { finish(); return }
         art = PixelArtView(Language.context(this))
         setContentView(art)
         window.hidePreviewSystemBars()
     }
-    override fun onResume() { super.onResume(); art.start() }
-    override fun onPause() { art.stop(); super.onPause() }
+    override fun onResume() { super.onResume(); if (PortableMaintenance.running) { finish(); return }; if (::art.isInitialized) art.start() }
+    override fun onPause() { if (::art.isInitialized) art.stop(); super.onPause() }
 }
 

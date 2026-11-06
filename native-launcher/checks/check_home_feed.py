@@ -27,7 +27,7 @@ def extract(filename, start, end):
 sections = {
     "home_section_models": extract("HomeSections.kt", "internal enum class HomeSectionKind", "/** One document owns"),
     "shelf_composition": extract("HomeFeed.kt", "internal sealed interface HomeTileItem", "internal data class HomeFeedRequest"),
-    "game_model": extract("MainActivity.kt", "data class Game(", "class MainActivity"),
+    "game_model": extract("MainActivity.kt", "data class Game(", "private data class PortablePreviewDecisionSession"),
     "app_model": extract("AppArtwork.kt", "data class TvApp(", "/** Call off the UI thread."),
 }
 production = "\n".join(sections.values())

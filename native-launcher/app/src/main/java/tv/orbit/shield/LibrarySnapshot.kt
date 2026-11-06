@@ -8,6 +8,10 @@ import java.security.MessageDigest
 internal fun libraryRootSnapshot(root: String, scanned: List<Game>?, previous: List<Game>, platform: String? = null): List<Game> =
     scanned ?: previous.filter { it.tree == root && (platform == null || it.platform == platform) }
 
+/** A portable generation is a fixed verified snapshot, not an open-ended folder scan. */
+internal fun portableRootSnapshot(root: String, platform: String, previous: List<Game>): List<Game> =
+    previous.filter { it.tree == root && it.platform == platform }
+
 /** Normalize only the SAF root identity; a document ID remains opaque and case-sensitive. */
 private fun libraryRootKey(root: String): String = runCatching {
     if (!root.startsWith("content:")) "com.android.externalstorage.documents|$root"

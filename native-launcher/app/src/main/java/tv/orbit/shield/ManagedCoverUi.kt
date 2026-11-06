@@ -56,8 +56,8 @@ import androidx.tv.material3.Text
     val entry = LocalManagedCovers.current[game.id]
     val choice = options.choices[game.id] ?: CoverChoice.AUTO
     Dialog(onDismissRequest=onClose, properties=DialogProperties(usePlatformDefaultWidth=false, decorFitsSystemWindows=false)) {
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha=.6f))) {
-            Column(Modifier.align(Alignment.CenterEnd).width(400.dp).fillMaxHeight().background(Color(0xFF0A0A0A))
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha=.6f)).safeDrawingPadding()) {
+            Column(Modifier.align(Alignment.CenterEnd).widthIn(max=400.dp).fillMaxWidth().fillMaxHeight().background(Color(0xFF0A0A0A))
                 .border(1.dp,Color(0xFF424244)).padding(22.dp),
                 verticalArrangement=Arrangement.spacedBy(10.dp)) {
                 Text(tr(R.string.cover_manage), color=Color(0xFFCCFF00),fontSize=12.sp,fontWeight=FontWeight.Bold)

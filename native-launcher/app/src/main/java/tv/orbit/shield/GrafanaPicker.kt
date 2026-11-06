@@ -117,7 +117,7 @@ private data class CatalogChoices(val favorites: Set<String> = emptySet(), val f
         val window = (LocalView.current.parent as? DialogWindowProvider)?.window
         SideEffect { window?.setDimAmount(0f) }
         val confirmGate = remember { MenuConfirmKeyGate() }
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .72f)).padding(24.dp)
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .72f)).safeDrawingPadding().padding(24.dp)
             .onPreviewKeyEvent { val event = it.nativeKeyEvent; confirmGate.consume(event.keyCode, event.action, event.repeatCount, event.isCanceled) },
             contentAlignment = Alignment.Center) {
             Column(Modifier.widthIn(max = 760.dp).fillMaxWidth(.88f).fillMaxHeight(.94f)
@@ -189,7 +189,7 @@ private data class CatalogChoices(val favorites: Set<String> = emptySet(), val f
 
 @Composable private fun GrafanaDashboardRow(dashboard: GrafanaDashboard, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
-    Surface(onClick = onClick, modifier = modifier.heightIn(min = 56.dp).onFocusChanged { focused = it.isFocused }.semantics { this.selected = selected },
+    Surface(onClick = onClick, modifier = modifier.heightIn(min = 56.dp).touchSurface(onClick = onClick).onFocusChanged { focused = it.isFocused }.semantics { this.selected = selected },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(0.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = Color(0xFF171719), focusedContainerColor = CatalogLime),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
@@ -208,7 +208,7 @@ private data class CatalogChoices(val favorites: Set<String> = emptySet(), val f
 
 @Composable private fun GrafanaCatalogButton(text: String, modifier: Modifier = Modifier, selected: Boolean = false, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
-    Surface(onClick = onClick, modifier = modifier.heightIn(min = 42.dp).onFocusChanged { focused = it.isFocused }.semantics { this.selected = selected },
+    Surface(onClick = onClick, modifier = modifier.heightIn(min = 42.dp).touchSurface(onClick = onClick).onFocusChanged { focused = it.isFocused }.semantics { this.selected = selected },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(0.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = if (selected) Color(0xFF333638) else Color(0xFF171719), focusedContainerColor = CatalogLime),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),

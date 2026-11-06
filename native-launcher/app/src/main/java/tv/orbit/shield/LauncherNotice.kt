@@ -112,7 +112,7 @@ internal class LauncherNoticeState {
             Text(notice.message, modifier = Modifier.weight(1f, fill = false),
                 color = Color(0xFFF5F5F5), fontSize = 13.sp, lineHeight = 18.sp,
                 maxLines = 4, overflow = TextOverflow.Ellipsis)
-            Surface(onClick = ::close, modifier = Modifier.size(32.dp)
+            Surface(onClick = ::close, modifier = Modifier.size(32.dp).touchSurface(onClick = ::close)
                 .onFocusChanged { focused = it.hasFocus }
                 .semantics { contentDescription = closeLabel },
                 shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(4.dp)),

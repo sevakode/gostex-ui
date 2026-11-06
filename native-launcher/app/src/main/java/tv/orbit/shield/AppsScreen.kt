@@ -54,23 +54,25 @@ import androidx.tv.material3.Text
                 Text(tr(if (ready) R.string.apps_empty else R.string.apps_loading), color = Color(0xFFADADB0), fontSize = 18.sp)
             }
         } else {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(LocalTileSize.current.columns), state = scroll,
-                modifier = Modifier.weight(1f).fillMaxWidth(),
-                contentPadding = PaddingValues(start = TileLayout.screenInset + TileLayout.focusInset,
-                    end = TileLayout.screenInset + TileLayout.focusInset, top = 8.dp, bottom = 18.dp),
-                horizontalArrangement = Arrangement.spacedBy(TileLayout.gap),
-                verticalArrangement = Arrangement.spacedBy(TileLayout.gap)
-            ) {
-                items(apps, key = { it.packageName }, contentType = { "app" }) { app ->
-                    val cardFocus = remember(app.packageName) { FocusRequester() }
-                    AppTile(app,
-                        modifier = Modifier.fillMaxWidth()
-                            .then(if (app.packageName == selected?.packageName) Modifier.focusRequester(selectedFocus) else Modifier)
-                            .focusRequester(cardFocus),
-                        favorite = homeAppKey(app.packageName) in favorites,
-                        onFocus = { if (inputEnabled) onSelect(app.packageName) },
-                        onClick = { onOpen(app) }, onLongClick = { onMenu(app, cardFocus) })
+            BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(TileLayout.columns(maxWidth, LocalTileSize.current)), state = scroll,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(start = TileLayout.screenInset + TileLayout.focusInset,
+                        end = TileLayout.screenInset + TileLayout.focusInset, top = 8.dp, bottom = 18.dp),
+                    horizontalArrangement = Arrangement.spacedBy(TileLayout.gap),
+                    verticalArrangement = Arrangement.spacedBy(TileLayout.gap)
+                ) {
+                    items(apps, key = { it.packageName }, contentType = { "app" }) { app ->
+                        val cardFocus = remember(app.packageName) { FocusRequester() }
+                        AppTile(app,
+                            modifier = Modifier.fillMaxWidth()
+                                .then(if (app.packageName == selected?.packageName) Modifier.focusRequester(selectedFocus) else Modifier)
+                                .focusRequester(cardFocus),
+                            favorite = homeAppKey(app.packageName) in favorites,
+                            onFocus = { if (inputEnabled) onSelect(app.packageName) },
+                            onClick = { onOpen(app) }, onLongClick = { onMenu(app, cardFocus) })
+                    }
                 }
             }
         }

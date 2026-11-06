@@ -93,18 +93,28 @@ data class Game(
     val developer: String, val players: String, val demo: Boolean = false, val description: String = ""
 )
 
+private data class PortablePreviewDecisionSession(
+    val commitId: String,
+    val live: PortableLiveLibrary,
+    val roots: List<LibraryRootRecord>,
+    val plan: PortableRestorePlan,
+    val conflicts: Set<PortableRestoreConflict>,
+)
+
 private class LegacyRecoveryNotice(val messageId: Int) : Exception()
 
 class MainActivity : ComponentActivity() {
-    internal val updates: LauncherUpdates by lazy { LauncherUpdates(this) }
+    private val updatesLazy = lazy { LauncherUpdates(this) }
+    internal val updates: LauncherUpdates by updatesLazy
     private val diagnosticExport = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        if (PortableMaintenance.running) return@registerForActivityResult
         if (uri != null) updates.exportDiagnostics(uri)
     }
     internal fun chooseDiagnosticExport() {
         launchDocumentPicker(Intent.ACTION_CREATE_DOCUMENT, "application/zip") { diagnosticExport.launch("gostex-diagnostics.zip") }
     }
     override fun attachBaseContext(base: android.content.Context) {
-        super.attachBaseContext(Language.context(base))
+        super.attachBaseContext(if (PortableRestoreStartup.ready && !PortableMaintenance.running) Language.context(base) else base)
     }
     fun setLanguage(code: String) {
         if (code !in setOf("ru", "en", "es")) return
@@ -118,6 +128,7 @@ class MainActivity : ComponentActivity() {
         set(value) { notices.show(value) }
     /** Android TV images may ship a no-op picker stub or no document picker at all. */
     private fun launchDocumentPicker(action: String, mime: String? = null, launch: () -> Unit): Boolean {
+        if (PortableMaintenance.running) return false
         val probe = Intent(action).apply {
             if (action != Intent.ACTION_OPEN_DOCUMENT_TREE) addCategory(Intent.CATEGORY_OPENABLE)
             if (mime != null) type = mime
@@ -132,6 +143,236 @@ class MainActivity : ComponentActivity() {
         catch (_: android.content.ActivityNotFoundException) { notice = getString(R.string.document_picker_unavailable); false }
         catch (_: SecurityException) { notice = getString(R.string.document_picker_unavailable); false }
     }
+    internal var portablePreviewBusy by mutableStateOf(false)
+        private set
+    internal var portablePreviewMessage by mutableStateOf("")
+        private set
+    internal var portableBackups by mutableStateOf<List<PortableBackupCandidate>>(emptyList())
+        private set
+    internal var portablePreviewTitles by mutableStateOf<List<String>>(emptyList())
+        private set
+    internal var portablePreviewExtra by mutableIntStateOf(0)
+        private set
+    internal var portablePreviewFocusRevision by mutableIntStateOf(0)
+        private set
+    internal var portableDecisionGroups by mutableStateOf<List<PortableRestoreDecisionGroup>>(emptyList())
+        private set
+    internal var portableDecisionChoices by mutableStateOf<Map<PortableRestoreDecisionGroup, PortableRestoreChoice>>(emptyMap())
+        private set
+    internal var portableDecisionRemaining by mutableIntStateOf(0)
+        private set
+    internal var portableDecisionRootBlocks by mutableIntStateOf(0)
+        private set
+    private var portableDecisionSession: PortablePreviewDecisionSession? = null
+    internal val portableRestoreAvailable: Boolean
+        get() = portableDecisionSession != null && !portablePreviewBusy && !portableCopyBusy &&
+            portableDecisionRootBlocks == 0 && portableDecisionRemaining == 0 &&
+            portableDecisionGroups.all { it in portableDecisionChoices }
+    private var portableDecisionRevision = 0L
+    private fun clearPortableDecisions() {
+        portableDecisionRevision++
+        portableDecisionSession = null
+        portableDecisionGroups = emptyList()
+        portableDecisionChoices = emptyMap()
+        portableDecisionRemaining = 0
+        portableDecisionRootBlocks = 0
+    }
+    internal fun choosePortableDecision(group: PortableRestoreDecisionGroup) {
+        val session = portableDecisionSession ?: return
+        if (portablePreviewBusy || group !in portableDecisionGroups) return
+        val options = arrayOf(getString(R.string.portable_decision_keep), getString(R.string.portable_decision_backup))
+        android.app.AlertDialog.Builder(this).setTitle(R.string.portable_decision_dialog)
+            .setItems(options) { _, index ->
+                if (portableDecisionSession !== session) return@setItems
+                val next = portableDecisionChoices + (group to if (index == 0) PortableRestoreChoice.KEEP_CURRENT else PortableRestoreChoice.USE_BACKUP)
+                portableDecisionChoices = next
+                val revision = ++portableDecisionRevision
+                importScope.launch {
+                    try {
+                        val remaining = withContext(Dispatchers.IO) {
+                            val decisions = PortableRestoreDecisionGroups.decisions(session.conflicts, next)
+                            resolvePortableRestore(session.live, session.roots, session.plan, decisions).conflicts.size
+                        }
+                        if (portableDecisionSession === session && portableDecisionRevision == revision) portableDecisionRemaining = remaining
+                    } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                    catch (_: Exception) { if (portableDecisionSession === session && portableDecisionRevision == revision) clearPortableDecisions() }
+                }
+            }.setNegativeButton(R.string.cancel, null).show()
+    }
+    private var portablePreviewTree: Uri? = null
+    private var portablePreviewJob: Job? = null
+    private var portablePreviewRevision = 0L
+    private val portablePreviewPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (PortableMaintenance.running) return@registerForActivityResult
+        if (uri != null && !portablePreviewBusy && !portableCopyBusy) {
+            portablePreviewTree = uri
+            clearPortableDecisions()
+            portableBackups = emptyList()
+            portablePreviewTitles = emptyList()
+            portablePreviewExtra = 0
+            portablePreviewBusy = true
+            val revision = ++portablePreviewRevision
+            portablePreviewMessage = getString(R.string.portable_preview_searching)
+            portablePreviewJob = importScope.launch {
+                try {
+                    val found = discoverPortableBackups(contentResolver, uri)
+                    if (portablePreviewRevision == revision) {
+                        portableBackups = found
+                        portablePreviewMessage = getString(if (found.isEmpty()) R.string.portable_preview_none else R.string.portable_preview_choose_copy)
+                    }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    if (portablePreviewRevision == revision) portablePreviewMessage = getString(R.string.portable_preview_cancelled)
+                    throw e
+                } catch (_: Exception) {
+                    if (portablePreviewRevision == revision) portablePreviewMessage = getString(R.string.portable_preview_error)
+                } finally { if (portablePreviewRevision == revision) { portablePreviewBusy = false; portablePreviewJob = null } }
+            }
+        }
+    }
+    internal fun choosePortablePreviewFolder() {
+        if (!portablePreviewBusy && !portableCopyBusy) launchDocumentPicker(Intent.ACTION_OPEN_DOCUMENT_TREE) { portablePreviewPicker.launch(null) }
+    }
+    internal fun cancelPortablePreview() { portablePreviewJob?.cancel() }
+    internal fun releasePortablePreview() {
+        portablePreviewRevision++
+        portablePreviewJob?.cancel()
+        portablePreviewJob = null
+        portablePreviewBusy = false
+        portablePreviewTree = null
+        portableBackups = emptyList()
+        portablePreviewTitles = emptyList()
+        portablePreviewExtra = 0
+        portablePreviewMessage = ""
+        clearPortableDecisions()
+    }
+    internal fun inspectPortableCandidate(candidate: PortableBackupCandidate) {
+        val tree = portablePreviewTree ?: return
+        if (portablePreviewBusy || portableCopyBusy || candidate !in portableBackups) return
+        portablePreviewBusy = true
+        clearPortableDecisions()
+        portablePreviewTitles = emptyList()
+        portablePreviewExtra = 0
+        portablePreviewMessage = getString(R.string.portable_preview_verifying)
+        val revision = ++portablePreviewRevision
+        portablePreviewJob = importScope.launch {
+            try {
+                var lastProgress = 0L
+                val result = inspectPortableRestore(this@MainActivity, tree, candidate.documentId) { _, bytes, total ->
+                    val now = android.os.SystemClock.elapsedRealtime()
+                    if (total > 0 && now - lastProgress >= 500L) {
+                        lastProgress = now
+                        val percent = ((bytes.toDouble() / total.toDouble()) * 100.0).toInt().coerceIn(0, 100)
+                        importScope.launch {
+                            if (portablePreviewBusy && portablePreviewRevision == revision) portablePreviewMessage = getString(R.string.portable_preview_progress, percent)
+                        }
+                    }
+                }
+                if (portablePreviewRevision != revision) return@launch
+                val plan = result.plan
+                if (plan == null) {
+                    portablePreviewMessage = getString(R.string.portable_preview_broken, result.inspection.content.issues.size)
+                } else {
+                    val session = withContext(Dispatchers.IO) {
+                        val live = PortableLiveCapture.capture(this@MainActivity)
+                        val roots = LibraryImport.roots(this@MainActivity).map { LibraryRootRecord(it.platform, it.uri, it.source) }
+                        val merge = PortableRestoreMerge.prepare(live, roots, plan)
+                        PortablePreviewDecisionSession(candidate.documentId, live, roots, plan, merge.conflicts)
+                    }
+                    if (portablePreviewRevision != revision) return@launch
+                    portableDecisionSession = session
+                    portableDecisionGroups = PortableRestoreDecisionGroup.entries.filter { it in PortableRestoreDecisionGroups.groups(session.conflicts) }
+                    portableDecisionRemaining = session.conflicts.size
+                    portableDecisionRootBlocks = session.conflicts.count { it.kind == PortableRestoreConflict.Kind.ROOT }
+                    portablePreviewTitles = plan.games.take(12).map { it.title }
+                    portablePreviewExtra = (plan.games.size - portablePreviewTitles.size).coerceAtLeast(0)
+                    portablePreviewMessage = getString(R.string.portable_preview_result, plan.games.size, plan.coverFiles.size,
+                        session.conflicts.size, plan.unsupportedPlatforms.size)
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                if (portablePreviewRevision == revision) portablePreviewMessage = getString(R.string.portable_preview_cancelled)
+                throw e
+            } catch (_: Exception) {
+                if (portablePreviewRevision == revision) portablePreviewMessage = getString(R.string.portable_preview_error)
+            } finally { if (portablePreviewRevision == revision) { portablePreviewBusy = false; portablePreviewJob = null; portablePreviewFocusRevision++ } }
+        }
+    }
+    internal fun confirmPortableRestore() {
+        val tree = portablePreviewTree ?: return
+        val session = portableDecisionSession ?: return
+        if (!portableRestoreAvailable || PortableMaintenance.running) return
+        val choices = portableDecisionChoices.toMap()
+        android.app.AlertDialog.Builder(this)
+            .setTitle(R.string.portable_restore_confirm_title)
+            .setMessage(R.string.portable_restore_confirm_message)
+            .setNegativeButton(R.string.cancel, null)
+            .setPositiveButton(R.string.portable_restore_action) { _, _ ->
+                if (portableDecisionSession !== session || portablePreviewTree != tree || !portableRestoreAvailable ||
+                    portableDecisionChoices != choices || PortableMaintenance.running) return@setPositiveButton
+                try {
+                    contentResolver.takePersistableUriPermission(tree, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                } catch (_: SecurityException) {
+                    portablePreviewMessage = getString(R.string.portable_restore_permission_error)
+                    return@setPositiveButton
+                }
+                val decisions = PortableRestoreDecisionGroups.decisions(session.conflicts, choices)
+                val app = applicationContext
+                PortableMaintenance.scope.launch {
+                    val message = try {
+                        PortableAndroidRestoreWorkflow.execute(app, tree, session.commitId, session.plan,
+                            session.live, session.roots, decisions, drain = { drainForPortableMaintenance() })
+                        R.string.portable_restore_success
+                    } catch (_: kotlinx.coroutines.CancellationException) {
+                        R.string.portable_restore_cancelled
+                    } catch (_: Exception) {
+                        R.string.portable_restore_failed
+                    }
+                    if (portableMaintenanceSeen) PortableMaintenance.pendingOutcome = message
+                    else if (!isFinishing && !isDestroyed) notice = getString(message)
+                }
+            }.show()
+    }
+    internal var portableCopyBusy by mutableStateOf(false)
+        private set
+    internal var portableCopyMessage by mutableStateOf("")
+        private set
+    private var portableCopyJob: Job? = null
+    private var portableCopyRevision = 0L
+    private val portableCopyPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (PortableMaintenance.running) return@registerForActivityResult
+        if (uri != null && !portableCopyBusy) {
+            portableCopyBusy = true
+            val revision = ++portableCopyRevision
+            portableCopyMessage = getString(R.string.portable_copy_preparing)
+            portableCopyJob = importScope.launch {
+                try {
+                    val result = PortableAndroidExport.export(this@MainActivity, uri, onSourceVerification = { index, count ->
+                        importScope.launch {
+                            if (portableCopyBusy && portableCopyRevision == revision) portableCopyMessage = getString(R.string.portable_copy_verify_progress, index + 1, count)
+                        }
+                    }) { _, index, count ->
+                        importScope.launch {
+                            if (portableCopyBusy && portableCopyRevision == revision) portableCopyMessage = getString(R.string.portable_copy_progress, index + 1, count)
+                        }
+                    }
+                    portableCopyMessage = getString(R.string.portable_copy_complete, result.fileCount)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    portableCopyMessage = getString(R.string.portable_copy_cancelled)
+                    throw e
+                } catch (e: PortableInstalled3dsUnsupported) {
+                    portableCopyMessage = getString(R.string.portable_copy_installed_3ds, e.gameCount)
+                } catch (_: Exception) {
+                    portableCopyMessage = getString(R.string.portable_copy_failed)
+                } finally {
+                    portableCopyBusy = false
+                    portableCopyJob = null
+                }
+            }
+        }
+    }
+    internal fun choosePortableCopyFolder() {
+        if (!portableCopyBusy && !portablePreviewBusy) launchDocumentPicker(Intent.ACTION_OPEN_DOCUMENT_TREE) { portableCopyPicker.launch(null) }
+    }
+    internal fun cancelPortableCopy() { portableCopyJob?.cancel() }
     var resumeVersion by mutableIntStateOf(0)
     var homeVersion by mutableIntStateOf(0)
     var library by mutableStateOf<List<Game>>(emptyList())
@@ -152,18 +393,48 @@ class MainActivity : ComponentActivity() {
     private var coversLoop: Job? = null
     private var bundled = emptyList<Game>()
     internal fun metadataCatalogSize(): Int = bundled.size
-    private val importScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val importRoot = SupervisorJob()
+    private val importScope = CoroutineScope(importRoot + Dispatchers.Main)
+    internal var portableMaintenanceSeen by mutableStateOf(false)
+        private set
+    internal suspend fun drainForPortableMaintenance() {
+        check(PortableMaintenance.running && android.os.Looper.myLooper() == android.os.Looper.getMainLooper())
+        portableMaintenanceSeen = true
+        libraryVisible = false
+        refreshPending = false
+        coverSyncPending = false
+        allowMeteredRecoveryOnce = false
+        coversLoop?.cancel()
+        if (updatesLazy.isInitialized()) updates.onStop()
+        importRoot.cancel()
+        withContext(kotlinx.coroutines.NonCancellable) {
+            importRoot.join()
+            while (coverEdits > 0) kotlinx.coroutines.delay(20)
+        }
+    }
+    private fun installMaintenanceInputGuard() {
+        val original = window.callback
+        window.callback = object : android.view.Window.Callback by original {
+            override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+                if (!PortableMaintenance.running) return original.dispatchKeyEvent(event)
+                if (event.action == android.view.KeyEvent.ACTION_UP && event.keyCode in setOf(android.view.KeyEvent.KEYCODE_BACK, android.view.KeyEvent.KEYCODE_BUTTON_B)) PortableMaintenance.requestCancel()
+                return true
+            }
+            override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean =
+                if (PortableMaintenance.running) true else original.dispatchTouchEvent(event)
+        }
+    }
     private var importPlatform = ""
     private var importSource = LibrarySource.FILES
     private var importHintRoot: LibraryImport.Root? = null
     private var refreshPending = false
     private var libraryVisible = false
     private var importJob: Job? = null
-    override fun onResume() { super.onResume(); AgentStateHooks.attach(this); updates.onResume(); libraryVisible = true; resumeVersion++; refreshLibrary(); startCoverSync() }
+    override fun onResume() { super.onResume(); if (!PortableRestoreStartup.ready || PortableMaintenance.running) return; AgentStateHooks.attach(this); updates.onResume(); libraryVisible = true; resumeVersion++; refreshLibrary(); startCoverSync() }
     override fun onPause() { AndroidDiagnostics.event("launcher.pause"); super.onPause() }
     override fun onStop() {
         AgentStateHooks.detach(this)
-        updates.onStop()
+        if (updatesLazy.isInitialized()) updates.onStop()
         libraryVisible = false
         allowMeteredRecoveryOnce = false
         coversLoop?.cancel()
@@ -172,9 +443,10 @@ class MainActivity : ComponentActivity() {
         importJob?.cancel()
         super.onStop()
     }
-    override fun onDestroy() { updates.close(); importScope.cancel(); super.onDestroy() }
+    override fun onDestroy() { if (updatesLazy.isInitialized()) updates.close(); importScope.cancel(); super.onDestroy() }
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        if (PortableMaintenance.running) return
         setIntent(intent)
         AndroidDiagnostics.event("launcher.intent", if (intent.hasCategory(Intent.CATEGORY_HOME)) "home" else "other")
         if (intent.hasCategory(Intent.CATEGORY_HOME)) homeVersion++
@@ -189,6 +461,7 @@ class MainActivity : ComponentActivity() {
     }
     fun editGameCover(id: String) { if (library.any { it.id == id }) coverEditorId = id }
     private val coverPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (PortableMaintenance.running) return@registerForActivityResult
         val id = pendingCoverId
         pendingCoverId = null
         if (uri != null && id != null) importCoverImage(id, uri)
@@ -208,6 +481,7 @@ class MainActivity : ComponentActivity() {
         }
     }
     internal suspend fun applyOnlineCover(id: String, bytes: ByteArray, image: OnlineCoverImage) {
+        check(!PortableMaintenance.running) { "Maintenance in progress" }
         coverEdits++
         try {
             managedCovers = withContext(Dispatchers.IO) { ManagedCoverStore.importOnline(this@MainActivity,id,bytes,image) }
@@ -242,6 +516,7 @@ class MainActivity : ComponentActivity() {
         }) pendingCoverId = null
     }
     private val coversFolderPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (PortableMaintenance.running) return@registerForActivityResult
         if (uri != null) try {
             contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
             val old = ManagedCoverPreferences.read(this).folder
@@ -276,6 +551,7 @@ class MainActivity : ComponentActivity() {
         startCoverSync()
     }
     fun startCoverSync() {
+        if (PortableMaintenance.running) return
         coversLoop?.cancel()
         if (!libraryVisible) return
         coversLoop = importScope.launch {
@@ -287,7 +563,7 @@ class MainActivity : ComponentActivity() {
             } while (libraryVisible)
         }
     }
-    fun syncCovers(manual: Boolean) { importScope.launch { performCoverSync(manual) } }
+    fun syncCovers(manual: Boolean) { if (!PortableMaintenance.running) importScope.launch { performCoverSync(manual) } }
     private suspend fun performCoverSync(manual: Boolean) {
         if (coversBusy) { coverSyncPending = true; return }
         val options = ManagedCoverPreferences.read(this)
@@ -313,6 +589,7 @@ class MainActivity : ComponentActivity() {
         }
     }
     private val folderPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (PortableMaintenance.running) return@registerForActivityResult
         if (uri != null && importPlatform.isNotEmpty()) try {
             contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
             val root = LibraryImport.Root(importPlatform, uri.toString(), importSource)
@@ -323,6 +600,7 @@ class MainActivity : ComponentActivity() {
         } catch (e: Exception) { notice = getString(R.string.folder_error, e.localizedMessage.orEmpty()) }
     }
     private val gameFilePicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (PortableMaintenance.running) return@registerForActivityResult
         val platform = importPlatform
         if (uri != null && PlatformRegistry.find(platform) != null) {
             val alreadyGranted = contentResolver.persistedUriPermissions.any { it.uri == uri && it.isReadPermission }
@@ -454,6 +732,7 @@ class MainActivity : ComponentActivity() {
         }.setNegativeButton(getString(R.string.close), null).show()
     }
     fun refreshLibrary() {
+        if (PortableMaintenance.running) return
         if (!libraryVisible) { refreshPending = true; return }
         if (scanning) { refreshPending = true; return }
         if (legacyRecoveryStateError) { notice = getString(R.string.legacy_recovery_state_error); return }
@@ -535,6 +814,7 @@ class MainActivity : ComponentActivity() {
         }
     }
     private val picker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (PortableMaintenance.running) return@registerForActivityResult
         val request = pending
         pending = null
         if (uri == null) { notice = getString(R.string.access_cancelled); return@registerForActivityResult }
@@ -550,6 +830,31 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        installMaintenanceInputGuard()
+        if (!PortableRestoreStartup.ready) {
+            val screen = android.widget.LinearLayout(this).apply {
+                orientation = android.widget.LinearLayout.VERTICAL
+                gravity = android.view.Gravity.CENTER
+                setPadding(48, 48, 48, 48)
+                setBackgroundColor(android.graphics.Color.BLACK)
+            }
+            screen.addView(android.widget.TextView(this).apply {
+                setText(R.string.portable_recovery_blocked)
+                setTextColor(android.graphics.Color.WHITE)
+                textSize = 20f
+            })
+            screen.addView(android.widget.Button(this).apply {
+                setText(R.string.portable_recovery_retry)
+                setOnClickListener { if (PortableRestoreStartup.initialize(applicationContext)) recreate() }
+            })
+            setContentView(screen)
+            return
+        }
+        if (PortableMaintenance.running) {
+            portableMaintenanceSeen = true
+            setContent { PortableMaintenanceBarrier(this) {} }
+            return
+        }
         updates // Initialize bounded diagnostics and the preference listener once for this Activity.
         importPlatform = savedInstanceState?.getString("importPlatform").orEmpty()
         importSource = LibrarySource.read(savedInstanceState?.getString("importSource"), importPlatform)
@@ -570,7 +875,17 @@ class MainActivity : ComponentActivity() {
         } }
         catch (e: Exception) { notice = e.localizedMessage.orEmpty(); emptyList() }
         ArtSchedule.install(this)
-        setContent { MaterialTheme(colorScheme = darkColorScheme(primary = Lime, surface = Ink, onSurface = White)) { ControllerProvider { Orbit(this, library.filterNot { it.demo }) } } }
+        PortableMaintenance.pendingOutcome?.let { outcome ->
+            PortableMaintenance.pendingOutcome = null
+            notice = getString(outcome)
+        }
+        setContent {
+            PortableMaintenanceBarrier(this) {
+                MaterialTheme(colorScheme = darkColorScheme(primary = Lime, surface = Ink, onSurface = White)) {
+                    ControllerProvider { Orbit(this, library.filterNot { it.demo }) }
+                }
+            }
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -648,7 +963,7 @@ class MainActivity : ComponentActivity() {
 ) {
     Surface(
         onClick = onClick,
-        modifier = modifier.onFocusChanged { if (it.isFocused) onFocus() },
+        modifier = modifier.touchSurface(onClick = onClick).onFocusChanged { if (it.isFocused) onFocus() },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(0.dp)),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = if (primary) Lime else if (active) Panel else Color.Transparent,
@@ -835,7 +1150,7 @@ class MainActivity : ComponentActivity() {
         if (detail != null) { detail = null; tileRestore++ } else { tab = "home"; platform = "all" }
     }
 
-    Box(Modifier.fillMaxSize().background(Ink).onPreviewKeyEvent { event ->
+    Box(Modifier.fillMaxSize().background(Ink).safeDrawingPadding().onPreviewKeyEvent { event ->
         if (tab == "home" && detail == null && !settingsOpen && !mediaOpen && !searchOpen && tileMenu == null && membershipItem == null && favoriteOrderItem == null && isHomeShelfKey(event.nativeKeyEvent)) {
             homeShelfStep(event.nativeKeyEvent)?.let(feedState::moveBy)
             true
@@ -877,6 +1192,32 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(g.id) { firstFocus.requestFocus() }
         } else {
             Column(Modifier.fillMaxSize()) {
+                BoxWithConstraints(Modifier.fillMaxWidth()) {
+                  if (maxWidth < 600.dp) {
+                    Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 8.dp)) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Image(painterResource(R.drawable.gostex_logo), contentDescription = "GOSTEX", modifier = Modifier.width(76.dp).height(34.dp))
+                            Row(Modifier.weight(1f).padding(start = 8.dp, end = 8.dp), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                                HeaderClock(clockOptions, clockInstant)
+                                if (mediaVisible) headerMediaSession?.let { session ->
+                                    Spacer(Modifier.width(6.dp))
+                                    MediaPlayerButton(session, Modifier.focusRequester(mediaFocus)) { mediaOpen = true }
+                                }
+                            }
+                            if (rememberNetworkVisible()) {
+                                NetworkStatusButton(activity)
+                                Spacer(Modifier.width(6.dp))
+                            }
+                            CompactIconButton(CompactIcon.Settings, tr(R.string.settings), modifier = Modifier.focusRequester(settingsFocus),
+                                onClick = { settingsInitialSection = "root"; settingsReturnFocus = null; settingsOpen = true })
+                        }
+                        LazyRow(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(visibleTabs, key = { it }) { label ->
+                                Action(tabTitle(label), compact = true, active = tab == label, onClick = { tab = label; platform = "all" })
+                            }
+                        }
+                    }
+                  } else {
                 Row(Modifier.fillMaxWidth().padding(start = 36.dp, end = 36.dp, top = 18.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Image(painterResource(R.drawable.gostex_logo), contentDescription = "GOSTEX", modifier = Modifier.width(100.dp).height(34.dp))
                     Spacer(Modifier.width(24.dp))
@@ -898,6 +1239,8 @@ class MainActivity : ComponentActivity() {
                     val settingsLabel = tr(R.string.settings)
                     CompactIconButton(CompactIcon.Settings, settingsLabel, modifier = Modifier.focusRequester(settingsFocus),
                         onClick = { settingsInitialSection = "root"; settingsReturnFocus = null; settingsOpen = true })
+                }
+                  }
                 }
                 UpdateAvailableAction(activity, Modifier.padding(horizontal = 42.dp, vertical = 4.dp).focusRequester(updateFocus)) {
                     settingsInitialSection = "updates"
@@ -969,7 +1312,8 @@ class MainActivity : ComponentActivity() {
                                 onClick = { if (!activity.scanning) activity.chooseFolder(if (games.isEmpty()) "all" else platform) })
                             Text(tr(R.string.library_optional_hint), color = Muted, fontSize = 12.sp, lineHeight = 17.sp)
                         }
-                    } else LazyVerticalGrid(columns = GridCells.Fixed(LocalTileSize.current.columns), state = libraryScroll, modifier = Modifier.weight(1f),
+                    } else BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                      LazyVerticalGrid(columns = GridCells.Fixed(TileLayout.columns(maxWidth, LocalTileSize.current)), state = libraryScroll, modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(start = TileLayout.screenInset + TileLayout.focusInset, end = TileLayout.screenInset + TileLayout.focusInset, top = 8.dp, bottom = 18.dp),
                         horizontalArrangement = Arrangement.spacedBy(TileLayout.gap), verticalArrangement = Arrangement.spacedBy(TileLayout.gap)) {
                         items(filtered, key = { it.id }) { g ->
@@ -979,6 +1323,7 @@ class MainActivity : ComponentActivity() {
                                 .focusRequester(cardFocus), g.id in favorites, onFocus = { selectGame(g) },
                                 onClick = { openGame(g, cardFocus) }, onLongClick = { gameMenu(g, cardFocus) })
                         }
+                      }
                     }
                 }
                 Row(Modifier.fillMaxWidth().padding(horizontal = 36.dp, vertical = 8.dp)) {
@@ -1072,8 +1417,8 @@ class MainActivity : ComponentActivity() {
         val dialogView = LocalView.current
         val dialogWindow = (dialogView.parent as? DialogWindowProvider)?.window
         LaunchedEffect(dialogWindow) { dialogWindow?.setDimAmount(0f) }
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .55f)).imePadding()) {
-            Column(Modifier.align(Alignment.CenterEnd).width(440.dp).fillMaxHeight().background(Ink)
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .55f)).safeDrawingPadding().imePadding()) {
+            Column(Modifier.align(Alignment.CenterEnd).widthIn(max = 440.dp).fillMaxWidth().fillMaxHeight().background(Ink)
                 .border(1.dp, Color(0xFF424244)).verticalScroll(rememberScrollState()).padding(22.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1138,7 +1483,7 @@ class MainActivity : ComponentActivity() {
     var focused by remember { mutableStateOf(false) }
     Column(modifier) {
         Surface(onClick = onClick, onLongClick = onLongClick,
-            modifier = Modifier.fillMaxWidth().aspectRatio(TileLayout.aspectRatio).onFocusChanged { focused = it.isFocused; if (it.isFocused) onFocus() },
+            modifier = Modifier.fillMaxWidth().aspectRatio(TileLayout.aspectRatio).touchSurface(onLongClick = onLongClick, onClick = onClick).onFocusChanged { focused = it.isFocused; if (it.isFocused) onFocus() },
             shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(0.dp)),
             colors = ClickableSurfaceDefaults.colors(containerColor = Panel, focusedContainerColor = Panel),
             scale = ClickableSurfaceDefaults.scale(focusedScale = 1.03f),
@@ -1157,17 +1502,36 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@Composable private fun PortableMaintenanceBarrier(activity: MainActivity, content: @Composable () -> Unit) {
+    val active by PortableMaintenance.active.collectAsState()
+    if (active || activity.portableMaintenanceSeen) {
+        LaunchedEffect(active) { if (!active && activity.portableMaintenanceSeen) activity.recreate() }
+        val phase by PortableMaintenance.phase.collectAsState()
+        val label = when (phase) {
+            PortableMaintenancePhase.PREPARING -> R.string.portable_maintenance_checking
+            PortableMaintenancePhase.CANCELLING -> R.string.portable_maintenance_cancelling
+            PortableMaintenancePhase.SAVING -> R.string.portable_maintenance_saving
+        }
+        Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+            Text(tr(label), color = Color.White, fontSize = 20.sp)
+        }
+    } else content()
+}
+
 private fun settingsParent(section: String): String = when {
     section == "clock" || section == "language" -> "localeGroup"
     section.startsWith("clock/") -> clockParent(section)
     section in setOf("appearance", "art", "grafana") -> "appearanceGroup"
-    section == "covers" || section == "nowPlaying" -> "mediaGroup"
+    section == "portablePreview" -> "portableCopy"
+    section == "covers" || section == "nowPlaying" || section == "portableCopy" -> "mediaGroup"
     else -> "root"
 }
 
 private fun settingsTitle(section: String): Int = when {
     section.startsWith("clock") -> clockSectionTitleRes(section)
     else -> when (section) {
+        "portablePreview" -> R.string.portable_preview_title
+        "portableCopy" -> R.string.portable_copy_title
         "covers" -> R.string.covers_title
         "nowPlaying" -> R.string.media_player
         "appearanceGroup" -> R.string.settings_appearance_group
@@ -1189,7 +1553,7 @@ private fun settingsTitle(section: String): Int = when {
     var savedSection by rememberSaveable { mutableStateOf(initialSection) }
     val section = when {
         savedSection == "videoOptions" -> "homeOptions"
-        savedSection.startsWith("clock/") || savedSection in setOf("root", "appearanceGroup", "mediaGroup", "controller", "localeGroup", "systemGroup", "language", "art", "grafana", "homeOptions", "appearance", "clock", "covers", "nowPlaying", "updates") -> savedSection
+        savedSection.startsWith("clock/") || savedSection in setOf("root", "appearanceGroup", "mediaGroup", "controller", "localeGroup", "systemGroup", "language", "art", "grafana", "homeOptions", "appearance", "clock", "covers", "nowPlaying", "updates", "portableCopy", "portablePreview") -> savedSection
         else -> "root"
     }
     // The route we leave identifies the exact parent row to restore on Back.
@@ -1205,6 +1569,7 @@ private fun settingsTitle(section: String): Int = when {
     val close: () -> Unit = {
         if (!closing) {
             closing = true
+            activity.releasePortablePreview()
             scope.launch {
                 slide.animateTo(1f, tween(180))
                 onClose()
@@ -1216,8 +1581,8 @@ private fun settingsTitle(section: String): Int = when {
     Dialog(onDismissRequest = back, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         val dialogWindow = (LocalView.current.parent as? DialogWindowProvider)?.window
         SideEffect { dialogWindow?.setDimAmount(0f) }
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .55f * (1f - slide.value)))) {
-            SettingsPanel(activity, apps, games, mediaPlayback, close, back, section, returnRow, navigate, Modifier.align(Alignment.CenterEnd).width(380.dp)
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .55f * (1f - slide.value))).safeDrawingPadding()) {
+            SettingsPanel(activity, apps, games, mediaPlayback, close, back, section, returnRow, navigate, Modifier.align(Alignment.CenterEnd).widthIn(max = 380.dp).fillMaxWidth()
                 .fillMaxHeight().offset(x = (380 * slide.value).dp))
         }
     }
@@ -1231,20 +1596,23 @@ private fun settingsTitle(section: String): Int = when {
         info.versionName.orEmpty()
     }
     var remoteAuto by remember { mutableStateOf(RemoteStartup.enabled(activity)) }
-    val languageCode = LocalConfiguration.current.locales[0].language
+    val displayLocale = LocalConfiguration.current.locales[0]
+    val languageCode = displayLocale.language
     val language = when (languageCode) {
         "ru" -> "Русский"
         "es" -> "Español"
         else -> "English"
     }
     val initialFocus = remember { FocusRequester() }
+    val backupDateFormat = remember(section, displayLocale) { java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT, displayLocale) }
     val rows = when (section) {
         "root" -> listOf("homeOptions", "appearanceGroup", "mediaGroup", "controller", "localeGroup", "systemGroup", "updates")
         "appearanceGroup" -> listOf("appearance", "art", "grafana")
         "mediaGroup" -> (if (activity.legacyRecoveryPending) listOf("legacyRecovery") else emptyList()) +
-            listOf("addGames", "folders", "covers", "nowPlaying", "ndsEmulator", "libraryTab", "appsTab")
+            listOf("addGames", "folders", "portableCopy", "covers", "nowPlaying", "ndsEmulator", "libraryTab", "appsTab")
         "localeGroup" -> listOf("language", "clock")
         "systemGroup" -> listOf("networkStatus", "network", "shield", "remote")
+        "portableCopy" -> listOf("copyAction", "portablePreview")
         else -> emptyList()
     }
     val focusedRow = returnRow.takeIf { it in rows } ?: rows.firstOrNull()
@@ -1288,6 +1656,7 @@ private fun settingsTitle(section: String): Int = when {
                     rowFocus("legacyRecovery"), onClick = { activity.retryLegacyRecovery() })
                 SettingRow(tr(R.string.add_games), modifier = rowFocus("addGames"), onClick = { activity.chooseFolder("all") })
                 SettingRow(tr(R.string.folders), modifier = rowFocus("folders"), onClick = { activity.manageFolders() })
+                SettingRow(tr(R.string.portable_copy_title), tr(R.string.portable_copy_summary), rowFocus("portableCopy"), onClick = { onSection("portableCopy") })
                 SettingRow(tr(R.string.covers_title), tr(R.string.covers_summary), rowFocus("covers"), onClick = { onSection("covers") })
                 SettingRow(tr(R.string.media_player), tr(R.string.media_settings_summary), rowFocus("nowPlaying"), onClick = { onSection("nowPlaying") })
                 NintendoDsEmulatorSetting(rowFocus("ndsEmulator"))
@@ -1310,6 +1679,49 @@ private fun settingsTitle(section: String): Int = when {
                 UpdateSettings(activity, initialFocus)
             } else if (section == "nowPlaying") {
                 MediaPlayerSettings(activity, mediaPlayback, initialFocus)
+            } else if (section == "portableCopy") {
+                Text(tr(R.string.portable_copy_unavailable_restore), color = Muted, fontSize = 13.sp, lineHeight = 19.sp)
+                SettingRow(tr(if (activity.portableCopyBusy) R.string.portable_copy_cancel else R.string.portable_copy_choose),
+                    modifier = rowFocus("copyAction"), onClick = {
+                        if (activity.portableCopyBusy) activity.cancelPortableCopy() else activity.choosePortableCopyFolder()
+                    })
+                if (activity.portableCopyMessage.isNotBlank()) Text(activity.portableCopyMessage, color = White, fontSize = 13.sp, lineHeight = 19.sp)
+                SettingRow(tr(R.string.portable_preview_title), tr(R.string.portable_preview_summary), rowFocus("portablePreview"),
+                    onClick = { if (!activity.portableCopyBusy) onSection("portablePreview") })
+            } else if (section == "portablePreview") {
+                Text(tr(R.string.portable_preview_hint), color = Muted, fontSize = 13.sp, lineHeight = 19.sp)
+                SettingRow(tr(if (activity.portablePreviewBusy) R.string.portable_preview_cancel else R.string.portable_preview_folder),
+                    modifier = Modifier.focusRequester(initialFocus), onClick = {
+                        if (activity.portablePreviewBusy) activity.cancelPortablePreview() else activity.choosePortablePreviewFolder()
+                    })
+                if (activity.portablePreviewMessage.isNotBlank()) Text(activity.portablePreviewMessage, color = White, fontSize = 13.sp, lineHeight = 19.sp)
+                if (activity.portableDecisionGroups.isNotEmpty()) {
+                    Text(tr(R.string.portable_decision_hint), color = Muted, fontSize = 13.sp, lineHeight = 19.sp)
+                    activity.portableDecisionGroups.forEach { group ->
+                        val label = when (group) {
+                            PortableRestoreDecisionGroup.GAMES_AND_COVERS -> R.string.portable_decision_games
+                            PortableRestoreDecisionGroup.HOME -> R.string.portable_decision_home
+                            PortableRestoreDecisionGroup.SETTINGS -> R.string.portable_decision_settings
+                        }
+                        val value = when (activity.portableDecisionChoices[group]) {
+                            PortableRestoreChoice.KEEP_CURRENT -> R.string.portable_decision_keep
+                            PortableRestoreChoice.USE_BACKUP -> R.string.portable_decision_backup
+                            null -> R.string.portable_decision_choose
+                        }
+                        key(group) { SettingRow(tr(label), tr(value), onClick = { activity.choosePortableDecision(group) }) }
+                    }
+                    Text(tr(R.string.portable_decision_remaining, activity.portableDecisionRemaining), color = Muted, fontSize = 13.sp)
+                }
+                if (activity.portableDecisionRootBlocks > 0) Text(tr(R.string.portable_decision_root_blocked), color = Muted, fontSize = 13.sp, lineHeight = 19.sp)
+                if (activity.portableRestoreAvailable) SettingRow(tr(R.string.portable_restore_action), tr(R.string.portable_restore_summary),
+                    onClick = { activity.confirmPortableRestore() })
+                activity.portablePreviewTitles.forEach { title -> Text(title, color = White, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                if (activity.portablePreviewExtra > 0) Text(tr(R.string.portable_preview_more, activity.portablePreviewExtra), color = Muted, fontSize = 13.sp)
+                activity.portableBackups.forEachIndexed { index, candidate ->
+                    val label = candidate.modified?.let { date -> tr(R.string.portable_preview_dated, index + 1, backupDateFormat.format(java.util.Date(date))) }
+                        ?: tr(R.string.portable_preview_number, index + 1)
+                    key(candidate.documentId) { SettingRow(label, modifier = Modifier, onClick = { activity.inspectPortableCandidate(candidate) }) }
+                }
             } else if (section == "covers") {
                 ManagedCoverSettings(activity, games, initialFocus)
             } else if (section == "art") {
@@ -1343,11 +1755,17 @@ private fun settingsTitle(section: String): Int = when {
         }
     }
     LaunchedEffect(section) { withFrameNanos { }; initialFocus.requestFocus() }
+    LaunchedEffect(section, activity.portablePreviewFocusRevision) {
+        if (section == "portablePreview" && activity.portablePreviewFocusRevision > 0) {
+            withFrameNanos { }
+            initialFocus.requestFocus()
+        }
+    }
 }
 
 @Composable internal fun SettingRow(title: String, value: String = "", modifier: Modifier = Modifier, isSelected: Boolean = false, trailing: String = "›", onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
-    Surface(onClick = onClick, modifier = modifier.fillMaxWidth().semantics { selected = isSelected }.onFocusChanged { focused = it.isFocused },
+    Surface(onClick = onClick, modifier = modifier.fillMaxWidth().touchSurface(onClick = onClick).semantics { selected = isSelected }.onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(0.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = Panel, focusedContainerColor = Lime),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),

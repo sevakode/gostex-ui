@@ -162,21 +162,22 @@ internal data class HomeFeedRequest(val sequence: Long, val step: Int, val ancho
                             val focus = state.focus(row.shelf, item.key)
                             val onFocus = {
                                 if (inputEnabled) {
+                                    val changed = state.activeShelf != row.shelf || state.selected[row.shelf] != item.key
                                     state.activeShelf = row.shelf
                                     state.activeIndex = rows.indexOfFirst { it.shelf == row.shelf }
                                     state.selected[row.shelf] = item.key
-                                    if (item is HomeTileItem.GameItem) onGameFocus(item.game)
+                                    if (changed && item is HomeTileItem.GameItem) onGameFocus(item.game)
                                 }
                             }
                             when (item) {
                                 is HomeTileItem.GameItem -> Poster(item.game,
                                     Modifier.width(tileWidth).focusRequester(focus), item.key in favorites,
-                                    onFocus = onFocus, onClick = { onGameOpen(item.game, focus) },
-                                    onLongClick = { onGameMenu(item.game, focus) })
+                                    onFocus = onFocus, onClick = { onFocus(); onGameOpen(item.game, focus) },
+                                    onLongClick = { onFocus(); onGameMenu(item.game, focus) })
                                 is HomeTileItem.AppItem -> AppTile(item.app,
                                     modifier = Modifier.width(tileWidth).focusRequester(focus), favorite = item.key in favorites,
-                                    onFocus = onFocus, onClick = { onAppOpen(item.app) },
-                                    onLongClick = { onAppMenu(item.app, focus) })
+                                    onFocus = onFocus, onClick = { onFocus(); onAppOpen(item.app) },
+                                    onLongClick = { onFocus(); onAppMenu(item.app, focus) })
                             }
                         }
                     }

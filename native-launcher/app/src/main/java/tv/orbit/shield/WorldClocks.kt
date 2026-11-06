@@ -113,7 +113,7 @@ import java.time.format.FormatStyle
             val date = dateFormat?.format(instant.atZone(clockZone(zone)))
             Surface(onClick = {
                 onConfigure(zone, focus)
-            }, modifier = Modifier.width(160.dp).focusRequester(focus).semantics {
+            }, modifier = Modifier.width(160.dp).touchSurface { onConfigure(zone, focus) }.focusRequester(focus).semantics {
                 contentDescription = listOfNotNull(title, time, date).joinToString(", ")
             }, shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(0.dp)),
                 colors = ClickableSurfaceDefaults.colors(containerColor = Color(0xFF1F1F21), focusedContainerColor = Color(0xFF303033)),

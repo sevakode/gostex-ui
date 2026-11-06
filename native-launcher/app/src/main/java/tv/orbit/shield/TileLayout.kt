@@ -13,6 +13,20 @@ internal object TileLayout {
     val titleGap = 9.dp
     val titleSize = 14.sp
 
+    /** Keep the saved size ordering while avoiding unreadably narrow cards in compact windows. */
+    fun columns(available: Dp, size: TileSize): Int {
+        val minimum = when (size) {
+            TileSize.LARGE -> 160.dp
+            TileSize.BALANCED -> 128.dp
+            TileSize.COMPACT -> 96.dp
+        }
+        val content = (available - (screenInset + focusInset) * 2).coerceAtLeast(0.dp)
+        val count = ((content + gap) / (minimum + gap)).toInt()
+        return count.coerceIn(1, size.columns)
+    }
+
     fun width(available: Dp, size: TileSize): Dp =
-        ((available - (screenInset + focusInset) * 2 - gap * (size.columns - 1)) / size.columns).coerceAtLeast(1.dp)
+        columns(available, size).let { count ->
+            ((available - (screenInset + focusInset) * 2 - gap * (count - 1)) / count).coerceAtLeast(1.dp)
+        }
 }

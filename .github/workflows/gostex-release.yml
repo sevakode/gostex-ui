@@ -33,7 +33,8 @@ jobs:
           import os
           from pathlib import Path
           run = int(os.environ['GITHUB_RUN_NUMBER'])
-          Path('native-launcher/version.properties').write_text(f'code={100000 + run}\nname=0.33.{run}\n')
+          # Reserve the earlier version codes, including installed local previews.
+          Path('native-launcher/version.properties').write_text(f'code={100010 + run}\nname=0.33.{run}\n')
           PY
       - name: Restore release signing key
         env:

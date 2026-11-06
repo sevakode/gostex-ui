@@ -10,6 +10,12 @@ import android.util.Log
 /** Starts only the user's fixed Remote script through Termux's permission-checked API. */
 class RemoteBootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        if (!PortableRestoreStartup.ready) return
+        if (PortableMaintenance.running) {
+            val saved = Intent(intent)
+            PortableMaintenance.afterMaintenance { onReceive(context.applicationContext, saved) }
+            return
+        }
         if (intent.action == Intent.ACTION_BOOT_COMPLETED || intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) {
             ArtSchedule.install(context)
             RemoteStartup.start(context)

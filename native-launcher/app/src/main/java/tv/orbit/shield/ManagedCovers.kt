@@ -11,6 +11,8 @@ import java.io.File
 import java.io.InputStream
 import java.security.MessageDigest
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.ensureActive
 import org.json.JSONArray
 import org.json.JSONObject
@@ -119,7 +121,8 @@ internal object ManagedCoverStore {
         bitmap.recycle()
         val key = managedCoverKey(sha)
         val file = imageFile(context, key)!!
-        if (!file.exists() || runCatching { digest(file.readBytes()) != sha }.getOrDefault(true)) {
+        if (!file.exists() || file.length() != bytes.size.toLong() ||
+            runCatching { digest(file.readBytes()) != sha }.getOrDefault(true)) {
             val used = directory(context).listFiles().orEmpty().sumOf { it.length() }
             require(used - file.length() + bytes.size <= STORE_BUDGET) { "Cover storage limit reached" }
             val target = AtomicFile(file)
@@ -128,6 +131,37 @@ internal object ManagedCoverStore {
             catch (e: Exception) { target.failWrite(stream); throw e }
         }
         return key
+    }
+    /** Stage only the selected images. Index and user choices remain untouched;
+     * an interruption may leave reusable content-addressed files behind. */
+    suspend fun stagePortable(context: Context, source: PortableContentTree, files: List<PortableRestoreCover>,
+                              requiredKeys: Set<String>, onFile: (Int, Int) -> Unit = { _, _ -> }) = withContext(Dispatchers.IO) {
+        val byDigest = files.associateBy { it.digest }
+        require(byDigest.size == files.size && files.all { coverDigestValid(it.digest) && it.documentId.isNotBlank() && it.bytes in 1..MAX_IMAGE_BYTES.toLong() })
+        val required = requiredKeys.map { managedCoverDigest(it) ?: error("Invalid cover key") }.toSortedSet()
+        require(required.all { it in byDigest }) { "Missing portable cover" }
+        gate.mutate {
+            val scope = currentCoroutineContext()
+            required.forEachIndexed { index, digest ->
+                scope.ensureActive()
+                val item = byDigest.getValue(digest)
+                onFile(index, required.size)
+                val output = java.io.ByteArrayOutputStream(item.bytes.toInt())
+                source.openRead(item.documentId).use { input ->
+                    val buffer = ByteArray(8192)
+                    while (true) {
+                        scope.ensureActive()
+                        val count = input.read(buffer)
+                        if (count == -1) break
+                        require(count > 0 && count <= item.bytes - output.size()) { "Portable cover size changed" }
+                        output.write(buffer, 0, count)
+                    }
+                }
+                require(output.size().toLong() == item.bytes) { "Portable cover size changed" }
+                scope.ensureActive()
+                check(putImage(context, output.toByteArray(), expected = digest) == managedCoverKey(digest))
+            }
+        }
     }
     suspend fun importManual(context: Context, gameId: String, uri: Uri): Map<String, ManagedCover> {
         val bytes = context.contentResolver.openInputStream(uri)?.use { bounded(it, MAX_IMAGE_BYTES) } ?: error("Image unavailable")

@@ -88,7 +88,7 @@ internal data class MediaPlayerOptions(val visible: Boolean = true, val showPaus
     val status = tr(if (session.isPlaying) R.string.media_playing else R.string.media_paused)
     val title = session.title.ifBlank { session.appName }
     val subtitle = listOf(session.appName, session.artist).filter { it.isNotBlank() }.distinct().joinToString(" · ")
-    Surface(onClick = onClick, modifier = modifier.size(40.dp).semantics { contentDescription = "$status · $title · $subtitle" },
+    Surface(onClick = onClick, modifier = modifier.size(40.dp).touchSurface(onClick = onClick).semantics { contentDescription = "$status · $title · $subtitle" },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(4.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = Color(0xFF242428), focusedContainerColor = Color(0xFF38383D)),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
@@ -115,9 +115,9 @@ internal data class MediaPlayerOptions(val visible: Boolean = true, val showPaus
         val initialFocus = remember { FocusRequester() }
         val window = (LocalView.current.parent as? DialogWindowProvider)?.window
         SideEffect { window?.setDimAmount(0f) }
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .18f))
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .18f)).safeDrawingPadding()
             .pointerInput(Unit) { detectTapGestures { currentDismiss() } }) {
-            Column(Modifier.align(Alignment.TopEnd).padding(top = 66.dp, end = 36.dp).width(320.dp)
+            Column(Modifier.align(Alignment.TopEnd).padding(top = 66.dp, end = 36.dp).widthIn(max = 320.dp).fillMaxWidth()
                 .heightIn(max = 360.dp).background(Color(0xFF17171B), RoundedCornerShape(8.dp))
                 .border(1.dp, Color(0xFF48484D), RoundedCornerShape(8.dp))
                 .pointerInput(Unit) { detectTapGestures { } }

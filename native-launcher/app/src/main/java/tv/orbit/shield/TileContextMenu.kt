@@ -11,7 +11,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -73,13 +74,13 @@ internal fun TileContextMenu(
         val confirmGate = remember(target) { MenuConfirmKeyGate() }
         val window = (LocalView.current.parent as? DialogWindowProvider)?.window
         SideEffect { window?.setDimAmount(0f) }
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .6f)).padding(24.dp)
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .6f)).safeDrawingPadding().padding(24.dp)
             .onPreviewKeyEvent {
                 val event = it.nativeKeyEvent
                 confirmGate.consume(event.keyCode, event.action, event.repeatCount, event.isCanceled)
             }) {
             Column(
-                Modifier.align(Alignment.CenterEnd).width(360.dp).heightIn(max = 480.dp)
+                Modifier.align(Alignment.CenterEnd).widthIn(max = 360.dp).fillMaxWidth().heightIn(max = 480.dp)
                     .background(Color(0xFF0A0A0A)).border(1.dp, Color(0xFF424244))
                     .verticalScroll(rememberScrollState()).padding(22.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)

@@ -36,7 +36,7 @@ internal enum class CompactIcon { Search, Clear, Open, Previous, Next, Play, Pau
     Surface(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.size(40.dp).semantics { contentDescription = description },
+        modifier = modifier.size(40.dp).touchSurface(enabled = enabled, onClick = onClick).semantics { contentDescription = description },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(4.dp)),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = if (primary) Color(0xFFCCFF00) else if (active) Color(0xFF303034) else Color(0xFF202024),

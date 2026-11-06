@@ -521,6 +521,12 @@ internal class LauncherUpdates(private val activity: MainActivity) {
 /** Explicit, private install callback. Never installs or opens a confirmation from an automatic check. */
 class UpdateInstallReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        if (!PortableRestoreStartup.ready) return
+        if (PortableMaintenance.running) {
+            val saved = Intent(intent)
+            PortableMaintenance.afterMaintenance { onReceive(context.applicationContext, saved) }
+            return
+        }
         if (intent.action != LauncherUpdates.INSTALL_ACTION) return
         val prefs = UpdatePreferences.preferences(context)
         val expected = runCatching { prefs.getInt(LauncherUpdates.INSTALL_SESSION, -1) }.getOrDefault(-1)

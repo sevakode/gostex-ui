@@ -130,7 +130,7 @@ private data class NetworkState(val transport: String = "offline", val validated
         else -> R.string.network_connected
     })
     val tint = if (state.transport == "offline") Color(0xFFADADB0) else if (!state.validated) Color(0xFFFFC45C) else Color(0xFFCCFF00)
-    Surface(onClick = { activity.openNetworkSettings() }, modifier = Modifier.semantics { contentDescription = label },
+    Surface(onClick = { activity.openNetworkSettings() }, modifier = Modifier.touchSurface { activity.openNetworkSettings() }.semantics { contentDescription = label },
         colors = ClickableSurfaceDefaults.colors(containerColor = Color.Transparent, focusedContainerColor = Color(0xFF303033)),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.02f),
         border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, Color(0xFFCCFF00))))) {

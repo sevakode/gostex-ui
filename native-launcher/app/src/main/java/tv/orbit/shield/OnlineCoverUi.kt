@@ -121,8 +121,8 @@ import kotlinx.coroutines.launch
         try { value=client.preview(image) } catch(e:CancellationException) { throw e } catch(_:Exception) { value=null }
     }
     Dialog(onDismissRequest=onClose,properties=DialogProperties(usePlatformDefaultWidth=false,decorFitsSystemWindows=false)) {
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha=.85f)),contentAlignment=Alignment.Center) {
-            Column(Modifier.width(850.dp).fillMaxHeight(.94f).background(Color(0xFF101012)).border(1.dp,Color(0xFF424244)).padding(20.dp),
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha=.85f)).safeDrawingPadding(),contentAlignment=Alignment.Center) {
+            Column(Modifier.widthIn(max=850.dp).fillMaxWidth().fillMaxHeight(.94f).background(Color(0xFF101012)).border(1.dp,Color(0xFF424244)).padding(20.dp),
                 verticalArrangement=Arrangement.spacedBy(8.dp)) {
                 Text(tr(R.string.cover_find_online),color=Color(0xFFCCFF00),fontSize=23.sp,fontWeight=FontWeight.Bold)
                 Text("${game.title} · ${game.platform}",color=Color.White,fontSize=13.sp,maxLines=1,overflow=TextOverflow.Ellipsis)
@@ -146,7 +146,10 @@ import kotlinx.coroutines.launch
                 }
                 Text(if(busy) tr(R.string.cover_searching) + " · " + options.providers.getOrNull(providerIndex)?.label.orEmpty() else options.providers.getOrNull(providerIndex)?.label.orEmpty(),color=Color(0xFFCCFF00),fontSize=12.sp)
                 if(message.isNotEmpty()) Text(message,color=Color(0xFFADADB0),fontSize=12.sp,maxLines=3,overflow=TextOverflow.Ellipsis)
-                Row(Modifier.weight(1f),horizontalArrangement=Arrangement.spacedBy(18.dp)) {
+                BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                  val compact = maxWidth < 600.dp
+                  val previewWidth = if (compact) maxWidth * .32f else 300.dp
+                  Row(Modifier.fillMaxSize(),horizontalArrangement=Arrangement.spacedBy(if (compact) 8.dp else 18.dp)) {
                     LazyColumn(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(6.dp)) {
                         itemsIndexed(titles,key={ _,it -> it.id }) { index,title ->
                             SettingRow(title.title,title.year,modifier=if(index==0) Modifier.focusRequester(first) else Modifier,onClick={ if(!busy) loadGrids(title) })
@@ -157,8 +160,8 @@ import kotlinx.coroutines.launch
                                 onClick={ if(!busy) apply(image) })
                         }
                     }
-                    Column(Modifier.width(300.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                        Box(Modifier.fillMaxWidth().height(120.dp).background(Color(0xFF222226)),contentAlignment=Alignment.Center) {
+                    Column(Modifier.width(previewWidth),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                        Box(Modifier.fillMaxWidth().height(if (compact) 80.dp else 120.dp).background(Color(0xFF222226)),contentAlignment=Alignment.Center) {
                             bitmap?.let { Image(it.asImageBitmap(),null,Modifier.fillMaxSize(),contentScale=ContentScale.Fit) }
                         }
                         Text(tr(if(images.isNotEmpty()) R.string.cover_preview_apply else R.string.cover_pick_title),color=Color.White,fontSize=12.sp,lineHeight=16.sp,maxLines=2,overflow=TextOverflow.Ellipsis)
@@ -167,6 +170,7 @@ import kotlinx.coroutines.launch
                         }
                         Text(tr(R.string.cover_online_hint),color=Color(0xFFADADB0),fontSize=11.sp,lineHeight=15.sp,maxLines=3,overflow=TextOverflow.Ellipsis)
                     }
+                  }
                 }
                 ControlHints(R.string.control_select,R.string.back)
             }

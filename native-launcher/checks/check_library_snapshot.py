@@ -12,7 +12,9 @@ from kotlin_toolchain import ROOT, JAVA, COMPILER
 
 SOURCES = ROOT / "native-launcher/app/src/main/java/tv/orbit/shield"
 main = (SOURCES / "MainActivity.kt").read_text()
-model = main[main.index("data class Game("):main.index("class MainActivity")]
+model_start = main.index("data class Game(")
+model_end = main.index("\n)", model_start) + len("\n)")
+model = main[model_start:model_end]
 snapshot = (SOURCES / "LibrarySnapshot.kt").read_text().removeprefix("package tv.orbit.shield\n")
 snapshot_imports = "\n".join(line for line in snapshot.splitlines() if line.startswith("import ")) + "\n"
 snapshot = "\n".join(line for line in snapshot.splitlines() if not line.startswith("import ")) + "\n"
@@ -61,6 +63,8 @@ fun main() {
     val previous = listOf(original, other)
     verify("An empty accessible folder clears its cached games", libraryRootSnapshot("a", emptyList(), previous).isEmpty())
     verify("An unavailable folder keeps only its own cached games", libraryRootSnapshot("a", null, previous) == listOf(original))
+    verify("A portable snapshot keeps only its own platform and root without a folder scan", portableRootSnapshot("a", "SNES", previous + original.copy(id = "other-platform", platform = "PSP")) == listOf(original))
+    verify("A portable snapshot preserves cards when storage is unavailable", portableRootSnapshot("a", "SNES", previous) == listOf(original))
     val oneVariant = original.copy(files = listOf("translation.sfc"))
     verify("A successful scan replaces removed variants without changing game identity", libraryRootSnapshot("a", listOf(oneVariant), previous) == listOf(oneVariant))
     verify("Removed roots do not leak cached entries into the current library",

@@ -474,6 +474,7 @@ class GrafanaPreviewActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (!PortableRestoreStartup.ready || PortableMaintenance.running) { finish(); return }
         val localized = Language.context(this)
         screen = GrafanaScreen(localized, interactive = true)
         preferences = getSharedPreferences("orbit", Context.MODE_PRIVATE)
@@ -509,17 +510,20 @@ class GrafanaPreviewActivity : Activity() {
 
     override fun onStart() {
         super.onStart()
-        preferences.registerOnSharedPreferenceChangeListener(listener)
-        screen.configure(GrafanaPreferences.read(this))
+        if (PortableMaintenance.running) { finish(); return }
+        if (::preferences.isInitialized && ::screen.isInitialized) {
+            preferences.registerOnSharedPreferenceChangeListener(listener)
+            screen.configure(GrafanaPreferences.read(this))
+        }
     }
 
-    override fun onResume() { super.onResume(); screen.start() }
-    override fun onPause() { screen.stop(); super.onPause() }
+    override fun onResume() { super.onResume(); if (PortableMaintenance.running) { finish(); return }; if (::screen.isInitialized) screen.start() }
+    override fun onPause() { if (::screen.isInitialized) screen.stop(); super.onPause() }
     override fun onStop() {
-        preferences.unregisterOnSharedPreferenceChangeListener(listener)
+        if (::preferences.isInitialized) preferences.unregisterOnSharedPreferenceChangeListener(listener)
         super.onStop()
     }
-    override fun onDestroy() { screen.destroy(); super.onDestroy() }
+    override fun onDestroy() { if (::screen.isInitialized) screen.destroy(); super.onDestroy() }
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
         if (keyCode == KeyEvent.KEYCODE_BUTTON_B) { finish(); return true }
         return super.onKeyUp(keyCode, event)

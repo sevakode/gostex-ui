@@ -7,6 +7,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 import hashlib
 import json
+import os
 import re
 import subprocess
 import tempfile
@@ -14,7 +15,7 @@ import tempfile
 root = Path(__file__).resolve().parents[2]
 source_dir = root / 'native-launcher/app/src/main/java/tv/orbit/shield'
 sources = [source_dir / name for name in ('LibraryImport.kt', 'ThreeDsInstalledLayout.kt',
-    'ThreeDsMetadata.kt', 'LibrarySnapshot.kt', 'DiscImport.kt')]
+    'ThreeDsMetadata.kt', 'LibrarySnapshot.kt', 'DiscImport.kt', 'LibraryRootCodec.kt', 'ArchiveAdmission.kt')]
 cache = root / '.tools/native/gradle-cache/caches/modules-2/files-2.1'
 def jar(group, artifact, version):
     return next((cache / group / artifact / version).glob('*/*.jar'))
@@ -24,7 +25,9 @@ compiler = [jar('org.jetbrains.kotlin', a, v) for a, v in [
 coroutines = jar('org.jetbrains.kotlinx', 'kotlinx-coroutines-core-jvm', '1.9.0')
 compiler += [coroutines, jar('org.jetbrains', 'annotations', '13.0')]
 gson = jar('com.google.code.gson', 'gson', '2.11.0')
-classpath = ':'.join(map(str, [compiler[1], coroutines, gson]))
+json_jar = Path(os.environ.get('PORTABLE_TEST_JSON_JAR', root / '.tools/native/test-json/json-20240303.jar'))
+assert hashlib.sha256(json_jar.read_bytes()).hexdigest() == '3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed'
+classpath = ':'.join(map(str, [compiler[1], coroutines, gson, json_jar]))
 java = root / '.tools/native/jdk/jdk-21.0.13+9/Contents/Home/bin/java'
 stubs = {
 'Uri.kt': r'''package android.net
@@ -37,7 +40,7 @@ data class Uri(val raw:String) {
 'Documents.kt': r'''package android.provider
 import android.net.Uri
 object DocumentsContract {
- object Document {const val COLUMN_DOCUMENT_ID="id";const val COLUMN_DISPLAY_NAME="name";const val COLUMN_MIME_TYPE="mime";const val MIME_TYPE_DIR="directory"}
+ object Document {const val COLUMN_DOCUMENT_ID="id";const val COLUMN_DISPLAY_NAME="name";const val COLUMN_MIME_TYPE="mime";const val COLUMN_SIZE="size";const val COLUMN_LAST_MODIFIED="modified";const val MIME_TYPE_DIR="directory"}
  fun encode(s:String)=java.net.URLEncoder.encode(s,"UTF-8")
  fun decode(s:String)=java.net.URLDecoder.decode(s,"UTF-8")
  fun buildTreeDocumentUri(authority:String,id:String)=Uri("content://$authority/tree/${encode(id)}")
@@ -49,6 +52,7 @@ object DocumentsContract {
 ''',
 'Parcel.kt': r'''package android.os
 class ParcelFileDescriptor(val file:java.io.File):java.io.Closeable {
+ val fd:Int get()=0
  override fun close() {}
  class AutoCloseInputStream(descriptor:ParcelFileDescriptor):java.io.FileInputStream(descriptor.file)
 }
@@ -58,7 +62,7 @@ import android.net.Uri
 import android.provider.DocumentsContract as Docs
 data class Permission(val uri:Uri,val isReadPermission:Boolean=true)
 data class Row(val id:String,val name:String,val mime:String="file")
-class Cursor(val rows:List<Row>):java.io.Closeable {var at=-1;fun moveToNext()=++at<rows.size;fun getString(i:Int)=when(i){0->rows[at].id;1->rows[at].name;else->rows[at].mime};override fun close() {}}
+class Cursor(val rows:List<Row>):java.io.Closeable {var at=-1;fun moveToNext()=++at<rows.size;fun moveToFirst():Boolean { at=0;return rows.isNotEmpty() };fun isNull(i:Int)=true;fun getLong(i:Int)=0L;fun getString(i:Int)=when(i){0->rows[at].id;1->rows[at].name;else->rows[at].mime};override fun close() {}}
 class Resolver {
  val persistedUriPermissions=mutableListOf<Permission>()
  val children=mutableMapOf<String,List<Row>>();val files=mutableMapOf<String,java.io.File>()
@@ -81,6 +85,7 @@ class Resolver {
 }
 class Prefs {
  val values=mutableMapOf<String,Any?>()
+ fun contains(k:String)=values.containsKey(k)
  fun getString(k:String,d:String?)=values[k] as? String ?: d
  fun getBoolean(k:String,d:Boolean)=values[k] as? Boolean ?: d
  fun edit()=Editor(this)
@@ -118,11 +123,20 @@ class JSONArray(val a:JsonArray=JsonArray()) {
 'Models.kt': r'''package tv.orbit.shield
 data class Game(val id:String,val title:String,val platform:String,val emulator:String,val component:String,val files:List<String>,val tree:String="",val cover:String="",val scene:String="",val genre:String="",val year:String="",val developer:String="",val players:String="",val demo:Boolean=false,val description:String="")
 enum class LaunchKind {VIEW,DUCKSTATION}
-data class Spec(val emulator:String="Azahar",val component:String="azahar/Emulation",val launchKind:LaunchKind=LaunchKind.VIEW) {fun accepts(name:String)=name.substringAfterLast('.').lowercase() in setOf("app","cxi","cci","3ds","3dsx","nds")}
-object PlatformRegistry {fun find(platform:String)=if(platform in setOf("Nintendo 3DS","Nintendo DS"))Spec() else null;fun title(context:android.content.Context,platform:String)=platform}
+data class PlatformSpec(val emulator:String="Azahar",val component:String="azahar/Emulation",val launchKind:LaunchKind=LaunchKind.VIEW) {val extensions=setOf("app","cxi","cci","3ds","3dsx","nds");fun accepts(name:String)=name.substringAfterLast('.').lowercase() in extensions}
+object PlatformRegistry {fun find(platform:String)=if(platform in setOf("Nintendo 3DS","Nintendo DS"))PlatformSpec() else null;fun title(context:android.content.Context,platform:String)=platform}
 object GameMetadataMatcher {fun find(context:android.content.Context,platform:String,name:String,bundled:List<Game>):Game?=null}
 ''',
 }
+stubs.pop('Json.kt')
+stubs['AtomicFile.kt'] = r'''package android.util
+class AtomicFile(private val file:java.io.File) {
+ fun openRead()=file.inputStream()
+ fun startWrite()=file.outputStream()
+ fun finishWrite(out:java.io.FileOutputStream) { out.close() }
+ fun failWrite(out:java.io.FileOutputStream) { out.close() }
+}
+'''
 ids=sorted(set(re.findall(r'R\.string\.(\w+)', sources[0].read_text())))
 stubs['Resources.kt']='package tv.orbit.shield\nobject R { object string {\n'+'\n'.join(f'const val {v}={i+1}' for i,v in enumerate(ids))+'\n}}'
 checks=r'''package tv.orbit.shield

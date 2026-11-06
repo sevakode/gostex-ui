@@ -67,7 +67,7 @@ internal object GameDescriptions {
     val artCreditLabel = tr(R.string.metadata_art_credit, sources.media?.sourceName.orEmpty())
     val artRights = tr(R.string.metadata_art_rights)
     val descriptionCreditLabel = tr(R.string.metadata_description_source, loaded?.sourceName.orEmpty())
-    Surface(onClick = {
+    val showDescription = {
         val attribution = loaded?.let { entry -> listOf(entry.authors, entry.license, if (entry.modified) adaptedLabel else "", entry.url).filter { it.isNotBlank() }.joinToString("\n") }.orEmpty()
         val mediaCredit = sources.media?.let { artCreditLabel + "\n" + artRights + "\n" + it.url }.orEmpty()
         val dialog = AlertDialog.Builder(context).setTitle(game.title).setMessage(listOf(text, attribution, mediaCredit).filter { it.isNotBlank() }.joinToString("\n\n"))
@@ -88,7 +88,9 @@ internal object GameDescriptions {
         }
         loaded?.takeIf { it.licenseUrl.isNotBlank() }?.let { entry -> dialog.setNegativeButton(entry.license) { _, _ -> open(entry.licenseUrl) } }
         dialog.show()
-    }, modifier = Modifier.width(540.dp), colors = ClickableSurfaceDefaults.colors(containerColor = Color(0xFF1F1F21), focusedContainerColor = Color(0xFF30351E))) {
+        Unit
+    }
+    Surface(onClick = showDescription, modifier = Modifier.width(540.dp).touchSurface(onClick = showDescription), colors = ClickableSurfaceDefaults.colors(containerColor = Color(0xFF1F1F21), focusedContainerColor = Color(0xFF30351E))) {
         Column(Modifier.padding(12.dp)) {
             if (text.isNotBlank()) Text(text, color = Color(0xFFF5F5F5), fontSize = 13.sp, lineHeight = 18.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
             Text(listOf(readLabel, loaded?.sourceName.orEmpty(), loaded?.license.orEmpty(), loaded?.language?.uppercase(java.util.Locale.ROOT).orEmpty(), if (loaded?.modified == true) adaptedLabel else "").filter { it.isNotBlank() }.joinToString(" · "), color = Color(0xFFCCFF00), fontSize = 10.sp, modifier = Modifier.padding(top = 6.dp))

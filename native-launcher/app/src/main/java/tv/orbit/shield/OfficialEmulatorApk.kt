@@ -25,6 +25,8 @@ internal object OfficialEmulatorApk {
     private const val MAX_BYTES = 160L * 1024 * 1024
     private val hosts = setOf("api.github.com", "github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com")
     fun supports(pkg: String) = pkg in sources
+    private fun temporaryFile(activity: MainActivity) = File(File(activity.cacheDir, "emulator-install"), "emulator.apk")
+    fun discard(activity: MainActivity) { temporaryFile(activity).delete() }
     private fun open(url: String): HttpsURLConnection {
         var next = url
         repeat(6) {
@@ -70,7 +72,7 @@ internal object OfficialEmulatorApk {
         val url = asset.getString("browser_download_url"); val uri = URI(url)
         require(uri.scheme == "https" && uri.host == "github.com" && uri.rawQuery == null &&
             uri.path == "/${source.repo}/releases/download/$tag/$name")
-        val file = File(File(activity.cacheDir, "emulator-install").apply { mkdirs() }, "emulator.apk")
+        val file = temporaryFile(activity).also { it.parentFile?.mkdirs() }
         val conn = open(url)
         try {
             val hash = MessageDigest.getInstance("SHA-256"); var total = 0L

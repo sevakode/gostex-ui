@@ -75,13 +75,14 @@ internal fun MainActivity.downloadOfficialEmulator(pkg: String) {
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
             if (notice == progress) notice = ""
         } catch (e: CancellationException) {
+            OfficialEmulatorApk.discard(this@downloadOfficialEmulator)
             if (notice == progress) notice = ""
             throw e
         } catch (_: EmulatorApkIncompatible) {
-            pendingEmulatorApk?.delete(); pendingEmulatorApk = null
+            OfficialEmulatorApk.discard(this@downloadOfficialEmulator); pendingEmulatorApk = null
             notice = getString(R.string.emulator_install_incompatible)
         } catch (_: Exception) {
-            pendingEmulatorApk?.delete(); pendingEmulatorApk = null
+            OfficialEmulatorApk.discard(this@downloadOfficialEmulator); pendingEmulatorApk = null
             notice = getString(R.string.emulator_install_failed)
         } finally {
             lifecycle.removeObserver(observer)

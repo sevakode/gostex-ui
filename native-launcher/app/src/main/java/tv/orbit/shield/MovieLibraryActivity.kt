@@ -263,12 +263,15 @@ class MovieLibraryActivity : ComponentActivity() {
         busy = true; progressMessage = ""; error = ""; sources = emptyList(); searchedSources = false; sourceEpisode = episode
         lifecycleScope.launch {
             val fetched = withContext(Dispatchers.IO) {
-                active.map { entry -> runCatching { MovieAddonClient.streams(entry.addon, episode?.id ?: movie.id, movie.mediaType) } }
+                lookupAddons(active) { entry -> MovieAddonClient.streams(entry.addon, episode?.id ?: movie.id, movie.mediaType) }
             }
             if (generation != requestGeneration || selected?.id != movie.id || isFinishing) return@launch
             busy = false; searchedSources = true
             if (fetched.all { it.isFailure }) error = getString(R.string.movies_source_failed)
-            else sources = fetched.flatMap { it.getOrDefault(emptyList()) }
+            else {
+                sources = fetched.flatMap { it.getOrDefault(emptyList()) }
+                if (fetched.any { it.isFailure }) error = getString(R.string.movies_partial_sources)
+            }
         }
     }
 

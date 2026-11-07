@@ -70,6 +70,7 @@ jobs:
           python3 native-launcher/checks/check_cover_concurrency.py
           python3 native-launcher/checks/check_media_file_labels.py
           python3 native-launcher/checks/check_media_cover_retry.py
+          python3 native-launcher/checks/check_movie_addon_lookup.py
           python3 native-launcher/checks/test_public_release.py
           python3 native-launcher/checks/test_carry_forward_linux.py
           python3 native-launcher/checks/check_update_state.py

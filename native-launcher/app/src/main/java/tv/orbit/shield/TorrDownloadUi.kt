@@ -3,6 +3,12 @@ package tv.orbit.shield
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
@@ -30,7 +36,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-@Composable internal fun TorrDownloadUi(activity: MainActivity, initialFocus: FocusRequester) {
+@Composable internal fun TorrDownloadUi(activity: MainActivity, initialFocus: FocusRequester, wide: Boolean = false) {
     val scope = rememberCoroutineScope()
     val jobs by TorrDownloadStore.jobs.collectAsState()
     var entries by remember { mutableStateOf<List<TorrCatalogEntry>>(emptyList()) }
@@ -38,7 +44,6 @@ import kotlinx.coroutines.withContext
     var magnet by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var preparingHash by remember { mutableStateOf<String?>(null) }
-    var metadataError by remember { mutableStateOf<Pair<String, Int>?>(null) }
     var failed by remember { mutableStateOf(false) }
     var journalFailed by remember { mutableStateOf(false) }
     var discardErrorId by remember { mutableStateOf<String?>(null) }
@@ -46,9 +51,12 @@ import kotlinx.coroutines.withContext
     var filePage by remember { mutableStateOf(0) }
     var jobPage by remember { mutableStateOf(0) }
     var chosenFiles by remember { mutableStateOf<Set<Int>>(emptySet()) }
+    var showOptions by remember { mutableStateOf(false) }
+    var showMagnet by remember { mutableStateOf(false) }
     var reserveMiB by remember { mutableStateOf(TorrDownloadSpace.read(activity)) }
     var writeRateKiB by remember { mutableStateOf(TorrDownloadWriteRate.read(activity)) }
     var autoRetry by remember { mutableStateOf(TorrDownloadRetryOptions.read(activity)) }
+    val autoCover = rememberTorrentAutoCover()
     val fileFocus = remember { FocusRequester() }
     val revision = activity.torrCatalogRevision
 
@@ -78,6 +86,10 @@ import kotlinx.coroutines.withContext
         LaunchedEffect(current.hash) { runCatching { fileFocus.requestFocus() } }
         SettingRow(tr(R.string.torr_download_back), modifier = Modifier.focusRequester(fileFocus), onClick = { selected = null; filePage = 0; chosenFiles = emptySet() })
         Text(current.title, color = Color.White, fontSize = 16.sp)
+        val coverId = remember(current.hash) { TorrentArtwork.id(current.hash) }
+        val cover = activity.managedCovers[coverId]
+        CoverArtwork(cover?.manual?.takeIf { it.isNotEmpty() } ?: cover?.original.orEmpty(), Modifier.width(180.dp).height(102.dp), fallbackTitle = current.title)
+        SettingRow(tr(R.string.downloads_choose_cover), onClick = { activity.chooseCover(coverId) })
         val rate = current.downloadBytesPerSecond?.let { android.text.format.Formatter.formatShortFileSize(activity, it) }
         val seeders = current.connectedSeeders
         if (rate != null || seeders != null) {
@@ -158,9 +170,20 @@ import kotlinx.coroutines.withContext
         return
     }
 
-    SettingRow(tr(R.string.torr_download_add_file), modifier = Modifier.focusRequester(initialFocus), onClick = activity::chooseTorrFile)
+    if (wide) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            SettingRow(tr(R.string.torr_download_add_file), modifier = Modifier.weight(1f).focusRequester(initialFocus), onClick = activity::chooseTorrFile)
+            SettingRow(tr(if (showMagnet) R.string.downloads_magnet_hide else R.string.downloads_magnet_show), modifier = Modifier.weight(1f), onClick = { showMagnet = !showMagnet })
+            SettingRow(tr(if (showOptions) R.string.downloads_options_hide else R.string.downloads_options_show), modifier = Modifier.weight(1f), onClick = { showOptions = !showOptions })
+        }
+    } else {
+        SettingRow(tr(R.string.torr_download_add_file), modifier = Modifier.focusRequester(initialFocus), onClick = activity::chooseTorrFile)
+        SettingRow(tr(if (showMagnet) R.string.downloads_magnet_hide else R.string.downloads_magnet_show), onClick = { showMagnet = !showMagnet })
+        SettingRow(tr(if (showOptions) R.string.downloads_options_hide else R.string.downloads_options_show), onClick = { showOptions = !showOptions })
+    }
     if (activity.torrDownloadMessage.isNotBlank()) Text(activity.torrDownloadMessage,
         modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }, color = Color.LightGray, fontSize = 13.sp)
+    if (showOptions) {
     val folder = activity.torrDownloadFolder
     val folderLabel = remember(folder) {
         runCatching { android.provider.DocumentsContract.getTreeDocumentId(android.net.Uri.parse(folder)).substringAfterLast('/') }.getOrDefault("")
@@ -186,6 +209,10 @@ import kotlinx.coroutines.withContext
             .onSuccess { autoRetry = next }
             .onFailure { activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed) }
     })
+    SettingRow(tr(R.string.downloads_auto_cover), tr(if (autoCover) R.string.enabled else R.string.disabled), onClick = {
+        TorrentArtwork.enabled(activity, !autoCover)
+    })
+    Text(tr(R.string.downloads_auto_cover_hint), color = Color.LightGray, fontSize = 12.sp)
     val writeRateLabel = if (writeRateKiB == 0) tr(R.string.torr_write_unlimited)
         else tr(R.string.torr_status_rate_value, android.text.format.Formatter.formatShortFileSize(activity, writeRateKiB.toLong() * 1024))
     SettingRow(tr(R.string.torr_write_limit), writeRateLabel, onClick = {
@@ -201,6 +228,8 @@ import kotlinx.coroutines.withContext
             }.setNegativeButton(R.string.cancel, null).show()
     })
     Text(tr(R.string.torr_write_limit_note), color = Color.LightGray, fontSize = 13.sp)
+    }
+    if (showMagnet) {
     Text(tr(R.string.torr_download_magnet), color = Color.LightGray, fontSize = 13.sp)
     BasicTextField(magnet, { if (it.length <= 8192) magnet = it }, modifier = Modifier.fillMaxWidth().background(Color(0xFF29292B)).padding(10.dp),
         singleLine = true, textStyle = TextStyle(color = Color.White, fontSize = 14.sp))
@@ -210,14 +239,15 @@ import kotlinx.coroutines.withContext
             activity.torrDownloadMessage = ""
             scope.launch {
                 try {
-                    withContext(Dispatchers.IO) { TorrServerCatalog.addMagnet(magnet.trim()) }
+                    val entry = withContext(Dispatchers.IO) { TorrServerCatalog.addMagnet(magnet.trim()) }
                     magnet = ""; activity.torrCatalogChanged(); activity.torrDownloadMessage = activity.getString(R.string.torr_download_torrent_added)
+                    activity.findTorrentCover(entry)
                 } catch (_: Exception) { activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed) }
                 finally { busy = false }
             }
         }
     })
-    SettingRow(tr(R.string.torr_download_refresh), if (busy) tr(R.string.torr_download_loading) else "", onClick = { refresh() })
+    }
     if (failed) {
         Text(tr(R.string.torr_download_unavailable), color = Color.LightGray, fontSize = 13.sp)
         SettingRow(tr(R.string.torr_download_open), onClick = activity::openTorrServer)
@@ -267,6 +297,11 @@ import kotlinx.coroutines.withContext
                 }
             }.onFailure { activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed) }
         })
+        if (job.state in setOf("running", "queued", "paused") && job.total > 0) {
+            Box(Modifier.fillMaxWidth().height(3.dp).background(Color(0xFF38383C))) {
+                Box(Modifier.fillMaxWidth(percent / 100f).height(3.dp).background(Color(0xFFCCFF00)))
+            }
+        }
         if (job.state == "done") SettingRow(tr(R.string.torr_download_remove), tr(R.string.torr_download_keep_file), onClick = {
             runCatching { TorrDownloadStore.removeRecord(activity, job.id) }
                 .onFailure { activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed) }
@@ -309,27 +344,40 @@ import kotlinx.coroutines.withContext
     if (jobPage > 0) SettingRow("‹", onClick = { jobPage-- })
     if ((jobPage + 1) * 20 < jobs.size) SettingRow("›", onClick = { jobPage++ })
     if (jobs.any { it.state == "done" }) Text(tr(R.string.torr_download_keep_file), color = Color.LightGray, fontSize = 13.sp)
-    Text(tr(R.string.torr_download_choose_torrent), color = Color.White, fontSize = 16.sp)
+    Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Text(tr(R.string.torr_download_choose_torrent), modifier = Modifier.weight(1f), color = Color.White, fontSize = 16.sp)
+        SettingRow(tr(R.string.torr_download_refresh), if (busy) tr(R.string.torr_download_loading) else "", modifier = Modifier.width(150.dp), onClick = { refresh() })
+    }
     if (busy) Text(tr(R.string.torr_download_loading), color = Color.LightGray, fontSize = 13.sp)
     if (entries.isEmpty() && !busy && !failed) Text(tr(R.string.torr_download_empty), color = Color.LightGray, fontSize = 13.sp)
     entries.drop(page * 20).take(20).forEach { entry ->
-        SettingRow(entry.title, if (preparingHash == entry.hash) tr(R.string.torr_download_preparing_files) else "", onClick = {
+        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        val coverId = remember(entry.hash) { TorrentArtwork.id(entry.hash) }
+        val cover = activity.managedCovers[coverId]
+        val artwork = cover?.manual?.takeIf { it.isNotEmpty() } ?: cover?.original.orEmpty()
+        if (artwork.isEmpty()) Box(Modifier.width(100.dp).height(57.dp).background(Color(0xFF29292B)), contentAlignment = androidx.compose.ui.Alignment.Center) {
+            Text("↓", color = Color.LightGray, fontSize = 24.sp)
+        } else CoverArtwork(artwork, Modifier.width(100.dp).height(57.dp))
+        Spacer(Modifier.width(10.dp))
+        SettingRow(entry.title, if (preparingHash == entry.hash) tr(R.string.torr_download_preparing_files) else "", modifier = Modifier.weight(1f), onClick = {
             if (!busy) {
                 busy = true
                 preparingHash = entry.hash
-                metadataError = null
                 activity.torrDownloadMessage = ""
                 scope.launch {
                     try { selected = withContext(Dispatchers.IO) { TorrServerCatalog.loadFiles(entry.hash) }; filePage = 0; chosenFiles = emptySet() }
                     catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
-                    catch (_: TorrMetadataTimeout) { metadataError = entry.hash to R.string.movies_torrent_timeout }
-                    catch (_: Exception) { metadataError = entry.hash to R.string.torr_download_failed }
+                    catch (_: TorrMetadataTimeout) {
+                        selected = entry; activity.torrDownloadMessage = activity.getString(R.string.movies_torrent_timeout)
+                    }
+                    catch (_: Exception) {
+                        selected = entry; activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed)
+                    }
                     finally { preparingHash = null; busy = false }
                 }
             }
         })
-        if (metadataError?.first == entry.hash) Text(tr(metadataError!!.second),
-            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }, color = Color.LightGray, fontSize = 13.sp)
+        }
     }
     if (page > 0) SettingRow("‹", onClick = { page-- })
     if ((page + 1) * 20 < entries.size) SettingRow("›", onClick = { page++ })

@@ -26,6 +26,7 @@ internal object Language {
 @Composable internal fun tabTitle(tab: String): String = tr(when (tab) {
     "home" -> R.string.home
     "library" -> R.string.library
+    "downloads" -> R.string.torr_download_channel
     "favorites" -> R.string.favorites
     "movies" -> R.string.movies
     "apps" -> R.string.apps

@@ -175,6 +175,24 @@ internal object ManagedCoverStore {
             entries.toMap()
         }
     }
+    /** A late automatic result must never replace a cover chosen by the owner. */
+    suspend fun importTorrentAutomatic(context: Context, id: String, bytes: ByteArray, sourceName: String, sourceUrl: String): Map<String, ManagedCover> = gate.mutate {
+        val target = index(context)
+        val base = target.baseFile
+        val exists = base.exists() || File(base.path + ".bak").exists() || File(base.path + ".new").exists()
+        // Unlike a read-only display fallback, an automatic write must fail closed
+        // if the index cannot be read; never replace damaged user data with an empty map.
+        val entries = if (exists) ManagedCoverManifest.decodeIndex(target.openRead().use {
+            bounded(it, ManagedCoverManifest.MAX_BYTES).toString(Charsets.UTF_8)
+        }).toMutableMap() else mutableMapOf()
+        val current = entries[id] ?: ManagedCover()
+        if (current.manual.isEmpty() && current.original.isEmpty()) {
+            currentCoroutineContext().ensureActive()
+            entries[id] = current.copy(original = putImage(context, bytes), sourceName = sourceName.take(100), sourceUrl = sourceUrl.take(1000))
+            save(context, entries)
+        }
+        entries.toMap()
+    }
     suspend fun importOnline(context: Context, gameId: String, bytes: ByteArray, image: OnlineCoverImage): Map<String, ManagedCover> = gate.mutate {
         currentCoroutineContext().ensureActive()
         val key = putImage(context, bytes)

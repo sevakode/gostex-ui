@@ -85,6 +85,19 @@ private val Muted = Color(0xFFADADB0)
 private val Lime = Color(0xFFCCFF00)
 private val White = Color(0xFFF5F5F5)
 
+@Composable private fun DownloadTabAction(active: Boolean, onClick: () -> Unit) {
+    val jobs by TorrDownloadStore.jobs.collectAsState()
+    val activeJob = jobs.firstOrNull { it.state == "running" }
+    val queued = jobs.count { it.state == "queued" }
+    val progress = activeJob?.let { if (it.total > 0) (it.offset.toDouble() / it.total * 100).toInt().coerceIn(0, 100) else 0 }
+    val title = tr(R.string.torr_download_channel) + when {
+        progress != null -> " · $progress%"
+        queued > 0 -> " · $queued"
+        else -> ""
+    }
+    Action(title, compact = true, active = active, onClick = onClick)
+}
+
 @Composable private fun platformTitle(id: String): String = PlatformRegistry.find(id)?.let { tr(it.titleRes) } ?: id
 
 data class Game(
@@ -130,6 +143,7 @@ class MainActivity : ComponentActivity() {
     internal var torrDownloadFolder by mutableStateOf("")
         private set
     internal var torrDownloadMessage by mutableStateOf("")
+    internal var incomingTorrentUri by mutableStateOf<Uri?>(null)
     private var torrPreparing = false
     internal fun openTorrServer() {
         val intent = packageManager.getLeanbackLaunchIntentForPackage("ru.yourok.torrserve")
@@ -156,15 +170,36 @@ class MainActivity : ComponentActivity() {
     }
     private var pendingTorrDownload: Pair<TorrCatalogEntry, List<TorrCatalogFile>>? = null
     private val torrFilePicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null && !PortableMaintenance.running) importScope.launch {
+        if (uri != null) importTorrentUri(uri)
+    }
+    internal fun importTorrentUri(uri: Uri) {
+        if (!PortableMaintenance.running) importScope.launch {
             try {
-                withContext(Dispatchers.IO) {
+                val entry = withContext(Dispatchers.IO) {
                     contentResolver.openInputStream(uri)?.use { TorrServerCatalog.upload(it) }
                         ?: throw java.io.IOException("Cannot open torrent")
                 }
                 torrCatalogRevision++
                 torrDownloadMessage = getString(R.string.torr_download_torrent_added)
+                findTorrentCover(entry)
             } catch (_: Exception) { torrDownloadMessage = getString(R.string.torr_download_failed) }
+        }
+    }
+    internal fun findTorrentCover(entry: TorrCatalogEntry) {
+        if (!TorrentArtwork.enabled(this) || PortableMaintenance.running) return
+        val id = runCatching { TorrentArtwork.id(entry.hash) }.getOrNull() ?: return
+        if (managedCovers[id]?.let { it.manual.isNotEmpty() || it.original.isNotEmpty() } == true) return
+        importScope.launch {
+            try {
+                val found = withContext(Dispatchers.IO) { TorrentArtwork.find(this@MainActivity, entry.title) } ?: return@launch
+                if (!TorrentArtwork.enabled(this@MainActivity) || PortableMaintenance.running) return@launch
+                coverEdits++
+                try {
+                    managedCovers = withContext(Dispatchers.IO) { ManagedCoverStore.importTorrentAutomatic(this@MainActivity, id, found.bytes, found.sourceName, found.sourceUrl) }
+                    coverRevision++
+                } finally { coverEdits-- }
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (_: Exception) { /* No cover is better than an incorrect one. */ }
         }
     }
     private val torrFolderPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
@@ -554,8 +589,18 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         if (PortableMaintenance.running) return
         setIntent(intent)
+        acceptTorrentIntent(intent)
         AndroidDiagnostics.event("launcher.intent", if (intent.hasCategory(Intent.CATEGORY_HOME)) "home" else "other")
         if (intent.hasCategory(Intent.CATEGORY_HOME)) homeVersion++
+    }
+    private fun acceptTorrentIntent(intent: Intent?) {
+        val uri = intent?.data ?: return
+        val type = intent.type?.lowercase(java.util.Locale.ROOT)
+        val torrentType = type in setOf("application/x-bittorrent", "application/x-torrent") ||
+            (type == "application/octet-stream" && uri.lastPathSegment?.endsWith(".torrent", ignoreCase = true) == true)
+        if (intent.action == Intent.ACTION_VIEW && torrentType && uri.scheme == "content") {
+            incomingTorrentUri = uri
+        }
     }
     fun openSettings() {
         try { startActivity(Intent(android.provider.Settings.ACTION_SETTINGS)) }
@@ -965,6 +1010,9 @@ class MainActivity : ComponentActivity() {
             return
         }
         updates // Initialize bounded diagnostics and the preference listener once for this Activity.
+        importScope.launch { withContext(Dispatchers.IO) { runCatching { TorrDownloadStore.recover(applicationContext) } } }
+        if (savedInstanceState == null) acceptTorrentIntent(intent)
+        else incomingTorrentUri = savedInstanceState.getString("incomingTorrentUri")?.let(Uri::parse)
         importPlatform = savedInstanceState?.getString("importPlatform").orEmpty()
         importSource = LibrarySource.read(savedInstanceState?.getString("importSource"), importPlatform)
         pendingCoverId = savedInstanceState?.getString("pendingCoverId")
@@ -1001,6 +1049,7 @@ class MainActivity : ComponentActivity() {
         outState.putString("importPlatform", importPlatform)
         outState.putString("importSource", importSource.value)
         outState.putString("pendingCoverId", pendingCoverId)
+        outState.putString("incomingTorrentUri", incomingTorrentUri?.toString())
         super.onSaveInstanceState(outState)
     }
 
@@ -1112,11 +1161,13 @@ class MainActivity : ComponentActivity() {
     val addGamesFocus = remember { FocusRequester() }
     val libraryOptions = LocalLibraryOptions.current
     val appsOptions = LocalAppsOptions.current
-    val visibleTabs = remember(libraryOptions.tabVisible, appsOptions.tabVisible) {
+    val downloadsVisible = rememberDownloadsVisible()
+    val visibleTabs = remember(libraryOptions.tabVisible, appsOptions.tabVisible, downloadsVisible, tab) {
         buildList {
             add("home")
             if (libraryOptions.tabVisible) add("library")
             if (appsOptions.tabVisible) add("apps")
+            if (downloadsVisible || tab == "downloads") add("downloads")
         }
     }
     var searchReturnTarget by remember { mutableStateOf("") }
@@ -1137,6 +1188,24 @@ class MainActivity : ComponentActivity() {
     var platform by remember { mutableStateOf("all") }
     var chosenId by rememberSaveable { mutableStateOf(HomePreferences.selectedId(activity)) }
     var detail by remember { mutableStateOf<Game?>(null) }
+    val incomingTorrent = activity.incomingTorrentUri
+    if (incomingTorrent != null) {
+        LaunchedEffect(incomingTorrent) { tab = "downloads"; settingsOpen = false; detail = null }
+        DisposableEffect(activity, incomingTorrent) {
+            val dialog = android.app.AlertDialog.Builder(activity)
+                .setTitle(R.string.torr_download_add_file)
+                .setMessage(R.string.downloads_external_confirm)
+                .setPositiveButton(R.string.torr_download_add_file) { _, _ ->
+                    activity.incomingTorrentUri = null
+                    activity.importTorrentUri(incomingTorrent)
+                }
+                .setNegativeButton(R.string.cancel) { _, _ -> activity.incomingTorrentUri = null }
+                .setOnCancelListener { activity.incomingTorrentUri = null }
+                .create()
+            dialog.show()
+            onDispose { dialog.dismiss() }
+        }
+    }
     val mediaOptions = rememberMediaPlayerOptions()
     val batteryVisible = rememberBatteryVisible()
     val mediaVisible = mediaOptions.visible
@@ -1338,7 +1407,8 @@ class MainActivity : ComponentActivity() {
                         }
                         LazyRow(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             items(visibleTabs, key = { it }) { label ->
-                                Action(tabTitle(label), compact = true, active = tab == label, onClick = { tab = label; platform = "all" })
+                                if (label == "downloads") DownloadTabAction(tab == label) { tab = label; platform = "all" }
+                                else Action(tabTitle(label), compact = true, active = tab == label, onClick = { tab = label; platform = "all" })
                             }
                         }
                     }
@@ -1347,7 +1417,8 @@ class MainActivity : ComponentActivity() {
                     Image(painterResource(R.drawable.gostex_logo), contentDescription = "GOSTEX", modifier = Modifier.width(100.dp).height(34.dp))
                     Spacer(Modifier.width(24.dp))
                     visibleTabs.forEach { label ->
-                        Action(tabTitle(label), compact = true, active = tab == label, onClick = { tab = label; platform = "all" })
+                        if (label == "downloads") DownloadTabAction(tab == label) { tab = label; platform = "all" }
+                        else Action(tabTitle(label), compact = true, active = tab == label, onClick = { tab = label; platform = "all" })
                         Spacer(Modifier.width(6.dp))
                     }
                     Row(Modifier.weight(1f).padding(start = 12.dp, end = 8.dp), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
@@ -1385,6 +1456,16 @@ class MainActivity : ComponentActivity() {
                         onGameOpen = ::openGame, onGameMenu = ::gameMenu,
                         onAppOpen = activity::openApp, onAppMenu = ::appMenu,
                         onEmptySettings = { settingsInitialSection = "homeOptions"; settingsReturnFocus = null; settingsOpen = true })
+                } else if (tab == "downloads") {
+                    val downloadsFocus = remember { FocusRequester() }
+                    BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                        val wide = maxWidth >= 600.dp
+                        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = if (wide) 36.dp else 16.dp, vertical = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(tr(R.string.torr_download_channel).uppercase(), color = White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                            TorrDownloadUi(activity, downloadsFocus, wide)
+                        }
+                    }
                 } else if (tab == "apps") {
                     AppsScreen(apps, ready = loadedApps != null, favorites = favoriteRefs,
                         selectedPackage = selectedAppPackage, onSelect = { selectedAppPackage = it },
@@ -1675,11 +1756,13 @@ private fun settingsParent(section: String): String = when {
     section.startsWith("clock/") -> clockParent(section)
     section in setOf("appearance", "art", "grafana") -> "appearanceGroup"
     section == "portablePreview" -> "portableCopy"
-    section == "covers" || section == "nowPlaying" || section == "portableCopy" || section == "downloads" -> "mediaGroup"
+    section in setOf("covers", "portableCopy") -> "libraryGroup"
+    section in setOf("libraryGroup", "nowPlaying", "downloads") -> "mediaGroup"
     else -> "root"
 }
 
 private fun settingsTitle(section: String): Int = when {
+        section == "libraryGroup" -> R.string.downloads_library_group
     section.startsWith("clock") -> clockSectionTitleRes(section)
     else -> when (section) {
         "portablePreview" -> R.string.portable_preview_title
@@ -1706,7 +1789,7 @@ private fun settingsTitle(section: String): Int = when {
     var savedSection by rememberSaveable { mutableStateOf(initialSection) }
     val section = when {
         savedSection == "videoOptions" -> "homeOptions"
-        savedSection.startsWith("clock/") || savedSection in setOf("root", "appearanceGroup", "mediaGroup", "controller", "localeGroup", "systemGroup", "language", "art", "grafana", "homeOptions", "appearance", "clock", "covers", "nowPlaying", "updates", "portableCopy", "portablePreview", "downloads") -> savedSection
+        savedSection.startsWith("clock/") || savedSection in setOf("root", "appearanceGroup", "mediaGroup", "libraryGroup", "controller", "localeGroup", "systemGroup", "language", "art", "grafana", "homeOptions", "appearance", "clock", "covers", "nowPlaying", "updates", "portableCopy", "portablePreview", "downloads") -> savedSection
         else -> "root"
     }
     // The route we leave identifies the exact parent row to restore on Back.
@@ -1761,10 +1844,11 @@ private fun settingsTitle(section: String): Int = when {
     val rows = when (section) {
         "root" -> listOf("homeOptions", "appearanceGroup", "mediaGroup", "controller", "localeGroup", "systemGroup", "updates")
         "appearanceGroup" -> listOf("appearance", "art", "grafana")
-        "mediaGroup" -> (if (activity.legacyRecoveryPending) listOf("legacyRecovery") else emptyList()) +
-            listOf("addGames", "folders", "portableCopy", "covers", "nowPlaying", "downloads", "movies", "ndsEmulator", "androidGames", "libraryTab", "appsTab")
+        "mediaGroup" -> listOf("libraryGroup", "nowPlaying", "downloads", "movies")
+        "libraryGroup" -> (if (activity.legacyRecoveryPending) listOf("legacyRecovery") else emptyList()) +
+            listOf("addGames", "folders", "portableCopy", "covers", "ndsEmulator", "androidGames", "libraryTab", "appsTab")
         "localeGroup" -> listOf("language", "clock")
-        "systemGroup" -> listOf("batteryStatus", "networkStatus", "network", "torrServer", "torrServeInstall", "shield", "remote")
+        "systemGroup" -> listOf("batteryStatus", "network", "torrServer", "torrServeInstall", "shield", "remote")
         "portableCopy" -> listOf("copyAction", "portablePreview")
         else -> emptyList()
     }
@@ -1805,15 +1889,17 @@ private fun settingsTitle(section: String): Int = when {
                 SettingRow(tr(R.string.art_title), modifier = rowFocus("art"), onClick = { onSection("art") })
                 SettingRow(tr(R.string.grafana_settings_title), modifier = rowFocus("grafana"), onClick = { onSection("grafana") })
             } else if (section == "mediaGroup") {
+                SettingRow(tr(R.string.downloads_library_group), tr(R.string.downloads_library_hint), rowFocus("libraryGroup"), onClick = { onSection("libraryGroup") })
+                SettingRow(tr(R.string.media_player), tr(R.string.media_settings_summary), rowFocus("nowPlaying"), onClick = { onSection("nowPlaying") })
+                SettingRow(tr(R.string.torr_download_channel), modifier = rowFocus("downloads"), onClick = { onSection("downloads") })
+                SettingRow(tr(R.string.movies_title), modifier = rowFocus("movies"), onClick = { activity.startActivity(Intent(activity, MovieLibraryActivity::class.java)) })
+            } else if (section == "libraryGroup") {
                 if (activity.legacyRecoveryPending) SettingRow(tr(R.string.legacy_recovery_title), tr(R.string.legacy_recovery_summary),
                     rowFocus("legacyRecovery"), onClick = { activity.retryLegacyRecovery() })
                 SettingRow(tr(R.string.add_games), modifier = rowFocus("addGames"), onClick = { activity.chooseFolder("all") })
                 SettingRow(tr(R.string.folders), modifier = rowFocus("folders"), onClick = { activity.manageFolders() })
                 SettingRow(tr(R.string.portable_copy_title), tr(R.string.portable_copy_summary), rowFocus("portableCopy"), onClick = { onSection("portableCopy") })
                 SettingRow(tr(R.string.covers_title), tr(R.string.covers_summary), rowFocus("covers"), onClick = { onSection("covers") })
-                SettingRow(tr(R.string.media_player), tr(R.string.media_settings_summary), rowFocus("nowPlaying"), onClick = { onSection("nowPlaying") })
-                SettingRow(tr(R.string.torr_download_channel), modifier = rowFocus("downloads"), onClick = { onSection("downloads") })
-                SettingRow(tr(R.string.movies_title), modifier = rowFocus("movies"), onClick = { activity.startActivity(Intent(activity, MovieLibraryActivity::class.java)) })
                 NintendoDsEmulatorSetting(rowFocus("ndsEmulator"))
                 AndroidGamesVisibilitySetting(rowFocus("androidGames"))
                 LibraryVisibilitySetting(rowFocus("libraryTab"))
@@ -1824,8 +1910,6 @@ private fun settingsTitle(section: String): Int = when {
             } else if (section == "systemGroup") {
                 val batteryVisible = rememberBatteryVisible()
                 SettingRow(tr(R.string.battery_visibility), tr(if (batteryVisible) R.string.enabled else R.string.disabled), rowFocus("batteryStatus"), onClick = { BatteryPreferences.visible(activity, !batteryVisible) })
-                val networkVisible = rememberNetworkVisible()
-                SettingRow(tr(R.string.network_status_visibility), tr(if (networkVisible) R.string.enabled else R.string.disabled), rowFocus("networkStatus"), onClick = { NetworkPreferences.visible(activity, !networkVisible) })
                 SettingRow(tr(R.string.network_settings), modifier = rowFocus("network"), onClick = { activity.openNetworkSettings() })
                 TorrServerStatusSetting(rowFocus("torrServer"))
                 TorrServeInstallSetting(activity, rowFocus("torrServeInstall"))
@@ -1894,6 +1978,7 @@ private fun settingsTitle(section: String): Int = when {
                 ClockSettings(initialFocus, section, onSection)
             } else if (section == "homeOptions") {
                 SectionSettings(initialFocus, apps, games)
+                DownloadsVisibilitySetting()
             } else if (section == "appearance") {
                 AppearanceSettings(initialFocus)
             } else if (section == "controller") {

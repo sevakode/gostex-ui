@@ -75,4 +75,15 @@
     <string name="torr_write_limit_note">Limita solo la escritura de GOSTEX; no limita la caché de TorrServer ni otras aplicaciones.</string>
     <string name="torr_play_file">Ver este archivo</string>
     <string name="torr_play_failed">No se pudo abrir un reproductor de vídeo. Comprueba el reproductor y TorrServer.</string>
+    <string name="downloads_tab_visibility">Sección de descargas</string>
+    <string name="downloads_options_show">Opciones</string>
+    <string name="downloads_options_hide">Ocultar opciones</string>
+    <string name="downloads_magnet_show">Añadir enlace magnet</string>
+    <string name="downloads_magnet_hide">Cerrar entrada del enlace</string>
+    <string name="downloads_external_confirm">¿Añadir este torrent a la lista de descargas?</string>
+    <string name="downloads_choose_cover">Elegir portada</string>
+    <string name="downloads_auto_cover">Buscar portadas automáticamente</string>
+    <string name="downloads_library_group">Biblioteca de juegos</string>
+    <string name="downloads_library_hint">Juegos, carpetas, portadas y emuladores</string>
+    <string name="downloads_auto_cover_hint">El título del torrent se envía a Cinemeta y a las fuentes de portadas de juegos configuradas.</string>
 </resources>

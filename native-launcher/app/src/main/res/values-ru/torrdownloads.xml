@@ -75,4 +75,15 @@
     <string name="torr_write_limit_note">Ограничивает только запись файлов GOSTEX; кеш TorrServer и другие приложения не ограничиваются.</string>
     <string name="torr_play_file">Смотреть этот файл</string>
     <string name="torr_play_failed">Не удалось открыть видеоплеер. Проверь плеер и TorrServer.</string>
+    <string name="downloads_tab_visibility">Раздел загрузок</string>
+    <string name="downloads_options_show">Параметры</string>
+    <string name="downloads_options_hide">Скрыть параметры</string>
+    <string name="downloads_magnet_show">Добавить magnet-ссылку</string>
+    <string name="downloads_magnet_hide">Закрыть ввод ссылки</string>
+    <string name="downloads_external_confirm">Добавить этот торрент в список загрузок?</string>
+    <string name="downloads_choose_cover">Выбрать обложку</string>
+    <string name="downloads_auto_cover">Автоматически искать обложки</string>
+    <string name="downloads_library_group">Игровая библиотека</string>
+    <string name="downloads_library_hint">Игры, папки, обложки и эмуляторы</string>
+    <string name="downloads_auto_cover_hint">Название торрента отправляется в Cinemeta и настроенные источники игровых обложек.</string>
 </resources>

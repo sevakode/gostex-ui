@@ -28,6 +28,7 @@
     <string name="movies_corrupt">Could not read the movie library; existing data is preserved.</string>
     <string name="movies_addon_privacy">The selected movie ID is sent to each enabled provider when searching for sources.</string>
     <string name="movies_torrent_hint">Torrents need active peers and may take time to buffer.</string>
+    <string name="movies_remove_source_confirm">Remove this link from the media library? The torrent and downloaded files will remain.</string>
     <string name="movies_remove_source">Remove source</string>
     <string name="movies_estimate">Playback estimate</string>
     <string name="movies_estimate_average">Estimated average: %1$s Mb/s</string>

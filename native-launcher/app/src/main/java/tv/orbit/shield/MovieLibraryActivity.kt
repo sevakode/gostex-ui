@@ -17,6 +17,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -41,6 +43,7 @@ class MovieLibraryActivity : ComponentActivity() {
     private var searched by mutableStateOf(false)
     private var readFailed = false
     private var requestGeneration = 0L
+    private var sourceRemovalVersion by mutableIntStateOf(0)
     private var pendingFileId: String? = null
     private var pendingTorrentHash: String? = null
     private var pendingTorrentTitle: String = ""
@@ -198,6 +201,19 @@ class MovieLibraryActivity : ComponentActivity() {
         }) }.onFailure { pendingFileId = null; toast(R.string.movies_file_error) }
     }
 
+    private fun confirmRemoveSource(movieId: String, source: MovieSource) {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.movies_remove_source)
+            .setMessage(R.string.movies_remove_source_confirm)
+            .setNegativeButton(R.string.movies_cancel, null)
+            .setPositiveButton(R.string.movies_remove_source) { _, _ ->
+                if (!readFailed && runCatching { MovieLibraryStore.removeSource(this, movieId, source) }.getOrDefault(false)) {
+                    refresh()
+                    sourceRemovalVersion++
+                } else toast(R.string.movies_source_failed)
+            }.show()
+    }
+
     private fun addAddon() = input(R.string.movies_add_addon, R.string.movies_addon_hint) { value ->
         val generation = ++requestGeneration
         busy = true; progressMessage = ""; error = ""
@@ -305,11 +321,18 @@ class MovieLibraryActivity : ComponentActivity() {
     }
 
     @Composable private fun MovieScreen() {
+        val savedFocus = remember { FocusRequester() }
+        LaunchedEffect(sourceRemovalVersion) {
+            if (sourceRemovalVersion > 0) {
+                withFrameNanos { }
+                runCatching { savedFocus.requestFocus() }
+            }
+        }
         Column(Modifier.fillMaxSize().background(Color(0xFF0A0A0A)).padding(horizontal = 36.dp, vertical = 22.dp)) {
             Text(tr(R.string.media_tab_title), color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                MovieButton(tr(R.string.movies_saved)) { requestGeneration++; page = "saved"; busy = false; error = "" }
+                MovieButton(tr(R.string.movies_saved), Modifier.focusRequester(savedFocus)) { requestGeneration++; page = "saved"; busy = false; error = "" }
                 MovieButton(tr(R.string.movies_search)) { search() }
                 MovieButton(tr(R.string.movies_addons)) { requestGeneration++; page = "addons"; busy = false; error = "" }
                 MovieButton(tr(R.string.back)) { if (page == "saved") finish() else { requestGeneration++; page = "saved"; busy = false; error = "" } }
@@ -359,7 +382,10 @@ class MovieLibraryActivity : ComponentActivity() {
                             item { Text(tr(R.string.movies_torrent_hint), color = Color.LightGray, fontSize = 13.sp) }
                             stored?.sources?.let { savedSources ->
                                 items(savedSources, key = { "saved:${it.uri}:${it.fileIndex}" }) { source ->
-                                    SettingRow(source.label.ifBlank { tr(R.string.movies_play) }, tr(R.string.movies_play), onClick = { play(source) })
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        SettingRow(source.label.ifBlank { tr(R.string.movies_play) }, tr(R.string.movies_play), modifier = Modifier.weight(1f), onClick = { play(source) })
+                                        SettingRow(tr(R.string.movies_remove_source), modifier = Modifier.widthIn(max = 180.dp), onClick = { confirmRemoveSource(movie.id, source) })
+                                    }
                                     val estimate = source.sizeBytes?.let { size -> movie.durationSeconds?.let { MoviePlaybackEstimator.estimate(size, it, null) } }
                                     if (estimate != null) Text(tr(R.string.movies_estimate_average, String.format(java.util.Locale.ROOT, "%.1f", estimate.averageBitsPerSecond / 1_000_000)), color = Color.LightGray)
                                 }
@@ -379,6 +405,6 @@ class MovieLibraryActivity : ComponentActivity() {
     }
 }
 
-@Composable private fun MovieButton(label: String, onClick: () -> Unit) {
-    androidx.tv.material3.Button(onClick = onClick) { Text(label) }
+@Composable private fun MovieButton(label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    androidx.tv.material3.Button(onClick = onClick, modifier = modifier) { Text(label) }
 }

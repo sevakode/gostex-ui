@@ -28,6 +28,7 @@
     <string name="movies_corrupt">No se pudo leer la biblioteca; se conservan los datos existentes.</string>
     <string name="movies_addon_privacy">Al buscar, los proveedores activados reciben el ID de la película.</string>
     <string name="movies_torrent_hint">El torrent necesita pares activos y puede requerir precarga.</string>
+    <string name="movies_remove_source_confirm">¿Eliminar este enlace de la biblioteca multimedia? El torrent y los archivos descargados se conservarán.</string>
     <string name="movies_remove_source">Eliminar fuente</string>
     <string name="movies_estimate">Estimación de reproducción</string>
     <string name="movies_estimate_average">Tasa media: %1$s Mb/s</string>

@@ -100,6 +100,15 @@ internal object MovieLibraryStore {
         return write(context, existing.filterNot { it.id == id })
     }
 
+    /** Remove only the library link, leaving the torrent and its files untouched. */
+    @Synchronized fun removeSource(context: Context, movieId: String, source: MovieSource): Boolean {
+        val existing = read(context)
+        val movie = existing.firstOrNull { it.id == movieId } ?: return false
+        val remaining = movie.sources.filterNot { it.uri == source.uri && it.fileIndex == source.fileIndex }
+        if (remaining.size == movie.sources.size) return false
+        return write(context, existing.map { if (it.id == movieId) it.copy(sources = remaining) else it })
+    }
+
     private fun write(context: Context, updated: List<SavedMovie>): Boolean {
         val array = JSONArray()
         updated.forEach { entry ->

@@ -28,6 +28,7 @@
     <string name="movies_corrupt">Не удалось прочитать библиотеку фильмов; сохранённые данные не изменены.</string>
     <string name="movies_addon_privacy">При поиске включённые дополнения получают идентификатор выбранного фильма.</string>
     <string name="movies_torrent_hint">Для торрента нужны активные участники; запуск может потребовать буферизации.</string>
+    <string name="movies_remove_source_confirm">Удалить эту ссылку из медиатеки? Торрент и скачанные файлы останутся.</string>
     <string name="movies_remove_source">Удалить источник</string>
     <string name="movies_estimate">Оценка воспроизведения</string>
     <string name="movies_estimate_average">Средний битрейт: %1$s Мбит/с</string>

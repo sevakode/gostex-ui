@@ -85,4 +85,10 @@
     <string name="movies_buffer_status">Caché: %1$s / %2$s\nVelocidad del torrent: %3$s\n\nAbre el reproductor cuando quieras.</string>
     <string name="movies_buffer_waiting">El servidor aún no responde. Puedes abrir el reproductor ahora o cancelar.</string>
     <string name="movies_buffer_finished">El servidor terminó la solicitud de preparación. Abre el reproductor para probar la reproducción.</string>
+    <string name="movies_status_title">Estado del último torrent</string>
+    <string name="movies_status_hint">Datos del servidor; no indican si el reproductor está reproduciendo.</string>
+    <string name="movies_status_loading">Consultando el servidor…</string>
+    <string name="movies_status_refresh">Actualizar</string>
+    <string name="movies_status_unavailable">No se pudo obtener el estado. Comprueba TorrServer e inténtalo de nuevo.</string>
+    <string name="movies_status_values">Caché del torrent: %1$s / %2$s\nVelocidad del torrent: %3$s\n\nLos valores pueden cambiar.</string>
 </resources>

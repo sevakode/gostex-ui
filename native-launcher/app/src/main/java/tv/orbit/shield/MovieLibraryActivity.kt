@@ -52,6 +52,8 @@ class MovieLibraryActivity : ComponentActivity() {
     private var requestGeneration = 0L
     private var sourceLookupJob: Job? = null
     private var bufferDialog: AlertDialog? = null
+    private var lastPreparedMovie by mutableStateOf<String?>(null)
+    private var lastPreparedHash by mutableStateOf<String?>(null)
     private var sourceRemovalVersion by mutableIntStateOf(0)
     private var pendingFileId: String? = null
     private var pendingTorrentHash: String? = null
@@ -80,6 +82,8 @@ class MovieLibraryActivity : ComponentActivity() {
         if (!PortableRestoreStartup.ready || PortableMaintenance.running) { finish(); return }
         refresh()
         pendingFileId = savedInstanceState?.getString(STATE_PENDING_FILE_ID)
+        lastPreparedMovie = savedInstanceState?.getString("buffer.movie")
+        lastPreparedHash = savedInstanceState?.getString("buffer.hash")?.takeIf { it.matches(Regex("(?i)[0-9a-f]{40}")) }
         pendingTorrentHash = (savedInstanceState?.getString(EXTRA_TORRENT_HASH) ?: intent.getStringExtra(EXTRA_TORRENT_HASH))
             ?.takeIf { it.matches(Regex("(?i)[0-9a-f]{40}")) }?.lowercase(java.util.Locale.ROOT)
         pendingTorrentTitle = (savedInstanceState?.getString(EXTRA_TORRENT_TITLE) ?: intent.getStringExtra(EXTRA_TORRENT_TITLE)).orEmpty().take(256)
@@ -104,6 +108,8 @@ class MovieLibraryActivity : ComponentActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putString(STATE_PENDING_FILE_ID, pendingFileId)
+        outState.putString("buffer.movie", lastPreparedMovie)
+        outState.putString("buffer.hash", lastPreparedHash)
         outState.putString(EXTRA_TORRENT_HASH, pendingTorrentHash)
         outState.putString(EXTRA_TORRENT_TITLE, pendingTorrentTitle)
         super.onSaveInstanceState(outState)
@@ -409,6 +415,7 @@ class MovieLibraryActivity : ComponentActivity() {
     }
 
     private fun showTorrentBuffer(hash: String, fileId: Int, openPlayer: () -> Unit) {
+        val movieId = selected?.id
         val dialog = AlertDialog.Builder(this)
             .setTitle(R.string.movies_buffer_title)
             .setMessage(R.string.movies_buffer_starting)
@@ -422,7 +429,11 @@ class MovieLibraryActivity : ComponentActivity() {
         bufferDialog = dialog
         dialog.setOnDismissListener { monitor?.cancel(); preload?.cancel(); if (bufferDialog === dialog) bufferDialog = null }
         dialog.show()
-        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener { dialog.dismiss(); openPlayer() }
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            lastPreparedMovie = movieId
+            lastPreparedHash = hash
+            dialog.dismiss(); openPlayer()
+        }
         monitor = lifecycleScope.launch {
             while (isActive && dialog.isShowing) {
                 val entry = runCatching { withContext(Dispatchers.IO) { TorrServerCatalog.get(hash) } }.getOrNull()
@@ -446,6 +457,40 @@ class MovieLibraryActivity : ComponentActivity() {
             val message = getString(if (result.isSuccess) R.string.movies_buffer_finished else R.string.movies_buffer_waiting)
             dialog.setMessage(listOf(lastStatus, message).filter { it.isNotEmpty() }.joinToString("\n\n"))
         }
+    }
+
+    /** An explicit snapshot of the last prepared torrent; it does not resume or start playback. */
+    private fun showLastTorrentStatus(hash: String) {
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(R.string.movies_status_title)
+            .setMessage(R.string.movies_status_loading)
+            .setNegativeButton(R.string.movies_cancel, null)
+            .setPositiveButton(R.string.movies_status_refresh, null)
+            .create()
+        var request: Job? = null
+        bufferDialog?.dismiss()
+        bufferDialog = dialog
+        dialog.setOnDismissListener { request?.cancel(); if (bufferDialog === dialog) bufferDialog = null }
+        dialog.show()
+        fun refreshStatus() {
+            if (request?.isActive == true) return
+            dialog.setMessage(getString(R.string.movies_status_loading))
+            request = lifecycleScope.launch {
+                val result = runCatching { withContext(Dispatchers.IO) { TorrServerCatalog.get(hash) } }
+                if (!isActive || !dialog.isShowing) return@launch
+                val entry = result.getOrNull()
+                if (entry == null) {
+                    dialog.setMessage(getString(R.string.movies_status_unavailable))
+                    return@launch
+                }
+                fun size(value: Long?) = value?.let { android.text.format.Formatter.formatFileSize(this@MovieLibraryActivity, it) }
+                    ?: getString(R.string.movies_buffer_unknown)
+                val speed = entry.downloadBytesPerSecond?.let { size(it) + "/s" } ?: getString(R.string.movies_buffer_unknown)
+                dialog.setMessage(getString(R.string.movies_status_values, size(entry.cachedBytes), size(entry.preloadBytes), speed))
+            }
+        }
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener { refreshStatus() }
+        refreshStatus()
     }
 
     private fun restoreMissingTorrent(hash: String) {
@@ -541,6 +586,10 @@ class MovieLibraryActivity : ComponentActivity() {
                         if (movie != null) {
                             val stored = saved.firstOrNull { it.id == movie.id }
                             item { Text(movie.title, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold) }
+                            val preparedHash = lastPreparedHash?.takeIf { lastPreparedMovie == movie.id }
+                            if (preparedHash != null) item(key = "last-torrent-status") {
+                                SettingRow(tr(R.string.movies_status_title), tr(R.string.movies_status_hint), onClick = { showLastTorrentStatus(preparedHash) })
+                            }
                             item { Text(listOf(movie.year, movie.description).filter { it.isNotBlank() }.joinToString(" · "), color = Color.LightGray, fontSize = 14.sp) }
                             missingTorrentHash?.let { hash -> item(key = "restore-torrent") {
                                 SettingRow(tr(R.string.movies_restore_torrent), tr(R.string.movies_restore_hint), onClick = { restoreMissingTorrent(hash) })

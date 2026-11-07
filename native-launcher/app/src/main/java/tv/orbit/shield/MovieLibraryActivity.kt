@@ -76,6 +76,9 @@ class MovieLibraryActivity : ComponentActivity() {
             }
         }
         setContent { MovieScreen() }
+        if (savedInstanceState == null && intent.getBooleanExtra(EXTRA_PLAY_SINGLE, false)) {
+            selected?.id?.let { id -> saved.firstOrNull { it.id == id }?.sources?.singleOrNull()?.let(::play) }
+        }
         if (savedInstanceState == null && pendingTorrentHash != null) {
             TorrentArtworkPolicy.query(pendingTorrentTitle).takeIf { it.length >= 3 }?.let(::searchFor)
         }
@@ -89,6 +92,7 @@ class MovieLibraryActivity : ComponentActivity() {
 
     companion object {
         internal const val EXTRA_MOVIE_ID = "movie_id"
+        internal const val EXTRA_PLAY_SINGLE = "play_single"
         internal const val EXTRA_TORRENT_HASH = "torrent_hash"
         internal const val EXTRA_TORRENT_TITLE = "torrent_title"
     }

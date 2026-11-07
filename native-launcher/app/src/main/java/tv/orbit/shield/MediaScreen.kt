@@ -76,9 +76,10 @@ internal object MediaNavigation {
         onClick = { MediaNavigation.visible(context, !visible) })
 }
 
-internal fun openMediaLibrary(context: Context, id: String? = null) {
+internal fun openMediaLibrary(context: Context, id: String? = null, playIfSingle: Boolean = false) {
     context.startActivity(Intent(context, MovieLibraryActivity::class.java).apply {
         if (id != null) putExtra(MovieLibraryActivity.EXTRA_MOVIE_ID, id)
+        if (playIfSingle) putExtra(MovieLibraryActivity.EXTRA_PLAY_SINGLE, true)
     })
 }
 
@@ -142,7 +143,7 @@ internal fun openMediaLibrary(context: Context, id: String? = null) {
                     LaunchedEffect(movie.id, movie.poster, autoCover) { if (autoCover) activity.fetchMediaCover(movie) }
                     val cardFocus = remember(movie.id) { FocusRequester() }
                     MediaTile(movie, modifier = Modifier.fillMaxWidth().then(if (movie.id == (lastId ?: movies.first().id)) Modifier.focusRequester(firstFocus) else Modifier).focusRequester(cardFocus),
-                        onFocus = { lastId = movie.id }, onClick = { openMediaLibrary(activity, movie.id) },
+                        onFocus = { lastId = movie.id }, onClick = { openMediaLibrary(activity, movie.id, playIfSingle = true) },
                         onLongClick = { onMenu(movie, cardFocus) }, favorite = homeMovieKey(movie.id) in favorites)
                 }
             }

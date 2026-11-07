@@ -1485,7 +1485,7 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.weight(1f), onGameFocus = ::selectGame,
                         onGameOpen = ::openGame, onGameMenu = ::gameMenu,
                         onAppOpen = activity::openApp, onAppMenu = ::appMenu,
-                        onMovieOpen = { openMediaLibrary(activity, it.id) }, onMovieMenu = ::movieMenu,
+                        onMovieOpen = { openMediaLibrary(activity, it.id, playIfSingle = true) }, onMovieMenu = ::movieMenu,
                         onMovieCover = activity::fetchMediaCover,
                         onEmptySettings = { settingsInitialSection = "homeOptions"; settingsReturnFocus = null; settingsOpen = true })
                 } else if (tab == "movies") {

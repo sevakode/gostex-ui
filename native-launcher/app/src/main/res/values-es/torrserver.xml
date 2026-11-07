@@ -9,4 +9,12 @@
     <string name="torr_status_cache_memory">Caché: memoria</string>
     <string name="torr_status_cache_disk">Caché: disco</string>
     <string name="torr_status_cache_size">%1$d MiB configurados</string>
+    <string name="torr_install_title">Instalar TorrServe</string>
+    <string name="torr_install_hint">Descargar el cliente oficial de Android desde GitHub</string>
+    <string name="torr_install_open">Abrir TorrServe</string>
+    <string name="torr_install_installed">El cliente de Android ya está instalado</string>
+    <string name="torr_install_downloading">Descargando y verificando el APK oficial…</string>
+    <string name="torr_install_permission">Permite a GOSTEX instalar aplicaciones, vuelve y selecciona instalar de nuevo</string>
+    <string name="torr_install_confirm">Confirma la instalación en Android. Al abrir TorrServe, descarga el servidor si es necesario.</string>
+    <string name="torr_install_failed">No se pudo descargar, verificar o abrir el instalador. Comprueba la conexión e inténtalo de nuevo.</string>
 </resources>

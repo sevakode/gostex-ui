@@ -20,6 +20,9 @@
         <intent><action android:name="android.intent.action.CREATE_DOCUMENT" /><category android:name="android.intent.category.OPENABLE" /><data android:mimeType="*/*" /></intent>
     </queries>
     <application android:name=".GostexApplication" android:label="GOSTEX" android:icon="@drawable/orbit_icon" android:banner="@drawable/orbit_banner" android:theme="@android:style/Theme.Material.NoActionBar" android:allowBackup="false" android:supportsRtl="true" android:usesCleartextTraffic="true">
+        <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.torrserve-installer" android:exported="false" android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/torrserve_install_paths" />
+        </provider>
         <service android:name=".TorrDownloadService" android:exported="false" android:foregroundServiceType="dataSync" />
         <service android:name=".MediaNotificationListenerService" android:exported="true" android:label="@string/media_listener_label" android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter><action android:name="android.service.notification.NotificationListenerService" /></intent-filter>

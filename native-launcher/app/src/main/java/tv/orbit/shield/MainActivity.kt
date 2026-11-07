@@ -1764,7 +1764,7 @@ private fun settingsTitle(section: String): Int = when {
         "mediaGroup" -> (if (activity.legacyRecoveryPending) listOf("legacyRecovery") else emptyList()) +
             listOf("addGames", "folders", "portableCopy", "covers", "nowPlaying", "downloads", "movies", "ndsEmulator", "androidGames", "libraryTab", "appsTab")
         "localeGroup" -> listOf("language", "clock")
-        "systemGroup" -> listOf("batteryStatus", "networkStatus", "network", "torrServer", "shield", "remote")
+        "systemGroup" -> listOf("batteryStatus", "networkStatus", "network", "torrServer", "torrServeInstall", "shield", "remote")
         "portableCopy" -> listOf("copyAction", "portablePreview")
         else -> emptyList()
     }
@@ -1828,6 +1828,7 @@ private fun settingsTitle(section: String): Int = when {
                 SettingRow(tr(R.string.network_status_visibility), tr(if (networkVisible) R.string.enabled else R.string.disabled), rowFocus("networkStatus"), onClick = { NetworkPreferences.visible(activity, !networkVisible) })
                 SettingRow(tr(R.string.network_settings), modifier = rowFocus("network"), onClick = { activity.openNetworkSettings() })
                 TorrServerStatusSetting(rowFocus("torrServer"))
+                TorrServeInstallSetting(activity, rowFocus("torrServeInstall"))
                 SettingRow(tr(R.string.shield_settings), modifier = rowFocus("shield"), onClick = { activity.openSettings() })
                 SettingRow(tr(R.string.remote_autostart), tr(if (remoteAuto) R.string.enabled else R.string.disabled), rowFocus("remote"), onClick = {
                     remoteAuto = !remoteAuto

@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
 import androidx.tv.material3.Text
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -45,6 +46,7 @@ class MovieLibraryActivity : ComponentActivity() {
     private var sourceEpisode by mutableStateOf<MovieEpisode?>(null)
     private var readFailed = false
     private var requestGeneration = 0L
+    private var sourceLookupJob: Job? = null
     private var sourceRemovalVersion by mutableIntStateOf(0)
     private var pendingFileId: String? = null
     private var pendingTorrentHash: String? = null
@@ -126,6 +128,7 @@ class MovieLibraryActivity : ComponentActivity() {
 
     private fun searchFor(query: String) {
         if (query.isBlank()) return
+        stopSourceLookup()
         val generation = ++requestGeneration
         busy = true; progressMessage = ""; error = ""; searched = true; page = "results"
         lifecycleScope.launch {
@@ -148,6 +151,7 @@ class MovieLibraryActivity : ComponentActivity() {
     }
 
     private fun openMovie(item: MovieCatalogItem) {
+        stopSourceLookup()
         val generation = ++requestGeneration
         page = "detail"; selected = item; sources = emptyList(); error = ""; searchedSources = false; sourceEpisode = null
         lifecycleScope.launch {
@@ -217,6 +221,7 @@ class MovieLibraryActivity : ComponentActivity() {
     }
 
     private fun addAddon() = input(R.string.movies_add_addon, R.string.movies_addon_hint) { value ->
+        stopSourceLookup()
         val generation = ++requestGeneration
         busy = true; progressMessage = ""; error = ""
         lifecycleScope.launch {
@@ -231,6 +236,7 @@ class MovieLibraryActivity : ComponentActivity() {
 
     private fun chooseEpisode() {
         val movie = selected ?: return
+        stopSourceLookup()
         if (addons.none { it.enabled }) { error = getString(R.string.movies_no_active_addons); return }
         val generation = ++requestGeneration
         busy = true; progressMessage = getString(R.string.movies_loading_episodes); error = ""; sources = emptyList(); searchedSources = false
@@ -255,27 +261,41 @@ class MovieLibraryActivity : ComponentActivity() {
     private fun episodeLabel(episode: MovieEpisode): String =
         listOf(getString(R.string.movies_episode_number, episode.episode), episode.title).filter { it.isNotBlank() }.joinToString(" · ")
 
+    private fun stopSourceLookup() {
+        sourceLookupJob?.cancel()
+        sourceLookupJob = null
+        requestGeneration++
+        busy = false
+    }
+
     private fun findSources(episode: MovieEpisode? = null) {
         val movie = selected ?: return
+        stopSourceLookup()
         val active = addons.filter { it.enabled }
         if (active.isEmpty()) { error = getString(R.string.movies_no_active_addons); return }
         val generation = ++requestGeneration
         busy = true; progressMessage = ""; error = ""; sources = emptyList(); searchedSources = false; sourceEpisode = episode
-        lifecycleScope.launch {
+        sourceLookupJob = lifecycleScope.launch {
             val fetched = withContext(Dispatchers.IO) {
-                lookupAddons(active) { entry -> MovieAddonClient.streams(entry.addon, episode?.id ?: movie.id, movie.mediaType) }
+                lookupAddons(active, onResult = { result ->
+                    withContext(Dispatchers.Main.immediate) {
+                        if (generation == requestGeneration && selected?.id == movie.id && !isFinishing && !isDestroyed) {
+                            sources = sources + result.getOrDefault(emptyList())
+                        }
+                    }
+                }) { entry -> MovieAddonClient.streams(entry.addon, episode?.id ?: movie.id, movie.mediaType) }
             }
             if (generation != requestGeneration || selected?.id != movie.id || isFinishing) return@launch
             busy = false; searchedSources = true
             if (fetched.all { it.isFailure }) error = getString(R.string.movies_source_failed)
             else {
-                sources = fetched.flatMap { it.getOrDefault(emptyList()) }
                 if (fetched.any { it.isFailure }) error = getString(R.string.movies_partial_sources)
             }
         }
     }
 
     private fun play(source: MovieSource) {
+        if (sourceLookupJob?.isActive == true) stopSourceLookup()
         if (!MovieLibraryStore.validSource(source.uri)) { toast(R.string.movies_source_failed); return }
         val uri = Uri.parse(source.uri)
         val isTorrent = uri.scheme.equals("torrserver", true) || uri.scheme.equals("magnet", true) || uri.scheme.equals("content", true) ||
@@ -367,10 +387,10 @@ class MovieLibraryActivity : ComponentActivity() {
             Text(tr(R.string.media_tab_title), color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                MovieButton(tr(R.string.movies_saved), Modifier.focusRequester(savedFocus)) { requestGeneration++; page = "saved"; busy = false; error = "" }
+                MovieButton(tr(R.string.movies_saved), Modifier.focusRequester(savedFocus)) { stopSourceLookup(); requestGeneration++; page = "saved"; busy = false; error = "" }
                 MovieButton(tr(R.string.movies_search)) { search() }
-                MovieButton(tr(R.string.movies_addons)) { requestGeneration++; page = "addons"; busy = false; error = "" }
-                MovieButton(tr(R.string.back)) { if (page == "saved") finish() else { requestGeneration++; page = "saved"; busy = false; error = "" } }
+                MovieButton(tr(R.string.movies_addons)) { stopSourceLookup(); requestGeneration++; page = "addons"; busy = false; error = "" }
+                MovieButton(tr(R.string.back)) { stopSourceLookup(); if (page == "saved") finish() else { requestGeneration++; page = "saved"; busy = false; error = "" } }
             }
             if (busy) Text(progressMessage.ifBlank { tr(R.string.movies_searching) }, color = Color(0xFFCCFF00), modifier = Modifier.padding(vertical = 8.dp))
             if (error.isNotBlank()) Text(error, color = Color(0xFFFFA69A), modifier = Modifier.padding(vertical = 8.dp))

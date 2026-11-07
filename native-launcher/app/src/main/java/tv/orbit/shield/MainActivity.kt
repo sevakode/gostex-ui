@@ -1340,6 +1340,7 @@ class MainActivity : ComponentActivity() {
     val favoriteRefs = remember(sectionOptions.favorites) { sectionOptions.favorites.toSet() }
     val favorites = remember(favoriteRefs) { favoriteRefs.filter { it.startsWith("game:") }.map { it.removePrefix("game:") }.toSet() }
     var variant by remember { mutableIntStateOf(0) }
+    var versionPickerOpen by remember { mutableStateOf(false) }
     val firstFocus = remember { FocusRequester() }
     val feedState = remember { HomeFeedState() }
     var tileMenu by remember { mutableStateOf<TileMenuTarget?>(null) }
@@ -1487,10 +1488,31 @@ class MainActivity : ComponentActivity() {
             val versions = remember(g, groups, libraryOptions.groupVersions) { gameVersions(g, groups, libraryOptions.groupVersions) }
             val selectedVersion = versions.getOrNull(variant) ?: versions.firstOrNull()
             val versionPaths = remember(versions) { versions.map { android.net.Uri.decode(it.game.files[it.fileIndex]) } }
-            val selectedPath = versionPaths.getOrNull(variant) ?: versionPaths.firstOrNull().orEmpty()
-            val fileName = selectedPath.substringAfterLast('/')
-            val versionLabel = if (versionPaths.count { it.substringAfterLast('/') == fileName } > 1)
-                "$fileName · ${selectedPath.substringBeforeLast('/', "")}" else fileName
+            val fileNames = remember(versionPaths) { versionPaths.map { it.substringAfterLast('/') } }
+            val labels = remember(versionPaths, fileNames) {
+                val counts = fileNames.groupingBy { it }.eachCount()
+                versionPaths.mapIndexed { index, path ->
+                    val name = fileNames[index]
+                    if ((counts[name] ?: 0) > 1) "$name · ${path.substringBeforeLast('/', "")}" else name
+                }
+            }
+            val versionLabel = labels.getOrNull(variant) ?: labels.firstOrNull().orEmpty()
+            if (versionPickerOpen) {
+                DisposableEffect(activity, g.id, labels) {
+                    val dialog = android.app.AlertDialog.Builder(activity)
+                        .setTitle(R.string.other_version)
+                        .setSingleChoiceItems(labels.toTypedArray(), variant.coerceIn(labels.indices)) { _, index ->
+                            variant = index
+                            versionPickerOpen = false
+                        }
+                        .setNegativeButton(R.string.cancel) { _, _ -> versionPickerOpen = false }
+                        .setOnCancelListener { versionPickerOpen = false }
+                        .setOnDismissListener { versionPickerOpen = false }
+                        .create()
+                    dialog.show()
+                    onDispose { dialog.dismiss() }
+                }
+            }
             Box(Modifier.align(Alignment.CenterEnd).padding(end = 36.dp).fillMaxWidth(.32f).fillMaxHeight(.78f).border(1.dp, Color(0xFF424244)).background(Panel)) {
                 CoverArtwork(g.cover.ifEmpty { g.scene }, Modifier.fillMaxSize(), g.id)
             }
@@ -1515,7 +1537,7 @@ class MainActivity : ComponentActivity() {
                 }
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     Action(tr(R.string.play), primary = true, modifier = Modifier.focusRequester(firstFocus), onClick = { selectedVersion?.let { activity.launchGame(it.game, it.fileIndex) } })
-                    if (versions.size > 1) Action(tr(R.string.other_version), onClick = { variant = (variant + 1) % versions.size })
+                    if (versions.size > 1) Action(tr(R.string.other_version), onClick = { versionPickerOpen = true })
                     Action(tr(R.string.cover_manage), onClick = { activity.editGameCover(g.id) })
                     Action(if (g.id in favorites) tr(R.string.favorite_on) else tr(R.string.favorite_off), onClick = { toggle(g) })
                 }

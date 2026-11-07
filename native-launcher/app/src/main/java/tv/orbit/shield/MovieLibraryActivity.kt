@@ -438,8 +438,8 @@ class MovieLibraryActivity : ComponentActivity() {
         monitor = lifecycleScope.launch {
             while (isActive && dialog.isShowing) {
                 val entry = runCatching { withContext(Dispatchers.IO) { TorrServerCatalog.get(hash) } }.getOrNull()
-                if (entry != null && dialog.isShowing) {
-                    lastStatus = torrentStatusText(entry, false)
+                if (isActive && dialog.isShowing) {
+                    lastStatus = entry?.let { torrentStatusText(it, false) } ?: getString(R.string.movies_status_unavailable)
                     dialog.setMessage(listOf(lastStatus, preloadMessage).filter { it.isNotEmpty() }.joinToString("\n\n"))
                 }
                 delay(2000)

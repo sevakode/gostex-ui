@@ -231,10 +231,7 @@ import kotlinx.coroutines.withContext
                     chosenFiles = if (checked) chosenFiles - file.id else chosenFiles + file.id
                 })
                 if (TorrPlayback.isVideo(file.path)) SettingRow(tr(R.string.torr_play_file), file.path, onClick = {
-                    runCatching {
-                        val url = android.net.Uri.parse(TorrPlayback.url(current.hash, file.id))
-                        activity.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW).setDataAndType(url, "video/*"))
-                    }.onFailure { activity.torrDownloadMessage = activity.getString(R.string.torr_play_failed) }
+                    activity.prepareTorrPlayback(current.hash, file.id)
                 })
             }
             if (filePage > 0) SettingRow("‹", onClick = { filePage-- })

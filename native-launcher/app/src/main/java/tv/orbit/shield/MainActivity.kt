@@ -133,6 +133,7 @@ class MainActivity : ComponentActivity() {
         private set
     internal var torrDownloadMessage by mutableStateOf("")
     internal var incomingTorrentUri by mutableStateOf<Uri?>(null)
+    private var torrentPlaybackDialog: android.app.AlertDialog? = null
     private var torrPreparing = false
     internal fun openTorrServer() {
         val intent = packageManager.getLeanbackLaunchIntentForPackage("ru.yourok.torrserve")
@@ -235,6 +236,19 @@ class MainActivity : ComponentActivity() {
             } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
             catch (_: Exception) { torrDownloadMessage = getString(R.string.torr_download_failed) }
         }
+    }
+
+    internal fun prepareTorrPlayback(hash: String, fileId: Int) {
+        if (PortableMaintenance.running) return
+        torrentPlaybackDialog?.dismiss()
+        var dialog: android.app.AlertDialog? = null
+        dialog = TorrPreparationDialog.show(this, hash, fileId, onOpen = {
+            runCatching {
+                val url = Uri.parse(TorrPlayback.url(hash, fileId))
+                startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(url, "video/*"))
+            }.onFailure { torrDownloadMessage = getString(R.string.torr_play_failed) }
+        }, onDismiss = { if (torrentPlaybackDialog === dialog) torrentPlaybackDialog = null })
+        torrentPlaybackDialog = dialog
     }
 
     internal fun findTorrentCover(entry: TorrCatalogEntry) {
@@ -651,6 +665,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() { super.onResume(); if (!PortableRestoreStartup.ready || PortableMaintenance.running) return; AgentStateHooks.attach(this); updates.onResume(); libraryVisible = true; resumeVersion++; refreshLibrary(); startCoverSync() }
     override fun onPause() { AndroidDiagnostics.event("launcher.pause"); super.onPause() }
     override fun onStop() {
+        torrentPlaybackDialog?.dismiss()
         AgentStateHooks.detach(this)
         if (updatesLazy.isInitialized()) updates.onStop()
         libraryVisible = false

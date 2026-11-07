@@ -29,7 +29,6 @@ import androidx.tv.material3.Text
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 
@@ -416,59 +415,14 @@ class MovieLibraryActivity : ComponentActivity() {
 
     private fun showTorrentBuffer(hash: String, fileId: Int, openPlayer: () -> Unit) {
         val movieId = selected?.id
-        val dialog = AlertDialog.Builder(this)
-            .setTitle(R.string.movies_buffer_title)
-            .setMessage(R.string.movies_buffer_starting)
-            .setNegativeButton(R.string.movies_cancel, null)
-            .setPositiveButton(R.string.movies_buffer_open, null)
-            .create()
-        var monitor: Job? = null
-        var preload: Job? = null
-        var lastStatus = ""
-        var preloadMessage = ""
         bufferDialog?.dismiss()
-        bufferDialog = dialog
-        dialog.setOnDismissListener { monitor?.cancel(); preload?.cancel(); if (bufferDialog === dialog) bufferDialog = null }
-        dialog.show()
-        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+        var dialog: AlertDialog? = null
+        dialog = TorrPreparationDialog.show(this, hash, fileId, onOpen = {
             lastPreparedMovie = movieId
             lastPreparedHash = hash
-            dialog.dismiss(); openPlayer()
-        }
-        monitor = lifecycleScope.launch {
-            while (isActive && dialog.isShowing) {
-                val entry = runCatching { withContext(Dispatchers.IO) { TorrServerCatalog.status(hash) } }.getOrNull()
-                if (isActive && dialog.isShowing) {
-                    lastStatus = entry?.let { torrentStatusText(it, false) } ?: getString(R.string.movies_status_unavailable)
-                    dialog.setMessage(listOf(lastStatus, preloadMessage).filter { it.isNotEmpty() }.joinToString("\n\n"))
-                }
-                delay(2000)
-            }
-        }
-        preload = lifecycleScope.launch {
-            val result = runCatching { withContext(Dispatchers.IO) { TorrServerCatalog.preload(hash, fileId) } }
-            if (!isActive || !dialog.isShowing) return@launch
-            preloadMessage = getString(if (result.isSuccess) R.string.movies_buffer_finished else R.string.movies_buffer_waiting)
-            dialog.setMessage(listOf(lastStatus, preloadMessage).filter { it.isNotEmpty() }.joinToString("\n\n"))
-        }
-    }
-
-    private fun torrentStatusText(entry: TorrCatalogEntry, snapshot: Boolean): String {
-        val unknown = getString(R.string.movies_buffer_unknown)
-        fun size(value: Long?) = value?.let { android.text.format.Formatter.formatFileSize(this, it) } ?: unknown
-        val speed = entry.downloadBytesPerSecond?.let { size(it) + "/s" } ?: unknown
-        val state = when (entry.serverState) {
-            0 -> R.string.movies_state_added
-            1 -> R.string.movies_state_metadata
-            2 -> R.string.movies_state_preload
-            3 -> R.string.movies_state_working
-            4 -> R.string.movies_state_closed
-            5 -> R.string.movies_state_stored
-            else -> R.string.movies_buffer_unknown
-        }
-        val values = getString(R.string.movies_status_metrics, getString(state), size(entry.cachedBytes),
-            size(entry.preloadBytes), speed, entry.connectedSeeders?.toString() ?: unknown)
-        return values + "\n\n" + getString(if (snapshot) R.string.movies_status_snapshot else R.string.movies_status_open_hint)
+            openPlayer()
+        }, onDismiss = { if (bufferDialog === dialog) bufferDialog = null })
+        bufferDialog = dialog
     }
 
     /** An explicit snapshot of the last prepared torrent; it does not resume or start playback. */
@@ -495,7 +449,7 @@ class MovieLibraryActivity : ComponentActivity() {
                     dialog.setMessage(getString(R.string.movies_status_unavailable))
                     return@launch
                 }
-                dialog.setMessage(torrentStatusText(entry, true))
+                dialog.setMessage(torrentStatusText(this@MovieLibraryActivity, entry, true))
             }
         }
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener { refreshStatus() }

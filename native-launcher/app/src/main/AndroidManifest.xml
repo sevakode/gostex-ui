@@ -12,6 +12,22 @@
     <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
     <queries>
         <package android:name="com.termux" />
+        <package android:name="com.android.vending" />
+        <package android:name="com.explusalpha.Snes9xPlus" />
+        <package android:name="org.ppsspp.ppsspp" />
+        <package android:name="org.mupen64plusae.v3.fzurita" />
+        <package android:name="com.flycast.emulator" />
+        <package android:name="com.explusalpha.NesEmu" />
+        <package android:name="com.explusalpha.GbcEmu" />
+        <package android:name="com.explusalpha.GbaEmu" />
+        <package android:name="com.explusalpha.MdEmu" />
+        <package android:name="com.PceEmu" />
+        <package android:name="com.explusalpha.NgpEmu" />
+        <package android:name="me.magnum.melonds" />
+        <package android:name="com.github.stenzek.duckstation" />
+        <package android:name="org.dolphinemu.dolphinemu" />
+        <package android:name="org.azahar_emu.azahar" />
+        <package android:name="com.retroarch.aarch64" />
         <package android:name="ru.yourok.torrserve" />
         <package android:name="com.revanced.net.revancedmanager" />
         <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LEANBACK_LAUNCHER" /></intent>

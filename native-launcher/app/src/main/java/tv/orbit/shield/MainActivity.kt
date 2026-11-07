@@ -1168,7 +1168,7 @@ class MainActivity : ComponentActivity() {
         try {
             val spec = PlatformRegistry.resolve(game.platform, LibraryPreferences.read(this).ndsEmulator)
             if (spec == null) { notice = getString(R.string.platform_unknown); return }
-            PlatformRegistry.unavailableReason(this, spec)?.let { notice = it; return }
+            PlatformRegistry.unavailableReason(this, spec)?.let { if (!offerMissingEmulator(spec)) notice = it; return }
             val raw = game.files.getOrNull(variant)
             if (raw.isNullOrEmpty()) { notice = getString(R.string.game_file_missing); return }
             val uri = if (raw.startsWith("content:")) Uri.parse(raw) else if (raw.startsWith("/storage/emulated/0/Android/data/com.flycast.emulator/files/")) Uri.parse(raw) else {

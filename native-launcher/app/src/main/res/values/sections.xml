@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="sections_title">Home sections</string>
-    <string name="sections_hint">Make your own sections with apps and games. Choose their order and hide any section, including Apps.</string>
+    <string name="sections_hint">Create sections for apps, games and media. Change their order or hide them.</string>
     <string name="sections_create">Create section</string>
     <string name="sections_create_hint">For example: Video, Settings or a collection of games</string>
     <string name="sections_name_hint">Section name</string>
@@ -24,7 +24,7 @@
     <string name="sections_automatic">Automatic section</string>
     <string name="sections_position_description">Position %1$d · %2$s</string>
     <string name="sections_hidden_description">Hidden · %1$s</string>
-    <string name="sections_automatic_hint">Favorites includes both apps and games. Recently played, Games and Apps update automatically. Custom sections keep your chosen content and order.</string>
+    <string name="sections_automatic_hint">Favorites can include apps, games and media. Recent items update automatically; custom sections keep your chosen content and order.</string>
     <string name="sections_assign">Add to sections</string>
     <string name="sections_no_custom">Create your first section, then apply to add this item.</string>
     <string name="favorites_order_title">Order favorites</string>

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="sections_title">Разделы главного экрана</string>
-    <string name="sections_hint">Создавай свои разделы с приложениями и играми. Меняй их порядок и скрывай любые разделы, в том числе «Приложения».</string>
+    <string name="sections_hint">Создавай разделы для приложений, игр и медиа. Меняй их порядок или скрывай.</string>
     <string name="sections_create">Создать раздел</string>
     <string name="sections_create_hint">Например: Видео, Настройки или подборка игр</string>
     <string name="sections_name_hint">Название раздела</string>
@@ -24,7 +24,7 @@
     <string name="sections_automatic">Автоматический раздел</string>
     <string name="sections_position_description">Позиция %1$d · %2$s</string>
     <string name="sections_hidden_description">Скрыт · %1$s</string>
-    <string name="sections_automatic_hint">Избранное объединяет приложения и игры. Недавние игры, Игры и Приложения обновляются автоматически. Свои разделы сохраняют выбранное содержимое и порядок.</string>
+    <string name="sections_automatic_hint">В избранное можно добавить приложения, игры и медиа. Недавние обновляются автоматически; свои разделы сохраняют выбранное содержимое и порядок.</string>
     <string name="sections_assign">Добавить в разделы</string>
     <string name="sections_no_custom">Создай первый раздел, затем нажми «Применить», чтобы добавить этот элемент.</string>
     <string name="favorites_order_title">Порядок избранного</string>

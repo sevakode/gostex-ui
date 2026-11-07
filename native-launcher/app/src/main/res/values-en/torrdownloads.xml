@@ -75,7 +75,7 @@
     <string name="torr_write_limit_note">Limits GOSTEX file writes only; TorrServer cache and other apps are not limited.</string>
     <string name="torr_play_file">Watch this file</string>
     <string name="torr_play_failed">Could not open a video player. Check the player and TorrServer.</string>
-    <string name="downloads_tab_visibility">Downloads section</string>
+    <string name="downloads_tab_visibility">Downloads icon</string>
     <string name="downloads_options_show">Options</string>
     <string name="downloads_options_hide">Hide options</string>
     <string name="downloads_magnet_show">Add via magnet link</string>
@@ -86,4 +86,7 @@
     <string name="downloads_library_group">Game library</string>
     <string name="downloads_library_hint">Games, folders, covers and emulators</string>
     <string name="downloads_auto_cover_hint">The torrent title is sent to Cinemeta and configured game-cover sources.</string>
+    <string name="downloads_indicator_progress">Downloads · %1$d%%</string>
+    <string name="downloads_indicator_active">Downloading</string>
+    <string name="downloads_indicator_queued">Downloads queued</string>
 </resources>

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="sections_title">Secciones de inicio</string>
-    <string name="sections_hint">Crea secciones con apps y juegos. Elige su orden y oculta cualquier sección, incluida Apps.</string>
+    <string name="sections_hint">Crea secciones para aplicaciones, juegos y medios. Cambia su orden u ocúltalas.</string>
     <string name="sections_create">Crear sección</string>
     <string name="sections_create_hint">Por ejemplo: Vídeo, Ajustes o una colección de juegos</string>
     <string name="sections_name_hint">Nombre de la sección</string>
@@ -24,7 +24,7 @@
     <string name="sections_automatic">Sección automática</string>
     <string name="sections_position_description">Posición %1$d · %2$s</string>
     <string name="sections_hidden_description">Oculta · %1$s</string>
-    <string name="sections_automatic_hint">Favoritos incluye apps y juegos. Recientes, Juegos y Apps se actualizan automáticamente. Las secciones propias mantienen el contenido y el orden que elijas.</string>
+    <string name="sections_automatic_hint">Favoritos admite aplicaciones, juegos y medios. Los recientes se actualizan automáticamente; tus secciones conservan el contenido y el orden elegidos.</string>
     <string name="sections_assign">Añadir a secciones</string>
     <string name="sections_no_custom">Crea tu primera sección y pulsa Aplicar para añadir este elemento.</string>
     <string name="favorites_order_title">Ordenar favoritos</string>

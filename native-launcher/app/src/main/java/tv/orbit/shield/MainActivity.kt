@@ -87,19 +87,6 @@ private val Muted = Color(0xFFADADB0)
 private val Lime = Color(0xFFCCFF00)
 private val White = Color(0xFFF5F5F5)
 
-@Composable private fun DownloadTabAction(active: Boolean, onClick: () -> Unit) {
-    val jobs by TorrDownloadStore.jobs.collectAsState()
-    val activeJob = jobs.firstOrNull { it.state == "running" }
-    val queued = jobs.count { it.state == "queued" }
-    val progress = activeJob?.let { if (it.total > 0) (it.offset.toDouble() / it.total * 100).toInt().coerceIn(0, 100) else 0 }
-    val title = tr(R.string.torr_download_channel) + when {
-        progress != null -> " · $progress%"
-        queued > 0 -> " · $queued"
-        else -> ""
-    }
-    Action(title, compact = true, active = active, onClick = onClick)
-}
-
 @Composable private fun platformTitle(id: String): String = PlatformRegistry.find(id)?.let { tr(it.titleRes) } ?: id
 
 data class Game(
@@ -1184,13 +1171,12 @@ class MainActivity : ComponentActivity() {
     val appsOptions = LocalAppsOptions.current
     val downloadsVisible = rememberDownloadsVisible()
     val mediaTabVisible = rememberMediaTabVisible()
-    val visibleTabs = remember(libraryOptions.tabVisible, appsOptions.tabVisible, downloadsVisible, mediaTabVisible, tab) {
+    val visibleTabs = remember(libraryOptions.tabVisible, appsOptions.tabVisible, mediaTabVisible, tab) {
         buildList {
             add("home")
             if (libraryOptions.tabVisible) add("library")
             if (mediaTabVisible || tab == "movies") add("movies")
             if (appsOptions.tabVisible) add("apps")
-            if (downloadsVisible || tab == "downloads") add("downloads")
         }
     }
     var searchReturnTarget by remember { mutableStateOf("") }
@@ -1336,7 +1322,7 @@ class MainActivity : ComponentActivity() {
         if (platform == "android-apps" && androidGameApps.isEmpty()) platform = "all"
     }
     LaunchedEffect(tab, visibleTabs) {
-        if (tab !in visibleTabs) {
+        if (tab != "downloads" && tab !in visibleTabs) {
             tab = "home"
             searchOpen = false
             platform = "all"
@@ -1439,11 +1425,13 @@ class MainActivity : ComponentActivity() {
                             CompactIconButton(CompactIcon.Settings, tr(R.string.settings), modifier = Modifier.focusRequester(settingsFocus),
                                 onClick = { settingsInitialSection = "root"; settingsReturnFocus = null; settingsOpen = true })
                         }
-                        LazyRow(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            items(visibleTabs, key = { it }) { label ->
-                                if (label == "downloads") DownloadTabAction(tab == label) { tab = label; platform = "all" }
-                                else Action(tabTitle(label), compact = true, active = tab == label, onClick = { tab = label; platform = "all" })
+                        Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            LazyRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                items(visibleTabs, key = { it }) { label ->
+                                    Action(tabTitle(label), compact = true, active = tab == label, onClick = { tab = label; platform = "all" })
+                                }
                             }
+                            if (downloadsVisible) { Spacer(Modifier.width(6.dp)); DownloadsShortcut(tab == "downloads") { tab = "downloads"; platform = "all" } }
                         }
                     }
                   } else {
@@ -1451,10 +1439,10 @@ class MainActivity : ComponentActivity() {
                     Image(painterResource(R.drawable.gostex_logo), contentDescription = "GOSTEX", modifier = Modifier.width(100.dp).height(34.dp))
                     Spacer(Modifier.width(24.dp))
                     visibleTabs.forEach { label ->
-                        if (label == "downloads") DownloadTabAction(tab == label) { tab = label; platform = "all" }
-                        else Action(tabTitle(label), compact = true, active = tab == label, onClick = { tab = label; platform = "all" })
+                        Action(tabTitle(label), compact = true, active = tab == label, onClick = { tab = label; platform = "all" })
                         Spacer(Modifier.width(6.dp))
                     }
+                    if (downloadsVisible) { DownloadsShortcut(tab == "downloads") { tab = "downloads"; platform = "all" }; Spacer(Modifier.width(6.dp)) }
                     Row(Modifier.weight(1f).padding(start = 12.dp, end = 8.dp), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
                         HeaderClock(clockOptions, clockInstant)
                         if (batteryVisible) { Spacer(Modifier.width(10.dp)); BatteryStatus(activity) { percent, charging -> activity.getString(if (charging) R.string.battery_charging else R.string.battery_level, percent) } }

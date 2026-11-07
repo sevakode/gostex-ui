@@ -275,6 +275,7 @@ class MainActivity : ComponentActivity() {
                 try {
                     managedCovers = withContext(Dispatchers.IO) { ManagedCoverStore.importTorrentAutomatic(this@MainActivity, id, found.bytes, found.sourceName, found.sourceUrl) }
                     coverRevision++
+                    coverRenderRevision++
                 } finally { coverEdits-- }
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
             catch (_: Exception) { /* No cover is better than an incorrect one. */ }
@@ -299,6 +300,7 @@ class MainActivity : ComponentActivity() {
                 try {
                     managedCovers = withContext(Dispatchers.IO) { ManagedCoverStore.importTorrentAutomatic(this@MainActivity, id, found.bytes, found.sourceName, found.sourceUrl) }
                     coverRevision++
+                    coverRenderRevision++
                 } finally { coverEdits-- }
             }
         } catch (e: kotlinx.coroutines.CancellationException) { throw e }
@@ -631,6 +633,8 @@ class MainActivity : ComponentActivity() {
     private var coverEdits by mutableIntStateOf(0)
     val coverEditBusy: Boolean get() = coverEdits > 0
     private var coverRevision = 0L
+    internal var coverRenderRevision by mutableLongStateOf(0L)
+        private set
     private var coverSyncPending = false
     var coversStatus by mutableStateOf("")
     private var pendingCoverId: String? = null
@@ -741,6 +745,7 @@ class MainActivity : ComponentActivity() {
             try {
                 managedCovers = withContext(Dispatchers.IO) { ManagedCoverStore.importManual(this@MainActivity, id, uri) }
                 coverRevision++
+                coverRenderRevision++
                 ManagedCoverPreferences.choice(this@MainActivity, id, CoverChoice.MANUAL)
                 coversStatus = getString(R.string.cover_saved)
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
@@ -755,6 +760,7 @@ class MainActivity : ComponentActivity() {
         try {
             managedCovers = withContext(Dispatchers.IO) { ManagedCoverStore.importOnline(this@MainActivity,id,bytes,image) }
             coverRevision++
+            coverRenderRevision++
             ManagedCoverPreferences.choice(this,id,CoverChoice.MANUAL)
             coversStatus = getString(R.string.cover_saved)
             syncCovers(false)
@@ -845,6 +851,7 @@ class MainActivity : ComponentActivity() {
                 ManagedCoverStore.sync(this@MainActivity, currentGames, options.folder, manual || options.automatic, forceExport = manual)
             }
             if (startedRevision == coverRevision) managedCovers = result.entries
+            coverRenderRevision++
             coversStatus = getString(R.string.covers_sync_result, result.applied, result.rejected)
         } catch (e: kotlinx.coroutines.CancellationException) { throw e }
         catch (e: Exception) {
@@ -1261,6 +1268,7 @@ class MainActivity : ComponentActivity() {
     val coverOptions = rememberManagedCoverOptions()
     CompositionLocalProvider(
         LocalManagedCovers provides activity.managedCovers,
+        LocalCoverRenderRevision provides activity.coverRenderRevision,
         LocalManagedCoverOptions provides coverOptions,
         LocalCoverStyle provides appearance.style,
         LocalFavoriteBadgeVisible provides appearance.favoriteBadgeVisible,

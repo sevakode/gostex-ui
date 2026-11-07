@@ -20,6 +20,7 @@ import org.json.JSONObject
 internal data class ManagedCoverOptions(val folder: String = "", val automatic: Boolean = true,
     val choices: Map<String, CoverChoice> = emptyMap())
 internal val LocalManagedCovers = staticCompositionLocalOf<Map<String, ManagedCover>> { emptyMap() }
+internal val LocalCoverRenderRevision = compositionLocalOf { 0L }
 internal val LocalManagedCoverOptions = staticCompositionLocalOf { ManagedCoverOptions() }
 
 internal object ManagedCoverPreferences {

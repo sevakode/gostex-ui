@@ -105,7 +105,8 @@ private object ArtCache {
 
 @Composable private fun rememberArtwork(path: String): CachedArtwork? {
     val context = LocalContext.current.applicationContext
-    val entry by produceState(ArtCache.peek(path), context, path) {
+    val revision = LocalCoverRenderRevision.current
+    val entry by produceState(ArtCache.peek(path), context, path, revision) {
         value = ArtCache.load(context, path)
     }
     // produceState keeps its previous value during a key change. Do not flash that previous cover.
@@ -128,7 +129,8 @@ private data class CoverRenderResult(
 
 @Composable private fun rememberCoverArtwork(path: String, useGenerated: Boolean, wide: String = "", fallback: String = ""): ResolvedCoverAsset<CachedArtwork>? {
     val context = LocalContext.current.applicationContext
-    val result by produceState<CoverRenderResult?>(null, context, path, useGenerated, wide, fallback) {
+    val revision = LocalCoverRenderRevision.current
+    val result by produceState<CoverRenderResult?>(null, context, path, useGenerated, wide, fallback, revision) {
         val custom = if (useGenerated && wide.isNotEmpty()) ArtCache.load(context, wide).takeIf { it.bitmap != null } else null
         val resolved = if (custom != null) ResolvedCoverAsset(custom, true) else resolveCoverAsset(path, useGenerated,
             extension = { CoverExtensions.find(context, it) },

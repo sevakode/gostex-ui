@@ -1,6 +1,7 @@
 <resources>
     <string name="movies_title">Movies</string>
     <string name="movies_search">Search</string>
+    <string name="movies_attach_help">Choose a movie or series below, or search for it, then attach the torrent.</string>
     <string name="movies_saved">My media</string>
     <string name="movies_sources">Sources</string>
     <string name="movies_add_file">Add torrent file</string>

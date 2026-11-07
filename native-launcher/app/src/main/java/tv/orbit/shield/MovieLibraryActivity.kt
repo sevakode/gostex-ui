@@ -545,6 +545,9 @@ class MovieLibraryActivity : ComponentActivity() {
                 MovieButton(tr(R.string.movies_addons)) { stopSourceLookup(); requestGeneration++; page = "addons"; busy = false; error = "" }
                 MovieButton(tr(R.string.back)) { stopSourceLookup(); if (page == "saved") finish() else { requestGeneration++; page = "saved"; busy = false; error = "" } }
             }
+            if (pendingTorrentHash != null && page in setOf("saved", "results")) {
+                Text(tr(R.string.movies_attach_help), color = Color.LightGray, fontSize = 14.sp, modifier = Modifier.padding(top = 8.dp))
+            }
             if (busy) Text(progressMessage.ifBlank { tr(R.string.movies_searching) }, color = Color(0xFFCCFF00), modifier = Modifier.padding(vertical = 8.dp))
             if (error.isNotBlank()) Text(error, color = Color(0xFFFFA69A), modifier = Modifier.padding(vertical = 8.dp))
             Spacer(Modifier.height(10.dp))

@@ -8,6 +8,8 @@ internal object TorrentArtworkPolicy {
         .replace(Regex("(?i)\\b(?:19|20)\\d{2}\\b.*$"), " ")
         .replace(Regex("(?i)\\b(?:s\\d{1,2}(?:e\\d{1,3})?|season\\s*\\d{1,2}|сезон\\s*\\d{1,2}|(?:480|720|1080|2160)p|web[ -]?dl|bluray|bdrip)\\b.*$"), " ")
         .replace(Regex("\\s+"), " ").trim().take(150)
+        // TorrServer can use the torrent hash as a temporary title before metadata arrives.
+        .takeUnless { it.matches(Regex("(?i)[0-9a-f]{40}")) }.orEmpty()
     fun normalized(value: String) = value.lowercase(java.util.Locale.ROOT)
         .replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim().replace(Regex("\\s+"), " ")
     fun uniqueSource(movieCount: Int, gameCount: Int): String? = when {

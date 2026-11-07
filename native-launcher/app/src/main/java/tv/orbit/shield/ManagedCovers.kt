@@ -60,7 +60,7 @@ internal object ManagedCoverPreferences {
     return options
 }
 
-internal data class CoverSyncResult(val entries: Map<String, ManagedCover>, val applied: Int, val rejected: Int)
+internal data class CoverSyncResult(val entries: Map<String, ManagedCover>, val applied: Int, val rejected: Int, val imagesWritten: Boolean)
 
 /** Images are immutable and content-addressed, so decoded cards cannot show a stale overwrite.
  * A failed batch leaves both the prior index and its original images available. */
@@ -105,7 +105,7 @@ internal object ManagedCoverStore {
         }
         return bytes.toByteArray()
     }
-    private fun putImage(context: Context, bytes: ByteArray, expected: String? = null, wide: Boolean = false): String {
+    private fun putImage(context: Context, bytes: ByteArray, expected: String? = null, wide: Boolean = false, onWritten: () -> Unit = {}): String {
         require(bytes.isNotEmpty() && bytes.size <= MAX_IMAGE_BYTES)
         val sha = digest(bytes)
         require(expected == null || expected == sha) { "Image checksum mismatch" }
@@ -128,7 +128,7 @@ internal object ManagedCoverStore {
             require(used - file.length() + bytes.size <= STORE_BUDGET) { "Cover storage limit reached" }
             val target = AtomicFile(file)
             val stream = target.startWrite()
-            try { stream.write(bytes); target.finishWrite(stream) }
+            try { stream.write(bytes); target.finishWrite(stream); onWritten() }
             catch (e: Exception) { target.failWrite(stream); throw e }
         }
         return key
@@ -269,6 +269,7 @@ internal object ManagedCoverStore {
         var entries = gate.mutate { read(context) }
         var applied = 0
         var rejected = 0
+        var imagesWritten = false
         if (importUpdates) {
             val bytes = tree.read("updates.json", ManagedCoverManifest.MAX_BYTES)
             if (bytes != null) {
@@ -285,7 +286,7 @@ internal object ManagedCoverStore {
                             suspend fun load(path: String, sha: String, wide: Boolean = false): String? = path.takeIf { it.isNotEmpty() }?.let {
                                 val image = tree.read(it, MAX_IMAGE_BYTES) ?: error("Image missing")
                                 currentCoroutineContext().ensureActive()
-                                gate.mutate { putImage(context, image, sha, wide) }
+                                gate.mutate { putImage(context, image, sha, wide) { imagesWritten = true } }
                             }
                             prepared += PreparedUpdate(update.gameId, load(update.original, update.originalSha256),
                                 load(update.wide, update.wideSha256, wide = true))
@@ -314,7 +315,7 @@ internal object ManagedCoverStore {
         // Refresh even when updates.json was unchanged: manual edits can occur during IO.
         entries = gate.mutate { read(context) }
         export(context, tree, games, entries, forceExport)
-        CoverSyncResult(entries, applied, rejected)
+        CoverSyncResult(entries, applied, rejected, imagesWritten)
     }
     private suspend fun export(context: Context, tree: Tree, games: List<Game>, entries: Map<String, ManagedCover>, force: Boolean) {
         val options = ManagedCoverPreferences.read(context)

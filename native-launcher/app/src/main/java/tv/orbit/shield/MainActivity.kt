@@ -851,7 +851,7 @@ class MainActivity : ComponentActivity() {
                 ManagedCoverStore.sync(this@MainActivity, currentGames, options.folder, manual || options.automatic, forceExport = manual)
             }
             if (startedRevision == coverRevision) managedCovers = result.entries
-            coverRenderRevision++
+            if (result.applied > 0 || result.imagesWritten) coverRenderRevision++
             coversStatus = getString(R.string.covers_sync_result, result.applied, result.rejected)
         } catch (e: kotlinx.coroutines.CancellationException) { throw e }
         catch (e: Exception) {

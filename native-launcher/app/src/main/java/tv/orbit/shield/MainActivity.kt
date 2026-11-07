@@ -1486,6 +1486,11 @@ class MainActivity : ComponentActivity() {
             val g = detail!!
             val versions = remember(g, groups, libraryOptions.groupVersions) { gameVersions(g, groups, libraryOptions.groupVersions) }
             val selectedVersion = versions.getOrNull(variant) ?: versions.firstOrNull()
+            val versionPaths = remember(versions) { versions.map { android.net.Uri.decode(it.game.files[it.fileIndex]) } }
+            val selectedPath = versionPaths.getOrNull(variant) ?: versionPaths.firstOrNull().orEmpty()
+            val fileName = selectedPath.substringAfterLast('/')
+            val versionLabel = if (versionPaths.count { it.substringAfterLast('/') == fileName } > 1)
+                "$fileName · ${selectedPath.substringBeforeLast('/', "")}" else fileName
             Box(Modifier.align(Alignment.CenterEnd).padding(end = 36.dp).fillMaxWidth(.32f).fillMaxHeight(.78f).border(1.dp, Color(0xFF424244)).background(Panel)) {
                 CoverArtwork(g.cover.ifEmpty { g.scene }, Modifier.fillMaxSize(), g.id)
             }
@@ -1505,7 +1510,7 @@ class MainActivity : ComponentActivity() {
                 Spacer(Modifier.weight(1f))
                 if (versions.size > 1) {
                     Text(tr(R.string.variant, variant.coerceIn(0, versions.lastIndex) + 1, versions.size), color = Muted, fontSize = 12.sp)
-                    Text(android.net.Uri.decode(selectedVersion?.game?.files?.getOrNull(selectedVersion.fileIndex).orEmpty()).substringAfterLast('/'), color = White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.width(540.dp))
+                    Text(versionLabel, color = White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.width(540.dp))
                     Spacer(Modifier.height(8.dp))
                 }
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(14.dp)) {

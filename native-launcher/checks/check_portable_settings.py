@@ -16,11 +16,11 @@ fun main() {
     var count = 0
     fun ok(value: Boolean, label: String) { check(value) { label }; count++ }
     val prefs = mapOf<String, Any>("language" to "ru", "clock.zones" to "[\"Asia/Tokyo\",\"Europe/Madrid\"]",
-        "clock.visible" to false, "art.holdSeconds" to 30, "art.speed" to "future-choice",
+        "clock.visible" to false, "library.groupVersions" to false, "art.holdSeconds" to 30, "art.speed" to "future-choice",
         "video.visible" to setOf("tv.example", "missing.app"), "home.shelves.visible" to emptySet<String>(),
         "covers.steamgriddbKey" to "secret", "grafana.url" to "https://private.example", "library.uri" to "content://private")
     val captured = PortableSettingsCodec.capture(prefs)
-    ok(captured.size == 7, "only reviewed fields captured")
+    ok(captured.size == 8, "only reviewed fields captured")
     val encoded = PortableSettingsCodec.encode(captured)
     ok(!encoded.contains("secret") && !encoded.contains("private"), "sensitive keys excluded")
     ok(PortableSettingsCodec.decode(encoded) == captured, "round trip choices, empty set and missing apps")

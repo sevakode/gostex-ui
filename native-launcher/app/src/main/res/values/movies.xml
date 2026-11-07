@@ -3,6 +3,8 @@
     <string name="movies_search">Search</string>
     <string name="movies_attach_help">Choose a movie or series below, or search for it, then attach the torrent.</string>
     <string name="movies_local_create">Create a media card</string>
+    <string name="movies_local_edit">Edit title and type</string>
+    <string name="movies_local_save">Save</string>
     <string name="movies_local_hint">Use this torrent without searching an online catalog.</string>
     <string name="movies_local_title">Title</string>
     <string name="movies_local_title_required">Enter a title for the media card.</string>

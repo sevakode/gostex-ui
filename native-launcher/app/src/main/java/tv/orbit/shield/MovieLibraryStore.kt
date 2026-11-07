@@ -125,6 +125,14 @@ internal object MovieLibraryStore {
         return write(context, existing.filterNot { it.id == id })
     }
 
+    /** Change only local-card metadata against the latest saved sources. */
+    @Synchronized fun editLocal(context: Context, id: String, title: String, mediaType: String): Boolean {
+        require(id.startsWith("local:") && title.isNotBlank() && title.length <= 256 && mediaType in setOf("movie", "series"))
+        val existing = read(context)
+        if (existing.none { it.id == id }) return false
+        return write(context, existing.map { if (it.id == id) it.copy(title = title, mediaType = mediaType) else it })
+    }
+
     /** Remove only the library link, leaving the torrent and its files untouched. */
     @Synchronized fun removeSource(context: Context, movieId: String, source: MovieSource): Boolean {
         val existing = read(context)

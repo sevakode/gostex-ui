@@ -3,6 +3,8 @@
     <string name="movies_search">Поиск</string>
     <string name="movies_attach_help">Выбери фильм или сериал ниже либо найди через поиск, затем привяжи торрент.</string>
     <string name="movies_local_create">Создать карточку</string>
+    <string name="movies_local_edit">Изменить название и тип</string>
+    <string name="movies_local_save">Сохранить</string>
     <string name="movies_local_hint">Добавить торрент без поиска в онлайн-каталоге.</string>
     <string name="movies_local_title">Название</string>
     <string name="movies_local_title_required">Введи название карточки.</string>

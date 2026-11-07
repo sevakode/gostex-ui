@@ -213,12 +213,11 @@ class MovieLibraryActivity : ComponentActivity() {
         } else toast(R.string.movies_source_failed)
     }
 
-    private fun createLocalTorrentCard() {
-        if (pendingTorrentHash == null || readFailed) return
+    private fun localMediaEditor(initialTitle: String, initialType: String, editing: Boolean, onSave: (String, String) -> Boolean) {
         val title = EditText(this).apply {
             setSingleLine(true)
             setHint(R.string.movies_local_title)
-            setText(TorrentArtworkPolicy.query(pendingTorrentTitle))
+            setText(initialTitle)
             filters = arrayOf(android.text.InputFilter.LengthFilter(256))
         }
         val movieId = android.view.View.generateViewId()
@@ -227,7 +226,7 @@ class MovieLibraryActivity : ComponentActivity() {
             orientation = android.widget.RadioGroup.HORIZONTAL
             addView(android.widget.RadioButton(context).apply { id = movieId; setText(R.string.movies_type_movie) })
             addView(android.widget.RadioButton(context).apply { id = seriesId; setText(R.string.movies_type_series) })
-            check(movieId)
+            check(if (initialType == "series") seriesId else movieId)
         }
         val content = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.VERTICAL
@@ -235,25 +234,40 @@ class MovieLibraryActivity : ComponentActivity() {
             setPadding(pad, 0, pad, 0)
             addView(title); addView(types)
         }
-        val dialog = AlertDialog.Builder(this).setTitle(R.string.movies_local_create).setView(content)
-            .setNegativeButton(R.string.movies_cancel, null).setPositiveButton(R.string.movies_add, null).create()
+        val dialog = AlertDialog.Builder(this).setTitle(if (editing) R.string.movies_local_edit else R.string.movies_local_create).setView(content)
+            .setNegativeButton(R.string.movies_cancel, null).setPositiveButton(if (editing) R.string.movies_local_save else R.string.movies_add, null).create()
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val hash = pendingTorrentHash ?: return@setOnClickListener
                 val name = title.text.toString().trim()
-                if (name.isBlank() || readFailed) { toast(R.string.movies_local_title_required); return@setOnClickListener }
-                val label = TorrentArtworkPolicy.query(pendingTorrentTitle).ifBlank { getString(R.string.movies_torrent_source) }
-                val movie = SavedMovie("local:${java.util.UUID.randomUUID()}", name, "", null,
-                    listOf(MovieSource(label.take(256), "torrserver://$hash")), mediaType = if (types.checkedRadioButtonId == seriesId) "series" else "movie")
-                if (runCatching { MovieLibraryStore.save(this, movie) }.getOrDefault(false)) {
-                    pendingTorrentHash = null
-                    dialog.dismiss()
-                    toast(R.string.movies_torrent_attached)
-                    finish()
-                } else toast(R.string.movies_source_failed)
+                if (readFailed) { toast(R.string.movies_corrupt); return@setOnClickListener }
+                if (name.isBlank()) { toast(R.string.movies_local_title_required); return@setOnClickListener }
+                val mediaType = if (types.checkedRadioButtonId == seriesId) "series" else "movie"
+                if (onSave(name, mediaType)) dialog.dismiss() else toast(R.string.movies_source_failed)
             }
         }
         dialog.show()
+    }
+
+    private fun createLocalTorrentCard() {
+        if (pendingTorrentHash == null || readFailed) return
+        localMediaEditor(TorrentArtworkPolicy.query(pendingTorrentTitle), "movie", editing = false) { name, mediaType ->
+            val hash = pendingTorrentHash ?: return@localMediaEditor false
+            val label = TorrentArtworkPolicy.query(pendingTorrentTitle).ifBlank { getString(R.string.movies_torrent_source) }
+            val movie = SavedMovie("local:${java.util.UUID.randomUUID()}", name, "", null,
+                listOf(MovieSource(label.take(256), "torrserver://$hash")), mediaType = mediaType)
+            val saved = runCatching { MovieLibraryStore.save(this, movie) }.getOrDefault(false)
+            if (saved) { pendingTorrentHash = null; toast(R.string.movies_torrent_attached); finish() }
+            saved
+        }
+    }
+
+    private fun editLocalCard(movie: MovieCatalogItem) {
+        if (readFailed || !movie.id.startsWith("local:")) return
+        localMediaEditor(movie.title, movie.mediaType, editing = true) { name, mediaType ->
+            val saved = runCatching { MovieLibraryStore.editLocal(this, movie.id, name, mediaType) }.getOrDefault(false)
+            if (saved) { selected = movie.copy(title = name, mediaType = mediaType); refresh() }
+            saved
+        }
     }
 
     private fun addLink() = input(R.string.movies_add_link, R.string.movies_link_hint) { value ->
@@ -631,6 +645,9 @@ class MovieLibraryActivity : ComponentActivity() {
                         if (movie != null) {
                             val stored = saved.firstOrNull { it.id == movie.id }
                             item { Text(movie.title, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold) }
+                            if (movie.id.startsWith("local:")) item {
+                                SettingRow(tr(R.string.movies_local_edit), onClick = { editLocalCard(movie) })
+                            }
                             val preparedHash = lastPreparedHash?.takeIf { lastPreparedMovie == movie.id }
                             if (preparedHash != null) item(key = "last-torrent-status") {
                                 SettingRow(tr(R.string.movies_status_title), tr(R.string.movies_status_hint), onClick = { showLastTorrentStatus(preparedHash) })

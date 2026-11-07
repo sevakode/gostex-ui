@@ -54,4 +54,14 @@
     <string name="movies_type_movie">Película</string>
     <string name="movies_type_series">Serie</string>
     <string name="movies_no_series_sources">Añade un torrent o un enlace para ver esta serie.</string>
+    <string name="movies_find_episode_sources">Buscar fuentes del episodio</string>
+    <string name="movies_no_active_addons">Activa primero un complemento de Stremio en Fuentes.</string>
+    <string name="movies_loading_episodes">Cargando episodios…</string>
+    <string name="movies_no_episodes">No hay una lista de episodios para esta serie.</string>
+    <string name="movies_choose_season">Elige una temporada</string>
+    <string name="movies_choose_episode">Elige un episodio</string>
+    <string name="movies_season_number">Temporada %1$d</string>
+    <string name="movies_episode_number">Episodio %1$d</string>
+    <string name="movies_episode_selected">Temporada %1$d · %2$s</string>
+    <string name="movies_search_empty">No se encontraron fuentes reproducibles para esta selección.</string>
 </resources>

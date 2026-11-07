@@ -14,6 +14,7 @@ internal data class MovieCatalogItem(
     val durationSeconds: Long? = null,
     val mediaType: String = "movie",
 )
+internal data class MovieEpisode(val id: String, val season: Int, val episode: Int, val title: String)
 
 /** Metadata only; no streaming engine or background polling. Caller runs on Dispatchers.IO. */
 internal object MovieCatalogClient {
@@ -52,6 +53,30 @@ internal object MovieCatalogClient {
             item.optString("releaseInfo").take(64),
             item.optString("poster").takeIf { it.startsWith("https://") }?.take(2048),
             item.optString("description").take(5000), minutes?.times(60), type)
+    }
+
+    fun episodes(id: String, base: String = DEFAULT_BASE): List<MovieEpisode> {
+        require(id.matches(Regex("tt[0-9]{1,16}")))
+        val meta = fetch(URL("${origin(base)}/meta/series/$id.json")).getJSONObject("meta")
+        require(meta.getString("id") == id)
+        return parseEpisodes(meta, id)
+    }
+
+    internal fun parseEpisodes(meta: JSONObject, seriesId: String): List<MovieEpisode> {
+        require(seriesId.matches(Regex("tt[0-9]{1,16}")))
+        val videos = meta.optJSONArray("videos") ?: return emptyList()
+        return buildList {
+            for (i in 0 until minOf(videos.length(), 3000)) {
+                val video = videos.optJSONObject(i) ?: continue
+                val season = video.optInt("season", -1)
+                val episode = video.optInt("episode", -1)
+                if (season !in 0..9999 || episode !in 0..99999) continue
+                val id = video.optString("id")
+                if (id != "$seriesId:$season:$episode") continue
+                val title = video.optString("title").ifBlank { video.optString("name") }.trim().take(256)
+                add(MovieEpisode(id, season, episode, title))
+            }
+        }.distinctBy { it.id }.sortedWith(compareBy(MovieEpisode::season, MovieEpisode::episode))
     }
 
     private fun origin(base: String): URL = URL(base.trimEnd('/')).also {

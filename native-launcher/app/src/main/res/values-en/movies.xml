@@ -54,4 +54,14 @@
     <string name="movies_type_movie">Film</string>
     <string name="movies_type_series">Series</string>
     <string name="movies_no_series_sources">Add a torrent or your own link to watch this series.</string>
+    <string name="movies_find_episode_sources">Find episode sources</string>
+    <string name="movies_no_active_addons">Enable a Stremio add-on in Sources first.</string>
+    <string name="movies_loading_episodes">Loading episodes…</string>
+    <string name="movies_no_episodes">No episode list is available for this series.</string>
+    <string name="movies_choose_season">Choose season</string>
+    <string name="movies_choose_episode">Choose episode</string>
+    <string name="movies_season_number">Season %1$d</string>
+    <string name="movies_episode_number">Episode %1$d</string>
+    <string name="movies_episode_selected">Season %1$d · %2$s</string>
+    <string name="movies_search_empty">No playable sources found for this selection.</string>
 </resources>

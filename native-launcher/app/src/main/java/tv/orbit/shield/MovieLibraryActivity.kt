@@ -41,6 +41,8 @@ class MovieLibraryActivity : ComponentActivity() {
     private var busy by mutableStateOf(false)
     private var progressMessage by mutableStateOf("")
     private var searched by mutableStateOf(false)
+    private var searchedSources by mutableStateOf(false)
+    private var sourceEpisode by mutableStateOf<MovieEpisode?>(null)
     private var readFailed = false
     private var requestGeneration = 0L
     private var sourceRemovalVersion by mutableIntStateOf(0)
@@ -147,7 +149,7 @@ class MovieLibraryActivity : ComponentActivity() {
 
     private fun openMovie(item: MovieCatalogItem) {
         val generation = ++requestGeneration
-        page = "detail"; selected = item; sources = emptyList(); error = ""
+        page = "detail"; selected = item; sources = emptyList(); error = ""; searchedSources = false; sourceEpisode = null
         lifecycleScope.launch {
             val details = withContext(Dispatchers.IO) { runCatching { MovieCatalogClient.details(item.id, type = item.mediaType) } }
             if (generation == requestGeneration && selected?.id == item.id && details.isSuccess) selected = details.getOrThrow()
@@ -227,17 +229,46 @@ class MovieLibraryActivity : ComponentActivity() {
         }
     }
 
-    private fun findSources() {
+    private fun chooseEpisode() {
+        val movie = selected ?: return
+        if (addons.none { it.enabled }) { error = getString(R.string.movies_no_active_addons); return }
+        val generation = ++requestGeneration
+        busy = true; progressMessage = getString(R.string.movies_loading_episodes); error = ""; sources = emptyList(); searchedSources = false
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching { MovieCatalogClient.episodes(movie.id) } }
+            if (generation != requestGeneration || selected?.id != movie.id || isFinishing || isDestroyed) return@launch
+            busy = false
+            val episodes = result.getOrElse { error = getString(R.string.movies_source_failed); return@launch }
+            if (episodes.isEmpty()) { error = getString(R.string.movies_no_episodes); return@launch }
+            val seasons = episodes.map { it.season }.distinct()
+            AlertDialog.Builder(this@MovieLibraryActivity).setTitle(R.string.movies_choose_season)
+                .setItems(seasons.map { getString(R.string.movies_season_number, it) }.toTypedArray()) { _, index ->
+                    val seasonEpisodes = episodes.filter { it.season == seasons[index] }
+                    AlertDialog.Builder(this@MovieLibraryActivity).setTitle(R.string.movies_choose_episode)
+                        .setItems(seasonEpisodes.map { episodeLabel(it) }.toTypedArray()) { _, episodeIndex ->
+                            findSources(seasonEpisodes[episodeIndex])
+                        }.setNegativeButton(R.string.movies_cancel, null).show()
+                }.setNegativeButton(R.string.movies_cancel, null).show()
+        }
+    }
+
+    private fun episodeLabel(episode: MovieEpisode): String =
+        listOf(getString(R.string.movies_episode_number, episode.episode), episode.title).filter { it.isNotBlank() }.joinToString(" · ")
+
+    private fun findSources(episode: MovieEpisode? = null) {
         val movie = selected ?: return
         val active = addons.filter { it.enabled }
+        if (active.isEmpty()) { error = getString(R.string.movies_no_active_addons); return }
         val generation = ++requestGeneration
-        busy = true; progressMessage = ""; error = ""; sources = emptyList()
+        busy = true; progressMessage = ""; error = ""; sources = emptyList(); searchedSources = false; sourceEpisode = episode
         lifecycleScope.launch {
             val fetched = withContext(Dispatchers.IO) {
-                active.flatMap { entry -> runCatching { MovieAddonClient.streams(entry.addon, movie.id) }.getOrDefault(emptyList()) }
+                active.map { entry -> runCatching { MovieAddonClient.streams(entry.addon, episode?.id ?: movie.id, movie.mediaType) } }
             }
             if (generation != requestGeneration || selected?.id != movie.id || isFinishing) return@launch
-            sources = fetched; busy = false
+            busy = false; searchedSources = true
+            if (fetched.all { it.isFailure }) error = getString(R.string.movies_source_failed)
+            else sources = fetched.flatMap { it.getOrDefault(emptyList()) }
         }
     }
 
@@ -315,6 +346,7 @@ class MovieLibraryActivity : ComponentActivity() {
         val movie = saveSelected() ?: return
         val label = listOf(stream.name, stream.description).filter { it.isNotBlank() }.joinToString(" · ").take(256)
         val source = MovieSource(label, stream.uri, stream.fileIndex, stream.sizeBytes)
+        if (movie.mediaType == "series") { play(source); return }
         val updated = movie.copy(sources = movie.sources.filterNot { it.uri == source.uri && it.fileIndex == source.fileIndex } + source)
         if (runCatching { MovieLibraryStore.save(this, updated) }.getOrDefault(false)) { refresh(); play(source) }
         else toast(R.string.movies_source_failed)
@@ -378,7 +410,8 @@ class MovieLibraryActivity : ComponentActivity() {
                             }) }
                             item { SettingRow(tr(R.string.movies_add_link), onClick = { addLink() }) }
                             item { SettingRow(tr(R.string.movies_add_file), onClick = { addFile() }) }
-                            if (movie.mediaType == "movie") item { SettingRow(tr(R.string.movies_sources), onClick = { findSources() }) }
+                            item { SettingRow(tr(if (movie.mediaType == "series") R.string.movies_find_episode_sources else R.string.movies_sources),
+                                onClick = { if (movie.mediaType == "series") chooseEpisode() else findSources() }) }
                             item { Text(tr(R.string.movies_torrent_hint), color = Color.LightGray, fontSize = 13.sp) }
                             stored?.sources?.let { savedSources ->
                                 items(savedSources, key = { "saved:${it.uri}:${it.fileIndex}" }) { source ->
@@ -390,8 +423,10 @@ class MovieLibraryActivity : ComponentActivity() {
                                     if (estimate != null) Text(tr(R.string.movies_estimate_average, String.format(java.util.Locale.ROOT, "%.1f", estimate.averageBitsPerSecond / 1_000_000)), color = Color.LightGray)
                                 }
                             }
-                            if (!busy && sources.isEmpty() && stored?.sources.isNullOrEmpty() && (movie.mediaType == "series" || addons.isEmpty()))
+                            if (!busy && !searchedSources && sources.isEmpty() && stored?.sources.isNullOrEmpty() && (movie.mediaType == "series" || addons.isEmpty()))
                                 item { Text(tr(if (movie.mediaType == "series") R.string.movies_no_series_sources else R.string.movies_no_sources), color = Color.LightGray) }
+                            sourceEpisode?.let { episode -> item { Text(getString(R.string.movies_episode_selected, episode.season, episodeLabel(episode)), color = Color.LightGray) } }
+                            if (searchedSources && !busy && sources.isEmpty() && error.isBlank()) item { Text(tr(R.string.movies_search_empty), color = Color.LightGray) }
                             items(sources) { stream ->
                                 SettingRow(stream.name.ifBlank { tr(R.string.movies_play) }, stream.description, onClick = { chooseStream(stream) })
                                 val estimate = stream.sizeBytes?.let { size -> movie.durationSeconds?.let { MoviePlaybackEstimator.estimate(size, it, null) } }

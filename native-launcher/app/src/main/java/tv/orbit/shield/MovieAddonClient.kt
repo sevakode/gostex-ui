@@ -55,11 +55,15 @@ internal object MovieAddonClient {
         return MovieAddon(manifest.toString(), name)
     }
 
-    fun streams(addon: MovieAddon, movieId: String): List<MovieStreamOption> {
-        require(movieId.matches(Regex("tt[0-9]{1,16}")))
+    internal fun streamUrl(addon: MovieAddon, mediaType: String, videoId: String): URL {
+        require((mediaType == "movie" && videoId.matches(Regex("tt[0-9]{1,16}"))) ||
+            (mediaType == "series" && videoId.matches(Regex("tt[0-9]{1,16}:[0-9]{1,4}:[0-9]{1,5}"))))
         val base = manifestUrl(addon.manifestUrl).toString().removeSuffix("/manifest.json")
-        return parseStreams(fetch(URL("$base/stream/movie/$movieId.json")))
+        return URL("$base/stream/$mediaType/$videoId.json")
     }
+
+    fun streams(addon: MovieAddon, videoId: String, mediaType: String = "movie"): List<MovieStreamOption> =
+        parseStreams(fetch(streamUrl(addon, mediaType, videoId)))
 
     internal fun parseStreams(response: JSONObject): List<MovieStreamOption> {
         val entries = response.getJSONArray("streams")

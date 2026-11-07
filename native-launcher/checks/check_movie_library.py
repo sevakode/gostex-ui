@@ -86,6 +86,20 @@ fun main() {
     ctx.prefs.raw = broken
     check(runCatching { MovieLibraryStore.save(ctx, movie) }.isFailure)
     check(ctx.prefs.raw == broken)
+    val addon = MovieAddon("https://example.com/plugin/manifest.json", "test")
+    check(MovieAddonClient.streamUrl(addon, "movie", "tt123").toString() == "https://example.com/plugin/stream/movie/tt123.json")
+    check(MovieAddonClient.streamUrl(addon, "series", "tt123:2:4").toString() == "https://example.com/plugin/stream/series/tt123:2:4.json")
+    check(runCatching { MovieAddonClient.streamUrl(addon, "series", "tt123:2:4/../../x") }.isFailure)
+    check(runCatching { MovieAddonClient.streamUrl(addon, "movie", "tt123:2:4") }.isFailure)
+    val videos = org.json.JSONArray()
+        .put(JSONObject().put("id", "tt123:2:4").put("season", 2).put("episode", 4).put("title", "Fourth"))
+        .put(JSONObject().put("id", "tt123:1:2").put("season", 1).put("episode", 2).put("name", "Second"))
+        .put(JSONObject().put("id", "tt123:2:4").put("season", 2).put("episode", 4))
+        .put(JSONObject().put("id", "tt999:1:1").put("season", 1).put("episode", 1))
+        .put(JSONObject().put("id", "tt123:1:3/extra").put("season", 1).put("episode", 3))
+    val episodes = MovieCatalogClient.parseEpisodes(JSONObject().put("videos", videos), "tt123")
+    check(episodes.map { it.id } == listOf("tt123:1:2", "tt123:2:4"))
+    check(episodes.first().title == "Second" && episodes.last().title == "Fourth")
     val response = JSONObject().put("streams", org.json.JSONArray()
         .put(JSONObject().put("name", "torrent").put("infoHash", hash).put("fileIdx", 3))
         .put(JSONObject().put("name", "bad").put("url", "file:///secret"))
@@ -105,7 +119,7 @@ with tempfile.TemporaryDirectory(prefix='gostex-movies-') as td:
     src = ROOT / 'native-launcher/app/src/main/java/tv/orbit/shield'
     result = subprocess.run([str(JAVA), '-cp', ':'.join(map(str, compiler)), 'org.jetbrains.kotlin.cli.jvm.K2JVMCompiler',
         '-no-stdlib', '-no-reflect', '-classpath', cp, '-d', str(folder / 'classes'),
-        str(src / 'MovieLibraryStore.kt'), str(src / 'MovieAddonClient.kt'),
+        str(src / 'MovieLibraryStore.kt'), str(src / 'MovieAddonClient.kt'), str(src / 'MovieCatalogClient.kt'),
         str(folder / 'Context.kt'), str(folder / 'Uri.kt'), str(folder / 'Checks.kt')], capture_output=True, text=True)
     if result.returncode:
         raise SystemExit(result.stderr)

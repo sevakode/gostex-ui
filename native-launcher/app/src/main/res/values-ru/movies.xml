@@ -54,4 +54,14 @@
     <string name="movies_type_movie">Фильм</string>
     <string name="movies_type_series">Сериал</string>
     <string name="movies_no_series_sources">Добавь торрент или свою ссылку, чтобы смотреть сериал.</string>
+    <string name="movies_find_episode_sources">Найти источники серии</string>
+    <string name="movies_no_active_addons">Сначала включи дополнение Stremio в разделе «Источники».</string>
+    <string name="movies_loading_episodes">Загружаем список серий…</string>
+    <string name="movies_no_episodes">Для этого сериала список серий недоступен.</string>
+    <string name="movies_choose_season">Выбери сезон</string>
+    <string name="movies_choose_episode">Выбери серию</string>
+    <string name="movies_season_number">Сезон %1$d</string>
+    <string name="movies_episode_number">Серия %1$d</string>
+    <string name="movies_episode_selected">Сезон %1$d · %2$s</string>
+    <string name="movies_search_empty">Для выбранного видео подходящие источники не найдены.</string>
 </resources>

@@ -26,7 +26,8 @@ internal enum class NdsEmulatorChoice(val key: String) {
 internal data class LibraryOptions(
     val tabVisible: Boolean = true,
     val ndsEmulator: NdsEmulatorChoice = NdsEmulatorChoice.MELON_DS,
-    val androidGamesVisible: Boolean = true
+    val androidGamesVisible: Boolean = true,
+    val groupVersions: Boolean = true
 )
 internal val LocalLibraryOptions = staticCompositionLocalOf { LibraryOptions() }
 
@@ -34,12 +35,14 @@ internal object LibraryPreferences {
     private const val TAB_KEY = "library.tabVisible"
     private const val NDS_KEY = "library.ndsEmulator"
     private const val ANDROID_GAMES_KEY = "library.androidGamesVisible"
+    private const val GROUP_VERSIONS_KEY = "library.groupVersions"
     fun read(context: Context): LibraryOptions {
         val preferences = context.getSharedPreferences("orbit", Context.MODE_PRIVATE)
         return LibraryOptions(
             tabVisible = runCatching { preferences.getBoolean(TAB_KEY, true) }.getOrDefault(true),
             ndsEmulator = NdsEmulatorChoice.fromKey(runCatching { preferences.getString(NDS_KEY, null) }.getOrNull()),
-            androidGamesVisible = runCatching { preferences.getBoolean(ANDROID_GAMES_KEY, true) }.getOrDefault(true)
+            androidGamesVisible = runCatching { preferences.getBoolean(ANDROID_GAMES_KEY, true) }.getOrDefault(true),
+            groupVersions = runCatching { preferences.getBoolean(GROUP_VERSIONS_KEY, true) }.getOrDefault(true)
         )
     }
     fun setTabVisible(context: Context, visible: Boolean) {
@@ -51,7 +54,10 @@ internal object LibraryPreferences {
     fun setAndroidGamesVisible(context: Context, visible: Boolean) {
         context.getSharedPreferences("orbit", Context.MODE_PRIVATE).edit().putBoolean(ANDROID_GAMES_KEY, visible).apply()
     }
-    fun changesOptions(key: String?): Boolean = key == null || key == TAB_KEY || key == NDS_KEY || key == ANDROID_GAMES_KEY
+    fun setGroupVersions(context: Context, enabled: Boolean) {
+        context.getSharedPreferences("orbit", Context.MODE_PRIVATE).edit().putBoolean(GROUP_VERSIONS_KEY, enabled).apply()
+    }
+    fun changesOptions(key: String?): Boolean = key == null || key == TAB_KEY || key == NDS_KEY || key == ANDROID_GAMES_KEY || key == GROUP_VERSIONS_KEY
 }
 
 /** One root listener; selection is independent of the number of available ROMs. */
@@ -97,4 +103,11 @@ internal object LibraryPreferences {
         LibraryPreferences.setNdsEmulator(context, choices[(selected.ordinal + 1) % choices.size])
     })
     Text(tr(R.string.nds_emulator_hint), color = Color(0xFFADADB0), fontSize = 12.sp, lineHeight = 17.sp)
+}
+
+@Composable internal fun GroupVersionsSetting(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val enabled = LocalLibraryOptions.current.groupVersions
+    SettingRow(tr(R.string.library_group_versions), tr(if (enabled) R.string.enabled else R.string.disabled),
+        modifier = modifier, onClick = { LibraryPreferences.setGroupVersions(context, !enabled) })
 }

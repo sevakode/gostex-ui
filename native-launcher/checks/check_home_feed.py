@@ -31,7 +31,7 @@ sections = {
     "movie_model": extract("MovieLibraryStore.kt", "internal data class MovieSource", "/** User collection"),
     "app_model": extract("AppArtwork.kt", "data class TvApp(", "/** Call off the UI thread."),
 }
-production = "\n".join(sections.values())
+production = (SOURCES / "GameGrouping.kt").read_text().split("import java.util.Locale", 1)[1].replace("Locale.ROOT", "java.util.Locale.ROOT") + "\n" + "\n".join(sections.values())
 resources = sorted(set(re.findall(r"R\.string\.(\w+)", production)))
 resource_stub = "internal object R { object string {\n" + "\n".join(
     f"const val {name} = {number}" for number, name in enumerate(resources)
@@ -210,6 +210,21 @@ fun main() {
     check(mutableFavorites == beforeSharedFavorites && mutablePlayed == beforePlayed)
     pass("Composing rows is repeatable and never mutates caller-owned content, section or preference collections")
 
+    val version1 = game("chrono1", "Chrono Trigger").copy(tree = "first", files = listOf("first.smc"))
+    val version2 = game("chrono2", "Chrono Trigger").copy(tree = "second", files = listOf("second.smc"))
+    val otherPlatform = game("chrono3", "Chrono Trigger").copy(platform = "nds")
+    val group = listOf(version1, version2, otherPlatform)
+    check(groupedGames(group, true) == listOf(version1, otherPlatform))
+    check(groupedGames(group, false) == group)
+    val versions = gameVersions(version1, group.groupBy(::gameGroupKey), true)
+    check(versions.map { it.game.tree } == listOf("first", "second"))
+    check(gameVersions(version2, group.groupBy(::gameGroupKey), true).first().game == version2)
+    check(gameVersions(version1, group.groupBy(::gameGroupKey), false).size == 1)
+    val grouped = homeShelfContents(options, group, emptyList(), emptyMap()).row("games").games()
+    check(grouped == listOf(version1, otherPlatform))
+    check(homeShelfContents(options, group, emptyList(), emptyMap(), groupVersions = false).row("games").games() == group)
+    pass("Same-title versions group only by platform, retain file source and can be shown separately")
+
     val anchor = HomeFeedAnchor("custom-mixed", 3, homeAppKey(zona.packageName))
     check(anchor.shelf == mixed.id && anchor.index == 3 && anchor.key == homeAppKey(zona.packageName))
     check(HomeFeedAnchor(null, 0, null).shelf == null)
@@ -251,7 +266,7 @@ with tempfile.TemporaryDirectory(prefix="gostex-home-feed-") as directory:
         run = subprocess.run([str(JAVA), "-cp", f"{output_classes}:{classpath}", "tv.orbit.shield.ChecksKt"], capture_output=True, text=True)
         report["run"] = {"returncode": run.returncode, "stdout": run.stdout, "stderr": run.stderr}
         report["checks"] = [line.removeprefix("PASS|") for line in run.stdout.splitlines() if line.startswith("PASS|")]
-        report["passed"] = run.returncode == 0 and len(report["checks"]) == 16
+        report["passed"] = run.returncode == 0 and len(report["checks"]) == 17
 
 output = ROOT / ".reports/sections21/feed-checks.json"
 output.parent.mkdir(parents=True, exist_ok=True)

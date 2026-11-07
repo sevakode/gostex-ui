@@ -1404,13 +1404,14 @@ class MainActivity : ComponentActivity() {
     val homeGames = remember(games, favorites, played, homeOptions.order) {
         orderedHomeGames(games, favorites, played, homeOptions.order)
     }
-    val shelfContents = remember(sectionOptions, homeGames, apps, played, movies, moviePlayed, libraryOptions.androidGamesVisible) {
-        homeShelfContents(sectionOptions, homeGames, apps, played, libraryOptions.androidGamesVisible, movies, moviePlayed)
+    val shelfContents = remember(sectionOptions, homeGames, apps, played, movies, moviePlayed, libraryOptions.androidGamesVisible, libraryOptions.groupVersions) {
+        homeShelfContents(sectionOptions, homeGames, apps, played, libraryOptions.androidGamesVisible, movies, moviePlayed, libraryOptions.groupVersions)
     }
     val chosen = games.firstOrNull { it.id == chosenId } ?: homeGames.firstOrNull()
     val locale = LocalConfiguration.current.locales[0].toLanguageTag()
     val platformLabels = remember(locale) { PlatformRegistry.all.associate { it.id to activity.getString(it.titleRes) } }
-    val sortedGames = remember(games) { games.sortedBy { it.title.lowercase(java.util.Locale.ROOT) } }
+    val groups = remember(games) { games.groupBy(::gameGroupKey) }
+    val sortedGames = remember(games, libraryOptions.groupVersions) { groupedGames(games.sortedBy { it.title.lowercase(java.util.Locale.ROOT) }, libraryOptions.groupVersions) }
     val scopedGames = remember(sortedGames, platform) {
         sortedGames.filter { platform == "all" || it.platform == platform }
     }
@@ -1483,6 +1484,8 @@ class MainActivity : ComponentActivity() {
     }) {
         if (detail != null) {
             val g = detail!!
+            val versions = remember(g, groups, libraryOptions.groupVersions) { gameVersions(g, groups, libraryOptions.groupVersions) }
+            val selectedVersion = versions.getOrNull(variant) ?: versions.firstOrNull()
             Box(Modifier.align(Alignment.CenterEnd).padding(end = 36.dp).fillMaxWidth(.32f).fillMaxHeight(.78f).border(1.dp, Color(0xFF424244)).background(Panel)) {
                 CoverArtwork(g.cover.ifEmpty { g.scene }, Modifier.fillMaxSize(), g.id)
             }
@@ -1500,16 +1503,16 @@ class MainActivity : ComponentActivity() {
                 Spacer(Modifier.height(12.dp))
                 GameDescriptionPanel(g)
                 Spacer(Modifier.weight(1f))
-                if (g.files.size > 1) {
-                    Text(tr(R.string.variant, variant + 1, g.files.size), color = Muted, fontSize = 12.sp)
-                    Text(g.files[variant].substringAfterLast('/'), color = White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.width(540.dp))
+                if (versions.size > 1) {
+                    Text(tr(R.string.variant, variant.coerceIn(0, versions.lastIndex) + 1, versions.size), color = Muted, fontSize = 12.sp)
+                    Text(android.net.Uri.decode(selectedVersion?.game?.files?.getOrNull(selectedVersion.fileIndex).orEmpty()).substringAfterLast('/'), color = White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.width(540.dp))
                     Spacer(Modifier.height(8.dp))
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Action(tr(R.string.play), primary = true, modifier = Modifier.focusRequester(firstFocus), onClick = { activity.launchGame(g, variant) })
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Action(tr(R.string.play), primary = true, modifier = Modifier.focusRequester(firstFocus), onClick = { selectedVersion?.let { activity.launchGame(it.game, it.fileIndex) } })
+                    if (versions.size > 1) Action(tr(R.string.other_version), onClick = { variant = (variant + 1) % versions.size })
                     Action(tr(R.string.cover_manage), onClick = { activity.editGameCover(g.id) })
                     Action(if (g.id in favorites) tr(R.string.favorite_on) else tr(R.string.favorite_off), onClick = { toggle(g) })
-                    if (g.files.size > 1) Action(tr(R.string.other_version), onClick = { variant = (variant + 1) % g.files.size })
                 }
                 Spacer(Modifier.height(22.dp))
                 ControlHints(R.string.control_select, R.string.back)
@@ -1988,7 +1991,7 @@ private fun settingsTitle(section: String): Int = when {
         "appearanceGroup" -> listOf("appearance", "art", "grafana")
         "mediaGroup" -> listOf("libraryGroup", "nowPlaying", "downloads", "movies")
         "libraryGroup" -> (if (activity.legacyRecoveryPending) listOf("legacyRecovery") else emptyList()) +
-            listOf("addGames", "folders", "portableCopy", "covers", "ndsEmulator", "androidGames", "libraryTab", "appsTab")
+            listOf("addGames", "folders", "portableCopy", "covers", "ndsEmulator", "androidGames", "groupVersions", "libraryTab", "appsTab")
         "localeGroup" -> listOf("language", "clock")
         "systemGroup" -> listOf("batteryStatus", "network", "torrServer", "torrServeInstall", "revancedManager", "shield", "remote")
         "portableCopy" -> listOf("copyAction", "portablePreview")
@@ -2045,6 +2048,7 @@ private fun settingsTitle(section: String): Int = when {
                 SettingRow(tr(R.string.covers_title), tr(R.string.covers_summary), rowFocus("covers"), onClick = { onSection("covers") })
                 NintendoDsEmulatorSetting(rowFocus("ndsEmulator"))
                 AndroidGamesVisibilitySetting(rowFocus("androidGames"))
+                GroupVersionsSetting(rowFocus("groupVersions"))
                 LibraryVisibilitySetting(rowFocus("libraryTab"))
                 AppsVisibilitySetting(rowFocus("appsTab"))
             } else if (section == "localeGroup") {

@@ -232,4 +232,5 @@
     <string name="screensaver_shortcut_hint">Использует кнопку Netflix на пульте NVIDIA SHIELD. Включите ярлык GOSTEX в спецвозможностях Android: он получает нажатия, но не записывает и не передаёт их. Продолжение воспроизведения зависит от приложения. Для возврата нажмите «Назад».</string>
     <string name="screensaver_shortcut_service">Ярлык заставки GOSTEX</string>
     <string name="screensaver_shortcut_description">Позволяет открывать заставку GOSTEX кнопкой Netflix на пульте NVIDIA SHIELD. При включении служба получает нажатия клавиш, но не записывает и не передаёт их.</string>
+    <string name="library_group_versions">Группировать версии игр</string>
 </resources>

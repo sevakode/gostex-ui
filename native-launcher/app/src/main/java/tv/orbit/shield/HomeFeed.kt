@@ -32,7 +32,8 @@ internal data class HomeShelfContent(val section: HomeSection, val items: List<H
 
 internal fun homeShelfContents(
     options: HomeSectionsOptions, games: List<Game>, apps: List<TvApp>, played: Map<String, Long>,
-    includeAndroidGames: Boolean = true, movies: List<SavedMovie> = emptyList(), moviePlayed: Map<String, Long> = emptyMap()
+    includeAndroidGames: Boolean = true, movies: List<SavedMovie> = emptyList(), moviePlayed: Map<String, Long> = emptyMap(),
+    groupVersions: Boolean = true
 ): List<HomeShelfContent> {
     val gameItems = games.distinctBy(Game::id).map(HomeTileItem::GameItem)
     val appItems = apps.distinctBy(TvApp::packageName).map(HomeTileItem::AppItem)
@@ -53,7 +54,11 @@ internal fun homeShelfContents(
             HomeSectionKind.GAMES -> gameItems + if (includeAndroidGames) appItems.filter { it.app.isGame } else emptyList()
             HomeSectionKind.APPS -> appItems
         }
-        HomeShelfContent(section, items)
+        val visibleItems = if (!groupVersions) items else {
+            val seen = mutableSetOf<GameGroupKey>()
+            items.filter { it !is HomeTileItem.GameItem || seen.add(gameGroupKey(it.game)) }
+        }
+        HomeShelfContent(section, visibleItems)
     }.filter { it.items.isNotEmpty() }
 }
 

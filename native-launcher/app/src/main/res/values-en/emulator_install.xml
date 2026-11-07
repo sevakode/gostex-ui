@@ -1,7 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="emulator_install_title">Emulator needed</string>
-    <string name="emulator_install_message">%1$s is not installed. Open its store listing, install it, then return and start the game again.</string>
+    <string name="emulator_install_message">%1$s is not installed. Choose an installation source, then return and start the game again.</string>
     <string name="emulator_install_store">Open app store</string>
     <string name="emulator_install_no_store">No compatible app store or browser is available.</string>
+    <string name="emulator_install_direct">Download official APK</string>
+    <string name="emulator_install_permission">Allow GOSTEX to install apps, return and select the game again.</string>
+    <string name="emulator_install_downloading">Downloading the official emulator…</string>
+    <string name="emulator_install_failed">Could not download or install this emulator. Check compatibility and connection.</string>
+    <string name="emulator_install_incompatible">This emulator build is not compatible with this Android version or processor.</string>
 </resources>

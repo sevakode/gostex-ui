@@ -668,13 +668,15 @@ class MainActivity : ComponentActivity() {
                 if (PortableMaintenance.running) true else original.dispatchTouchEvent(event)
         }
     }
+    internal var pendingEmulatorApk: java.io.File? = null
+    internal var emulatorInstallJob: Job? = null
     private var importPlatform = ""
     private var importSource = LibrarySource.FILES
     private var importHintRoot: LibraryImport.Root? = null
     private var refreshPending = false
     private var libraryVisible = false
     private var importJob: Job? = null
-    override fun onResume() { super.onResume(); if (!PortableRestoreStartup.ready || PortableMaintenance.running) return; AgentStateHooks.attach(this); updates.onResume(); libraryVisible = true; resumeVersion++; refreshLibrary(); startCoverSync() }
+    override fun onResume() { super.onResume(); pendingEmulatorApk?.delete(); pendingEmulatorApk = null; if (!PortableRestoreStartup.ready || PortableMaintenance.running) return; AgentStateHooks.attach(this); updates.onResume(); libraryVisible = true; resumeVersion++; refreshLibrary(); startCoverSync() }
     override fun onPause() { AndroidDiagnostics.event("launcher.pause"); super.onPause() }
     override fun onStop() {
         torrentPlaybackDialog?.dismiss()

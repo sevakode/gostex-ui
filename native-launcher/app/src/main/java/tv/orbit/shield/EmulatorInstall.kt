@@ -5,6 +5,16 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
+import androidx.core.content.FileProvider
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** Offer a source only for a confirmed missing package. Installation remains Android's decision. */
 internal fun MainActivity.offerMissingEmulator(spec: PlatformSpec): Boolean {
@@ -16,7 +26,7 @@ internal fun MainActivity.offerMissingEmulator(spec: PlatformSpec): Boolean {
     } catch (_: PackageManager.NameNotFoundException) { true }
       catch (_: Exception) { return false }
     if (!missing) return false
-    android.app.AlertDialog.Builder(this)
+    val dialog = android.app.AlertDialog.Builder(this)
         .setTitle(R.string.emulator_install_title)
         .setMessage(getString(R.string.emulator_install_message, spec.emulator))
         .setPositiveButton(R.string.emulator_install_store) { _, _ ->
@@ -32,6 +42,50 @@ internal fun MainActivity.offerMissingEmulator(spec: PlatformSpec): Boolean {
             if (!opened) notice = getString(R.string.emulator_install_no_store)
         }
         .setNegativeButton(R.string.cancel, null)
-        .show()
+    if (OfficialEmulatorApk.supports(pkg)) dialog.setNeutralButton(R.string.emulator_install_direct) { _, _ -> downloadOfficialEmulator(pkg) }
+    dialog.show()
     return true
+}
+
+private fun MainActivity.downloadOfficialEmulator(pkg: String) {
+    if (emulatorInstallJob != null) {
+        notice = getString(R.string.emulator_install_downloading)
+        return
+    }
+    if (!packageManager.canRequestPackageInstalls()) {
+        notice = getString(R.string.emulator_install_permission)
+        runCatching { startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName"))) }
+            .onFailure { notice = getString(R.string.emulator_install_failed) }
+        return
+    }
+    val progress = getString(R.string.emulator_install_downloading)
+    notice = progress
+    var job: Job? = null
+    val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) job?.cancel() }
+    job = lifecycleScope.launch(start = CoroutineStart.LAZY) {
+        lifecycle.addObserver(observer)
+        try {
+            val file = withContext(Dispatchers.IO) { OfficialEmulatorApk.download(this@downloadOfficialEmulator, pkg) }
+            val uri = FileProvider.getUriForFile(this@downloadOfficialEmulator, "$packageName.torrserve-installer", file)
+            pendingEmulatorApk = file
+            lifecycle.removeObserver(observer)
+            startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive")
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+            if (notice == progress) notice = ""
+        } catch (e: CancellationException) {
+            if (notice == progress) notice = ""
+            throw e
+        } catch (_: EmulatorApkIncompatible) {
+            pendingEmulatorApk?.delete(); pendingEmulatorApk = null
+            notice = getString(R.string.emulator_install_incompatible)
+        } catch (_: Exception) {
+            pendingEmulatorApk?.delete(); pendingEmulatorApk = null
+            notice = getString(R.string.emulator_install_failed)
+        } finally {
+            lifecycle.removeObserver(observer)
+            emulatorInstallJob = null
+        }
+    }
+    emulatorInstallJob = job
+    job.start()
 }

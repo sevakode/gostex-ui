@@ -69,6 +69,7 @@ jobs:
           python3 native-launcher/checks/check_legacy_recovery_state.py
           python3 native-launcher/checks/check_cover_concurrency.py
           python3 native-launcher/checks/check_media_file_labels.py
+          python3 native-launcher/checks/check_episode_file_suggestion.py
           python3 native-launcher/checks/check_media_cover_retry.py
           python3 native-launcher/checks/check_movie_addon_lookup.py
           python3 native-launcher/checks/test_public_release.py

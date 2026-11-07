@@ -85,7 +85,7 @@ class MovieLibraryActivity : ComponentActivity() {
         }
         setContent { MovieScreen() }
         if (savedInstanceState == null && intent.getBooleanExtra(EXTRA_PLAY_SINGLE, false)) {
-            selected?.id?.let { id -> saved.firstOrNull { it.id == id }?.sources?.singleOrNull()?.let(::play) }
+            selected?.id?.let { id -> saved.firstOrNull { it.id == id }?.sources?.singleOrNull()?.let { play(it) } }
         }
         if (savedInstanceState == null && pendingTorrentHash != null) {
             TorrentArtworkPolicy.query(pendingTorrentTitle).takeIf { it.length >= 3 }?.let(::searchFor)
@@ -307,13 +307,13 @@ class MovieLibraryActivity : ComponentActivity() {
         }
     }
 
-    private fun play(source: MovieSource) {
+    private fun play(source: MovieSource, episode: MovieEpisode? = null) {
         if (sourceLookupJob?.isActive == true) stopSourceLookup()
         if (!MovieLibraryStore.validSource(source.uri)) { toast(R.string.movies_source_failed); return }
         val uri = Uri.parse(source.uri)
         val isTorrent = uri.scheme.equals("torrserver", true) || uri.scheme.equals("magnet", true) || uri.scheme.equals("content", true) ||
             ((uri.scheme.equals("http", true) || uri.scheme.equals("https", true)) && uri.path?.endsWith(".torrent", ignoreCase = true) == true)
-        if (isTorrent) { prepareTorrent(uri); return }
+        if (isTorrent) { prepareTorrent(uri, episode); return }
         val intent = if (uri.scheme.equals("acestream", true)) Intent(Intent.ACTION_VIEW, uri)
             else Intent(Intent.ACTION_VIEW).setDataAndType(uri, "video/*")
         startMovieIntent(intent)
@@ -340,7 +340,7 @@ class MovieLibraryActivity : ComponentActivity() {
         }.onFailure { toast(R.string.movies_player_missing) }
     }
 
-    private fun prepareTorrent(uri: Uri) {
+    private fun prepareTorrent(uri: Uri, episode: MovieEpisode?) {
         if (busy) return
         val generation = ++requestGeneration
         busy = true; progressMessage = getString(R.string.movies_torrent_preparing); error = ""
@@ -366,9 +366,17 @@ class MovieLibraryActivity : ComponentActivity() {
                     startMovieIntent(intent)
                 }
                 if (videos.size == 1) open(videos.single())
-                else AlertDialog.Builder(this@MovieLibraryActivity).setTitle(R.string.movies_choose_video)
-                    .setItems(mediaFileLabels(videos).toTypedArray()) { _, index -> open(videos[index]) }
-                    .setNegativeButton(R.string.movies_cancel, null).show()
+                else {
+                    val suggested = episode?.let { suggestEpisodeFile(videos.map { file -> file.path }, it.season, it.episode) }
+                    val labels = mediaFileLabels(videos).mapIndexed { index, label ->
+                        if (index == suggested) getString(R.string.movies_suggested_file, label) else label
+                    }
+                    val dialog = AlertDialog.Builder(this@MovieLibraryActivity).setTitle(R.string.movies_choose_video)
+                        .setItems(labels.toTypedArray()) { _, index -> open(videos[index]) }
+                        .setNegativeButton(R.string.movies_cancel, null).create()
+                    dialog.show()
+                    suggested?.let { dialog.listView?.apply { setSelection(it); requestFocus() } }
+                }
             } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
             catch (failure: Exception) {
                 if (generation == requestGeneration && !isFinishing && !isDestroyed) {
@@ -388,7 +396,7 @@ class MovieLibraryActivity : ComponentActivity() {
         val movie = saveSelected() ?: return
         val label = listOf(stream.name, stream.description).filter { it.isNotBlank() }.joinToString(" · ").take(256)
         val source = MovieSource(label, stream.uri, stream.fileIndex, stream.sizeBytes)
-        if (movie.mediaType == "series") { play(source); return }
+        if (movie.mediaType == "series") { play(source, sourceEpisode); return }
         val updated = movie.copy(sources = movie.sources.filterNot { it.uri == source.uri && it.fileIndex == source.fileIndex } + source)
         if (runCatching { MovieLibraryStore.save(this, updated) }.getOrDefault(false)) { refresh(); play(source) }
         else toast(R.string.movies_source_failed)

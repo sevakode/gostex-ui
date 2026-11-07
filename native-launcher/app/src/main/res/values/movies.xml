@@ -69,4 +69,5 @@
     <string name="movies_remove_addon_confirm">Remove “%1$s”? Saved media and links will remain.</string>
     <string name="movies_external_open">Open service link</string>
     <string name="movies_external_unavailable">No app can open this service link.</string>
+    <string name="movies_suggested_file">Possible match: %1$s</string>
 </resources>

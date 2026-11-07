@@ -69,4 +69,5 @@
     <string name="movies_remove_addon_confirm">¿Eliminar «%1$s»? Los medios y enlaces guardados se conservarán.</string>
     <string name="movies_external_open">Abrir enlace del servicio</string>
     <string name="movies_external_unavailable">No hay una aplicación para abrir el enlace del servicio.</string>
+    <string name="movies_suggested_file">Posible episodio: %1$s</string>
 </resources>

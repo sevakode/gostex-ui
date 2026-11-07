@@ -1,6 +1,7 @@
 package tv.orbit.shield
 
 import android.app.AlertDialog
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -230,8 +231,22 @@ class MovieLibraryActivity : ComponentActivity() {
 
     private fun startMovieIntent(intent: Intent) {
         runCatching {
-            startActivity(intent)
-            selected?.id?.let { id -> getSharedPreferences("orbit", MODE_PRIVATE).edit().putLong("played:movie:$id", System.currentTimeMillis()).apply() }
+            val id = selected?.id ?: error("Missing media")
+            val resolved = packageManager.resolveActivity(intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo
+            val handlers = packageManager.queryIntentActivities(intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
+            val direct = resolved != null && handlers.any { it.activityInfo.packageName == resolved.packageName && it.activityInfo.name == resolved.name }
+            if (direct) {
+                startActivity(intent)
+                MoviePlaybackReceipt.mark(this, id)
+            } else {
+                val receipt = Intent(this, MoviePlaybackReceipt::class.java).apply {
+                    action = MoviePlaybackReceipt.ACTION
+                    data = Uri.Builder().scheme("gostex-recent").authority("choice").appendPath(java.util.UUID.randomUUID().toString()).build()
+                    putExtra(MoviePlaybackReceipt.EXTRA_ID, id)
+                }
+                val sender = PendingIntent.getBroadcast(this, 0, receipt, PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE).intentSender
+                startActivity(Intent.createChooser(intent, null, sender))
+            }
         }.onFailure { toast(R.string.movies_player_missing) }
     }
 

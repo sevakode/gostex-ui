@@ -18,6 +18,8 @@
         <intent><action android:name="android.intent.action.OPEN_DOCUMENT_TREE" /></intent>
         <intent><action android:name="android.intent.action.OPEN_DOCUMENT" /><category android:name="android.intent.category.OPENABLE" /><data android:mimeType="*/*" /></intent>
         <intent><action android:name="android.intent.action.CREATE_DOCUMENT" /><category android:name="android.intent.category.OPENABLE" /><data android:mimeType="*/*" /></intent>
+        <intent><action android:name="android.intent.action.VIEW" /><data android:mimeType="video/*" /></intent>
+        <intent><action android:name="android.intent.action.VIEW" /><data android:scheme="acestream" /></intent>
     </queries>
     <application android:name=".GostexApplication" android:label="GOSTEX" android:icon="@drawable/orbit_icon" android:banner="@drawable/orbit_banner" android:theme="@android:style/Theme.Material.NoActionBar" android:allowBackup="false" android:supportsRtl="true" android:usesCleartextTraffic="true">
         <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.torrserve-installer" android:exported="false" android:grantUriPermissions="true">
@@ -39,6 +41,7 @@
         <activity android:name=".PixelArtPreviewActivity" android:exported="false" android:screenOrientation="landscape" />
         <activity android:name=".GrafanaPreviewActivity" android:exported="false" android:screenOrientation="landscape" />
         <activity android:name=".MovieLibraryActivity" android:exported="false" />
+        <receiver android:name=".MoviePlaybackReceipt" android:exported="false" />
         <receiver android:name=".RemoteBootReceiver" android:exported="false">
             <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /><action android:name="android.intent.action.MY_PACKAGE_REPLACED" /></intent-filter>
         </receiver>

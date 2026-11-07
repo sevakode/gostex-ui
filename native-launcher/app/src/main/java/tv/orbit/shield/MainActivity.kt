@@ -1283,10 +1283,18 @@ class MainActivity : ComponentActivity() {
     val homeOptions = rememberHomeOptions()
     val clockOptions = rememberClockOptions()
     val clockInstant = rememberClockInstant(clockOptions.visible && clockOptions.zones.isNotEmpty() && detail == null)
+    var moviePlayRevision by remember { mutableIntStateOf(0) }
+    DisposableEffect(prefs) {
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == null || key.startsWith("played:movie:")) moviePlayRevision++
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
     val played = remember(games, activity.resumeVersion) {
         games.associate { it.id to runCatching { prefs.getLong("played:${it.id}", 0L) }.getOrDefault(0L) }
     }
-    val moviePlayed = remember(movies, activity.resumeVersion) {
+    val moviePlayed = remember(movies, activity.resumeVersion, moviePlayRevision) {
         movies.associate { it.id to runCatching { prefs.getLong("played:movie:${it.id}", 0L) }.getOrDefault(0L) }
     }
     val homeGames = remember(games, favorites, played, homeOptions.order) {

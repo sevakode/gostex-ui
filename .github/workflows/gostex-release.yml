@@ -57,28 +57,31 @@ jobs:
           gradle -p native-launcher --no-daemon :release-runtime:test :app:assembleRelease :app:lintRelease
           actual_min_sdk=$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging native-launcher/app/build/outputs/apk/release/app-release.apk | sed -n "s/^sdkVersion:'\([0-9]*\)'$/\1/p")
           test "$actual_min_sdk" = 28
-          python3 native-launcher/checks/check_release_boundary.py
-          python3 native-launcher/checks/check_translations.py
-          python3 native-launcher/checks/check_archive_admission.py
-          python3 native-launcher/checks/check_library_snapshot.py
-          python3 native-launcher/checks/check_import_warnings.py
-          python3 native-launcher/checks/check_remote_install_policy.py
-          python3 native-launcher/checks/check_legacy_catalog_bridge.py
-          python3 native-launcher/checks/check_legacy_catalog_archive.py
-          python3 native-launcher/checks/check_legacy_catalog_recovery.py
-          python3 native-launcher/checks/check_legacy_recovery_state.py
-          python3 native-launcher/checks/check_cover_concurrency.py
-          python3 native-launcher/checks/check_media_file_labels.py
-          python3 native-launcher/checks/check_episode_file_suggestion.py
-          python3 native-launcher/checks/check_episode_history.py
-          python3 native-launcher/checks/check_movie_torrent_links.py
-          python3 native-launcher/checks/check_episode_receipt.py
-          python3 native-launcher/checks/check_media_cover_retry.py
-          python3 native-launcher/checks/check_movie_addon_lookup.py
-          python3 native-launcher/checks/test_public_release.py
-          python3 native-launcher/checks/test_carry_forward_linux.py
-          python3 native-launcher/checks/check_update_state.py
-          python3 native-launcher/checks/check_install_session.py
+          # Host checks are independent and use separate temporary directories.
+          # Two workers fit the hosted runner; xargs fails the build if any check fails.
+          printf '%s\n' \
+            native-launcher/checks/check_release_boundary.py \
+            native-launcher/checks/check_translations.py \
+            native-launcher/checks/check_archive_admission.py \
+            native-launcher/checks/check_library_snapshot.py \
+            native-launcher/checks/check_import_warnings.py \
+            native-launcher/checks/check_remote_install_policy.py \
+            native-launcher/checks/check_legacy_catalog_bridge.py \
+            native-launcher/checks/check_legacy_catalog_archive.py \
+            native-launcher/checks/check_legacy_catalog_recovery.py \
+            native-launcher/checks/check_legacy_recovery_state.py \
+            native-launcher/checks/check_cover_concurrency.py \
+            native-launcher/checks/check_media_file_labels.py \
+            native-launcher/checks/check_episode_file_suggestion.py \
+            native-launcher/checks/check_episode_history.py \
+            native-launcher/checks/check_movie_torrent_links.py \
+            native-launcher/checks/check_episode_receipt.py \
+            native-launcher/checks/check_media_cover_retry.py \
+            native-launcher/checks/check_movie_addon_lookup.py \
+            native-launcher/checks/test_public_release.py \
+            native-launcher/checks/test_carry_forward_linux.py \
+            native-launcher/checks/check_update_state.py \
+            native-launcher/checks/check_install_session.py | xargs -n 1 -P 2 python3
           actual_certificate=$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs native-launcher/app/build/outputs/apk/release/app-release.apk | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
           test "$actual_certificate" = '8dfd10419f9cd24209f4771e083cd33c4fd78375e6b19aea0453257be1016898'
           python3 native-launcher/tools/release/publish_feed.py --platform android-arm64 --artifact native-launcher/app/build/outputs/apk/release/app-release.apk --output release-assets --private-key "$RUNNER_TEMP/gostex-release.pem" --base-url "https://github.com/$GITHUB_REPOSITORY/releases/download/build-$GITHUB_RUN_NUMBER"

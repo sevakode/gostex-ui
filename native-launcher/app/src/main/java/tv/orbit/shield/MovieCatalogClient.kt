@@ -20,12 +20,13 @@ internal object MovieCatalogClient {
     private const val MAX_BYTES = 2 * 1024 * 1024
     private const val MAX_ITEMS = 100
 
-    fun search(query: String, base: String = DEFAULT_BASE): List<MovieCatalogItem> {
+    fun search(query: String, base: String = DEFAULT_BASE, type: String = "movie"): List<MovieCatalogItem> {
         val term = query.trim().take(150)
         require(term.isNotEmpty())
+        require(type in setOf("movie", "series"))
         val origin = origin(base)
         val encoded = URLEncoder.encode(term, "UTF-8").replace("+", "%20")
-        val metas = fetch(URL("${origin}/catalog/movie/top/search=$encoded.json")).getJSONArray("metas")
+        val metas = fetch(URL("${origin}/catalog/$type/top/search=$encoded.json")).getJSONArray("metas")
         return buildList {
             for (i in 0 until minOf(metas.length(), MAX_ITEMS)) {
                 val item = metas.optJSONObject(i) ?: continue

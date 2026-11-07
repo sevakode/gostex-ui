@@ -18,7 +18,9 @@ internal object TorrentArtwork {
     suspend fun find(context: Context, title: String): Found? {
         val q = TorrentArtworkPolicy.query(title)
         if (q.length < 3) return null
-        val results = MovieCatalogClient.search(q).filter { TorrentArtworkPolicy.normalized(it.title) == TorrentArtworkPolicy.normalized(q) && it.poster != null }
+        val results = (MovieCatalogClient.search(q) + MovieCatalogClient.search(q, type = "series"))
+            .filter { TorrentArtworkPolicy.normalized(it.title) == TorrentArtworkPolicy.normalized(q) && it.poster != null }
+            .distinctBy { it.id }
         val options = OnlineCoverPreferences.read(context)
         val client = if (options.apiKey.isNotEmpty() && CoverProvider.STEAMGRIDDB in options.providers)
             OnlineCoverClient(context, options.apiKey, options.landscapeFirst) else null

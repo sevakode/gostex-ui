@@ -13,6 +13,8 @@ compiler = [jar('org.jetbrains.kotlin', a, v) for a, v in [
 checks = r'''package tv.orbit.shield
 fun main() {
     check(TorrentArtworkPolicy.query("The.Matrix.1999.1080p") == "The Matrix")
+    check(TorrentArtworkPolicy.query("Cosmos.Possible.Worlds.S01.1080p") == "Cosmos Possible Worlds")
+    check(TorrentArtworkPolicy.query("Cosmos Possible Worlds S01E02 WEB-DL") == "Cosmos Possible Worlds")
     check(TorrentArtworkPolicy.query("Batman [HD] (2022)") == "Batman")
     check(TorrentArtworkPolicy.normalized("The-Matrix!") == TorrentArtworkPolicy.normalized("THE MATRIX"))
     check(TorrentArtworkPolicy.normalized("Космос") != TorrentArtworkPolicy.normalized("Готэм"))

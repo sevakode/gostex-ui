@@ -12,6 +12,7 @@ internal data class MovieCatalogItem(
     val poster: String?,
     val description: String = "",
     val durationSeconds: Long? = null,
+    val mediaType: String = "movie",
 )
 
 /** Metadata only; no streaming engine or background polling. Caller runs on Dispatchers.IO. */
@@ -34,14 +35,15 @@ internal object MovieCatalogClient {
                 val title = item.optString("name").trim().take(256)
                 if (id.isBlank() || title.isBlank()) continue
                 val poster = item.optString("poster").takeIf { it.startsWith("https://") }?.take(2048)
-                add(MovieCatalogItem(id, title, item.optString("releaseInfo").take(64), poster))
+                add(MovieCatalogItem(id, title, item.optString("releaseInfo").take(64), poster, mediaType = type))
             }
         }.distinctBy(MovieCatalogItem::id)
     }
 
-    fun details(id: String, base: String = DEFAULT_BASE): MovieCatalogItem {
+    fun details(id: String, base: String = DEFAULT_BASE, type: String = "movie"): MovieCatalogItem {
         require(id.matches(Regex("tt[0-9]{1,16}")))
-        val item = fetch(URL("${origin(base)}/meta/movie/$id.json")).getJSONObject("meta")
+        require(type in setOf("movie", "series"))
+        val item = fetch(URL("${origin(base)}/meta/$type/$id.json")).getJSONObject("meta")
         require(item.getString("id") == id)
         val runtime = item.optString("runtime")
         val minutes = Regex("(?i)^(\\d{1,4})\\s*min(?:utes?)?$").matchEntire(runtime.trim())
@@ -49,7 +51,7 @@ internal object MovieCatalogClient {
         return MovieCatalogItem(id, item.getString("name").trim().take(256),
             item.optString("releaseInfo").take(64),
             item.optString("poster").takeIf { it.startsWith("https://") }?.take(2048),
-            item.optString("description").take(5000), minutes?.times(60))
+            item.optString("description").take(5000), minutes?.times(60), type)
     }
 
     private fun origin(base: String): URL = URL(base.trimEnd('/')).also {

@@ -90,6 +90,12 @@ import kotlinx.coroutines.withContext
         val cover = activity.managedCovers[coverId]
         CoverArtwork(cover?.manual?.takeIf { it.isNotEmpty() } ?: cover?.original.orEmpty(), Modifier.width(180.dp).height(102.dp), fallbackTitle = current.title)
         SettingRow(tr(R.string.downloads_choose_cover), onClick = { activity.chooseCover(coverId) })
+        SettingRow(tr(R.string.movies_add_torrent_media), onClick = {
+            activity.startActivity(android.content.Intent(activity, MovieLibraryActivity::class.java).apply {
+                putExtra(MovieLibraryActivity.EXTRA_TORRENT_HASH, current.hash)
+                putExtra(MovieLibraryActivity.EXTRA_TORRENT_TITLE, current.title)
+            })
+        })
         val rate = current.downloadBytesPerSecond?.let { android.text.format.Formatter.formatShortFileSize(activity, it) }
         val seeders = current.connectedSeeders
         if (rate != null || seeders != null) {

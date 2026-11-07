@@ -41,6 +41,8 @@ class MovieLibraryActivity : ComponentActivity() {
     private var readFailed = false
     private var requestGeneration = 0L
     private var pendingFileId: String? = null
+    private var pendingTorrentHash: String? = null
+    private var pendingTorrentTitle: String = ""
 
     private val torrentPicker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val id = pendingFileId.also { pendingFileId = null }
@@ -64,15 +66,31 @@ class MovieLibraryActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         if (!PortableRestoreStartup.ready || PortableMaintenance.running) { finish(); return }
         refresh()
+        pendingTorrentHash = (savedInstanceState?.getString(EXTRA_TORRENT_HASH) ?: intent.getStringExtra(EXTRA_TORRENT_HASH))
+            ?.takeIf { it.matches(Regex("(?i)[0-9a-f]{40}")) }?.lowercase(java.util.Locale.ROOT)
+        pendingTorrentTitle = (savedInstanceState?.getString(EXTRA_TORRENT_TITLE) ?: intent.getStringExtra(EXTRA_TORRENT_TITLE)).orEmpty().take(256)
         intent.getStringExtra(EXTRA_MOVIE_ID)?.let { id ->
             saved.firstOrNull { it.id == id }?.let { movie ->
-                openMovie(MovieCatalogItem(movie.id, movie.title, movie.year, movie.poster, durationSeconds = movie.durationSeconds))
+                openMovie(MovieCatalogItem(movie.id, movie.title, movie.year, movie.poster, durationSeconds = movie.durationSeconds, mediaType = movie.mediaType))
             }
         }
         setContent { MovieScreen() }
+        if (savedInstanceState == null && pendingTorrentHash != null) {
+            TorrentArtworkPolicy.query(pendingTorrentTitle).takeIf { it.length >= 3 }?.let(::searchFor)
+        }
     }
 
-    companion object { internal const val EXTRA_MOVIE_ID = "movie_id" }
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString(EXTRA_TORRENT_HASH, pendingTorrentHash)
+        outState.putString(EXTRA_TORRENT_TITLE, pendingTorrentTitle)
+        super.onSaveInstanceState(outState)
+    }
+
+    companion object {
+        internal const val EXTRA_MOVIE_ID = "movie_id"
+        internal const val EXTRA_TORRENT_HASH = "torrent_hash"
+        internal const val EXTRA_TORRENT_TITLE = "torrent_title"
+    }
 
     private fun toast(resource: Int) = Toast.makeText(this, resource, Toast.LENGTH_LONG).show()
     private fun refresh() {
@@ -91,11 +109,24 @@ class MovieLibraryActivity : ComponentActivity() {
             .setPositiveButton(R.string.movies_add) { _, _ -> onSubmit(field.text.toString()) }.show()
     }
 
-    private fun search() = input(R.string.movies_search, R.string.movies_search) { query ->
+    private fun search() = input(R.string.movies_search, R.string.movies_search, ::searchFor)
+
+    private fun searchFor(query: String) {
+        if (query.isBlank()) return
         val generation = ++requestGeneration
         busy = true; progressMessage = ""; error = ""; searched = true; page = "results"
         lifecycleScope.launch {
-            val fetched = withContext(Dispatchers.IO) { runCatching { MovieCatalogClient.search(query) } }
+            val fetched = withContext(Dispatchers.IO) { runCatching {
+                val films = runCatching { MovieCatalogClient.search(query, type = "movie") }
+                val series = runCatching { MovieCatalogClient.search(query, type = "series") }
+                if (films.isFailure && series.isFailure) throw java.io.IOException("Catalog unavailable")
+                val term = TorrentArtworkPolicy.normalized(query)
+                (films.getOrDefault(emptyList()) + series.getOrDefault(emptyList())).distinctBy { it.mediaType to it.id }
+                    .sortedBy { item ->
+                        val title = TorrentArtworkPolicy.normalized(item.title)
+                        when { title == term -> 0; title.startsWith(term) -> 1; term in title -> 2; else -> 3 }
+                    }
+            } }
             if (generation != requestGeneration || isFinishing) return@launch
             busy = false
             if (fetched.isSuccess) results = fetched.getOrThrow()
@@ -107,7 +138,7 @@ class MovieLibraryActivity : ComponentActivity() {
         val generation = ++requestGeneration
         page = "detail"; selected = item; sources = emptyList(); error = ""
         lifecycleScope.launch {
-            val details = withContext(Dispatchers.IO) { runCatching { MovieCatalogClient.details(item.id) } }
+            val details = withContext(Dispatchers.IO) { runCatching { MovieCatalogClient.details(item.id, type = item.mediaType) } }
             if (generation == requestGeneration && selected?.id == item.id && details.isSuccess) selected = details.getOrThrow()
         }
     }
@@ -117,10 +148,27 @@ class MovieLibraryActivity : ComponentActivity() {
         val movie = selected ?: return null
         val old = saved.firstOrNull { it.id == movie.id }
         val updated = SavedMovie(movie.id, movie.title, movie.year, movie.poster ?: old?.poster,
-            old?.sources.orEmpty(), movie.durationSeconds ?: old?.durationSeconds)
+            old?.sources.orEmpty(), movie.durationSeconds ?: old?.durationSeconds, movie.mediaType)
         return if (runCatching { MovieLibraryStore.save(this, updated) }.getOrDefault(false)) {
             refresh(); updated
         } else { toast(R.string.movies_source_failed); null }
+    }
+
+    private fun attachPendingTorrent() {
+        val hash = pendingTorrentHash ?: return
+        val item = selected ?: return
+        if (readFailed) { toast(R.string.movies_corrupt); return }
+        val previous = saved.firstOrNull { it.id == item.id }
+        val uri = "torrserver://$hash"
+        val source = MovieSource(pendingTorrentTitle.ifBlank { getString(R.string.movies_torrent_source) }.take(256), uri)
+        val updated = SavedMovie(item.id, item.title, item.year, item.poster ?: previous?.poster,
+            previous?.sources.orEmpty().filterNot { it.uri.equals(uri, ignoreCase = true) } + source,
+            item.durationSeconds ?: previous?.durationSeconds, item.mediaType)
+        if (runCatching { MovieLibraryStore.save(this, updated) }.getOrDefault(false)) {
+            pendingTorrentHash = null
+            toast(R.string.movies_torrent_attached)
+            finish()
+        } else toast(R.string.movies_source_failed)
     }
 
     private fun addLink() = input(R.string.movies_add_link, R.string.movies_link_hint) { value ->
@@ -172,7 +220,7 @@ class MovieLibraryActivity : ComponentActivity() {
     private fun play(source: MovieSource) {
         if (!MovieLibraryStore.validSource(source.uri)) { toast(R.string.movies_source_failed); return }
         val uri = Uri.parse(source.uri)
-        val isTorrent = uri.scheme.equals("magnet", true) || uri.scheme.equals("content", true) ||
+        val isTorrent = uri.scheme.equals("torrserver", true) || uri.scheme.equals("magnet", true) || uri.scheme.equals("content", true) ||
             ((uri.scheme.equals("http", true) || uri.scheme.equals("https", true)) && uri.path?.endsWith(".torrent", ignoreCase = true) == true)
         if (isTorrent) { prepareTorrent(uri); return }
         val intent = if (uri.scheme.equals("acestream", true)) Intent(Intent.ACTION_VIEW, uri)
@@ -195,6 +243,7 @@ class MovieLibraryActivity : ComponentActivity() {
             try {
                 val entry = withContext(Dispatchers.IO) {
                     val added = when {
+                        uri.scheme.equals("torrserver", true) -> TorrServerCatalog.get(uri.host ?: throw java.io.IOException("Invalid torrent"))
                         uri.scheme.equals("magnet", true) -> TorrServerCatalog.addMagnet(uri.toString())
                         uri.scheme.equals("content", true) -> contentResolver.openInputStream(uri)?.use { TorrServerCatalog.upload(it) }
                             ?: throw java.io.IOException("Cannot open torrent")
@@ -235,7 +284,7 @@ class MovieLibraryActivity : ComponentActivity() {
 
     @Composable private fun MovieScreen() {
         Column(Modifier.fillMaxSize().background(Color(0xFF0A0A0A)).padding(horizontal = 36.dp, vertical = 22.dp)) {
-            Text(tr(R.string.movies_title), color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+            Text(tr(R.string.media_tab_title), color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 MovieButton(tr(R.string.movies_saved)) { requestGeneration++; page = "saved"; busy = false; error = "" }
@@ -252,13 +301,14 @@ class MovieLibraryActivity : ComponentActivity() {
                         if (saved.isEmpty()) item { Text(tr(R.string.movies_empty), color = Color.LightGray) }
                         items(saved, key = { it.id }) { movie ->
                             SettingRow(movie.title, movie.year, onClick = {
-                                openMovie(MovieCatalogItem(movie.id, movie.title, movie.year, movie.poster, durationSeconds = movie.durationSeconds))
+                                openMovie(MovieCatalogItem(movie.id, movie.title, movie.year, movie.poster, durationSeconds = movie.durationSeconds, mediaType = movie.mediaType))
                             })
                         }
                     }
                     "results" -> {
                         if (!busy && searched && results.isEmpty()) item { Text(tr(R.string.movies_no_results), color = Color.LightGray) }
-                        items(results, key = { it.id }) { movie -> SettingRow(movie.title, movie.year, onClick = { openMovie(movie) }) }
+                        items(results, key = { "${it.mediaType}:${it.id}" }) { movie -> SettingRow(movie.title,
+                            listOf(movie.year, tr(if (movie.mediaType == "series") R.string.movies_type_series else R.string.movies_type_movie)).filter { it.isNotBlank() }.joinToString(" · "), onClick = { openMovie(movie) }) }
                     }
                     "addons" -> {
                         item { Text(tr(R.string.movies_addon_privacy), color = Color.LightGray, fontSize = 13.sp) }
@@ -276,13 +326,14 @@ class MovieLibraryActivity : ComponentActivity() {
                             val stored = saved.firstOrNull { it.id == movie.id }
                             item { Text(movie.title, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold) }
                             item { Text(listOf(movie.year, movie.description).filter { it.isNotBlank() }.joinToString(" · "), color = Color.LightGray, fontSize = 14.sp) }
+                            if (pendingTorrentHash != null) item { SettingRow(tr(R.string.movies_attach_torrent), pendingTorrentTitle, onClick = { attachPendingTorrent() }) }
                             item { SettingRow(tr(if (stored == null) R.string.movies_save else R.string.movies_remove), onClick = {
                                 if (stored == null) saveSelected() else if (!readFailed && runCatching { MovieLibraryStore.remove(this@MovieLibraryActivity, stored.id) }.getOrDefault(false)) refresh()
                                 else toast(R.string.movies_corrupt)
                             }) }
                             item { SettingRow(tr(R.string.movies_add_link), onClick = { addLink() }) }
                             item { SettingRow(tr(R.string.movies_add_file), onClick = { addFile() }) }
-                            item { SettingRow(tr(R.string.movies_sources), onClick = { findSources() }) }
+                            if (movie.mediaType == "movie") item { SettingRow(tr(R.string.movies_sources), onClick = { findSources() }) }
                             item { Text(tr(R.string.movies_torrent_hint), color = Color.LightGray, fontSize = 13.sp) }
                             stored?.sources?.let { savedSources ->
                                 items(savedSources, key = { "saved:${it.uri}:${it.fileIndex}" }) { source ->
@@ -291,7 +342,8 @@ class MovieLibraryActivity : ComponentActivity() {
                                     if (estimate != null) Text(tr(R.string.movies_estimate_average, String.format(java.util.Locale.ROOT, "%.1f", estimate.averageBitsPerSecond / 1_000_000)), color = Color.LightGray)
                                 }
                             }
-                            if (!busy && sources.isEmpty() && addons.isEmpty() && stored?.sources.isNullOrEmpty()) item { Text(tr(R.string.movies_no_sources), color = Color.LightGray) }
+                            if (!busy && sources.isEmpty() && stored?.sources.isNullOrEmpty() && (movie.mediaType == "series" || addons.isEmpty()))
+                                item { Text(tr(if (movie.mediaType == "series") R.string.movies_no_series_sources else R.string.movies_no_sources), color = Color.LightGray) }
                             items(sources) { stream ->
                                 SettingRow(stream.name.ifBlank { tr(R.string.movies_play) }, stream.description, onClick = { chooseStream(stream) })
                                 val estimate = stream.sizeBytes?.let { size -> movie.durationSeconds?.let { MoviePlaybackEstimator.estimate(size, it, null) } }

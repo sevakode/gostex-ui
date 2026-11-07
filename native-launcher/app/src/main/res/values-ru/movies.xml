@@ -1,13 +1,13 @@
 <resources>
     <string name="movies_title">Фильмы</string>
-    <string name="movies_search">Найти фильм</string>
-    <string name="movies_saved">Мои фильмы</string>
+    <string name="movies_search">Поиск</string>
+    <string name="movies_saved">Моё медиа</string>
     <string name="movies_sources">Источники</string>
     <string name="movies_add_file">Добавить торрент-файл</string>
     <string name="movies_add_link">Добавить magnet или ссылку на видео</string>
     <string name="movies_add_addon">Добавить дополнение Stremio</string>
     <string name="movies_addons">Источники</string>
-    <string name="movies_empty">Пока нет фильмов. Найди фильм и сохрани его здесь.</string>
+    <string name="movies_empty">Пока нет медиа. Найди фильм или сериал и сохрани его здесь.</string>
     <string name="movies_results">Результаты поиска</string>
     <string name="movies_save">Сохранить в библиотеку</string>
     <string name="movies_remove">Убрать из библиотеки</string>
@@ -42,8 +42,15 @@
     <string name="media_tab_title">Медиа</string>
     <string name="media_tab_visibility">Показывать вкладку медиа</string>
     <string name="media_manage">Управление медиа</string>
-    <string name="media_library_empty">Пока нет фильмов. Выбери «Управление медиа», чтобы добавить фильм.</string>
+    <string name="media_library_empty">Пока нет медиа. Выбери «Управление медиа», чтобы добавить фильм или сериал.</string>
     <string name="media_auto_cover">Автоматически загружать обложки медиа</string>
     <string name="media_options">Параметры медиа</string>
     <string name="sections_media_label">Медиа · %1$s</string>
+    <string name="movies_add_torrent_media">Добавить в медиатеку</string>
+    <string name="movies_attach_torrent">Привязать этот торрент</string>
+    <string name="movies_torrent_source">Торрент TorrServer</string>
+    <string name="movies_torrent_attached">Торрент добавлен в медиатеку</string>
+    <string name="movies_type_movie">Фильм</string>
+    <string name="movies_type_series">Сериал</string>
+    <string name="movies_no_series_sources">Добавь торрент или свою ссылку, чтобы смотреть сериал.</string>
 </resources>

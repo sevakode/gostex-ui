@@ -1,13 +1,13 @@
 <resources>
     <string name="movies_title">Movies</string>
-    <string name="movies_search">Find a movie</string>
-    <string name="movies_saved">My movies</string>
+    <string name="movies_search">Search</string>
+    <string name="movies_saved">My media</string>
     <string name="movies_sources">Sources</string>
     <string name="movies_add_file">Add torrent file</string>
     <string name="movies_add_link">Add magnet or video link</string>
     <string name="movies_add_addon">Add Stremio add-on</string>
     <string name="movies_addons">Sources</string>
-    <string name="movies_empty">No saved movies yet. Search for a movie and save it here.</string>
+    <string name="movies_empty">No saved media yet. Search for a film or series and save it here.</string>
     <string name="movies_results">Search results</string>
     <string name="movies_save">Save to library</string>
     <string name="movies_remove">Remove from library</string>
@@ -42,8 +42,15 @@
     <string name="media_tab_title">Media</string>
     <string name="media_tab_visibility">Show media tab</string>
     <string name="media_manage">Manage media</string>
-    <string name="media_library_empty">No films yet. Choose “Manage media” to add one.</string>
+    <string name="media_library_empty">No media yet. Choose “Manage media” to add a film or series.</string>
     <string name="media_auto_cover">Automatically load media covers</string>
     <string name="media_options">Media options</string>
     <string name="sections_media_label">Media · %1$s</string>
+    <string name="movies_add_torrent_media">Add to media library</string>
+    <string name="movies_attach_torrent">Attach this torrent</string>
+    <string name="movies_torrent_source">TorrServer torrent</string>
+    <string name="movies_torrent_attached">Torrent added to media</string>
+    <string name="movies_type_movie">Film</string>
+    <string name="movies_type_series">Series</string>
+    <string name="movies_no_series_sources">Add a torrent or your own link to watch this series.</string>
 </resources>

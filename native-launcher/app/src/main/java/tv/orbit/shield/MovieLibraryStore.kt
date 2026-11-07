@@ -13,6 +13,7 @@ internal data class SavedMovie(
     val poster: String?,
     val sources: List<MovieSource> = emptyList(),
     val durationSeconds: Long? = null,
+    val mediaType: String = "movie",
 )
 
 /** User collection is independent of the ROM library; invalid stored data is never overwritten. */
@@ -51,7 +52,8 @@ internal object MovieLibraryStore {
                 item.getString("year").also { require(it.length <= 64) },
                 item.optString("poster").takeIf { it.isNotEmpty() }?.also { require(it.length <= 2048) }, sources,
                 if (item.has("durationSeconds") && !item.isNull("durationSeconds"))
-                    item.getLong("durationSeconds").also { require(it > 0) } else null)
+                    item.getLong("durationSeconds").also { require(it > 0) } else null,
+                item.optString("mediaType", "movie").also { require(it in setOf("movie", "series")) })
         }
         require(movies.map { it.id }.distinct().size == movies.size)
         return movies
@@ -70,6 +72,7 @@ internal object MovieLibraryStore {
             "https", "http" -> !uri.host.isNullOrBlank() && uri.userInfo == null
             "content" -> !uri.authority.isNullOrBlank()
             "acestream" -> !uri.schemeSpecificPart.isNullOrBlank()
+            "torrserver" -> value.matches(Regex("(?i)torrserver://[0-9a-f]{40}"))
             else -> false
         }
         }.getOrDefault(false)
@@ -85,6 +88,7 @@ internal object MovieLibraryStore {
                 (it.sizeBytes == null || it.sizeBytes > 0)
         })
         require(movie.durationSeconds == null || movie.durationSeconds > 0)
+        require(movie.mediaType in setOf("movie", "series"))
         val updated = if (existing.any { it.id == movie.id }) existing.map { if (it.id == movie.id) movie else it }
             else existing + movie
         require(updated.size <= MAX_MOVIES)
@@ -106,7 +110,7 @@ internal object MovieLibraryStore {
             }
             array.put(JSONObject().put("id", entry.id).put("title", entry.title).put("year", entry.year)
                 .put("poster", entry.poster ?: "").put("sources", sources)
-                .put("durationSeconds", entry.durationSeconds ?: JSONObject.NULL))
+                .put("durationSeconds", entry.durationSeconds ?: JSONObject.NULL).put("mediaType", entry.mediaType))
         }
         val encoded = JSONObject().put("schema", 1).put("movies", array).toString()
         require(encoded.length <= MAX_BYTES)

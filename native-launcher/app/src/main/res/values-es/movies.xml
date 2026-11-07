@@ -1,13 +1,13 @@
 <resources>
     <string name="movies_title">Películas</string>
-    <string name="movies_search">Buscar película</string>
-    <string name="movies_saved">Mis películas</string>
+    <string name="movies_search">Buscar</string>
+    <string name="movies_saved">Mis medios</string>
     <string name="movies_sources">Fuentes</string>
     <string name="movies_add_file">Añadir archivo torrent</string>
     <string name="movies_add_link">Añadir magnet o enlace de vídeo</string>
     <string name="movies_add_addon">Añadir complemento Stremio</string>
     <string name="movies_addons">Fuentes</string>
-    <string name="movies_empty">Aún no hay películas. Busca una y guárdala aquí.</string>
+    <string name="movies_empty">Aún no hay medios. Busca y guarda una película o serie.</string>
     <string name="movies_results">Resultados de búsqueda</string>
     <string name="movies_save">Guardar en biblioteca</string>
     <string name="movies_remove">Quitar de la biblioteca</string>
@@ -42,8 +42,15 @@
     <string name="media_tab_title">Medios</string>
     <string name="media_tab_visibility">Mostrar pestaña de medios</string>
     <string name="media_manage">Gestionar medios</string>
-    <string name="media_library_empty">Aún no hay películas. Selecciona «Gestionar medios» para añadir una.</string>
+    <string name="media_library_empty">Aún no hay medios. Selecciona «Gestionar medios» para añadir una película o serie.</string>
     <string name="media_auto_cover">Cargar automáticamente las portadas de medios</string>
     <string name="media_options">Opciones de medios</string>
     <string name="sections_media_label">Medios · %1$s</string>
+    <string name="movies_add_torrent_media">Añadir a la biblioteca multimedia</string>
+    <string name="movies_attach_torrent">Vincular este torrent</string>
+    <string name="movies_torrent_source">Torrent de TorrServer</string>
+    <string name="movies_torrent_attached">Torrent añadido a la biblioteca multimedia</string>
+    <string name="movies_type_movie">Película</string>
+    <string name="movies_type_series">Serie</string>
+    <string name="movies_no_series_sources">Añade un torrent o un enlace para ver esta serie.</string>
 </resources>

@@ -68,6 +68,7 @@ jobs:
           python3 native-launcher/checks/check_legacy_catalog_recovery.py
           python3 native-launcher/checks/check_legacy_recovery_state.py
           python3 native-launcher/checks/check_cover_concurrency.py
+          python3 native-launcher/checks/check_media_file_labels.py
           python3 native-launcher/checks/test_public_release.py
           python3 native-launcher/checks/test_carry_forward_linux.py
           python3 native-launcher/checks/check_update_state.py

@@ -281,7 +281,7 @@ class MovieLibraryActivity : ComponentActivity() {
                 }
                 if (videos.size == 1) open(videos.single())
                 else AlertDialog.Builder(this@MovieLibraryActivity).setTitle(R.string.movies_choose_video)
-                    .setItems(videos.map { it.path }.toTypedArray()) { _, index -> open(videos[index]) }
+                    .setItems(mediaFileLabels(videos).toTypedArray()) { _, index -> open(videos[index]) }
                     .setNegativeButton(R.string.movies_cancel, null).show()
             } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
             catch (failure: Exception) {

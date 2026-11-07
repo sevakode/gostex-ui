@@ -39,4 +39,9 @@
     <string name="movies_choose_video">Elige un archivo de vídeo</string>
     <string name="movies_torrent_timeout">Los datos del torrent tardaron demasiado. Puede que no haya conexión o participantes disponibles; inténtalo de nuevo.</string>
     <string name="movies_metadata_unavailable">TorrServer aún no ha comunicado la lista de archivos. Inténtalo de nuevo.</string>
+    <string name="media_tab_title">Medios</string>
+    <string name="media_tab_visibility">Mostrar pestaña de medios</string>
+    <string name="media_manage">Gestionar medios</string>
+    <string name="media_library_empty">Aún no hay películas. Selecciona «Gestionar medios» para añadir una.</string>
+    <string name="media_auto_cover">Cargar automáticamente las portadas de medios</string>
 </resources>

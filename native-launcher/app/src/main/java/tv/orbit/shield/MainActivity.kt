@@ -78,6 +78,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 private val Ink = Color(0xFF0A0A0A)
 private val Panel = Color(0xFF1F1F21)
@@ -201,6 +203,25 @@ class MainActivity : ComponentActivity() {
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
             catch (_: Exception) { /* No cover is better than an incorrect one. */ }
         }
+    }
+    private val mediaCoverLock = Mutex()
+    private val mediaCoverAttempts = mutableSetOf<String>()
+    internal suspend fun fetchMediaCover(movie: SavedMovie) {
+        val id = "movie:${movie.id}"
+        if (movie.poster == null || managedCovers[id]?.let { it.manual.isNotEmpty() || it.original.isNotEmpty() } == true) return
+        if (!mediaCoverAttempts.add(id)) return
+        try {
+            mediaCoverLock.withLock {
+                if (PortableMaintenance.running) return@withLock
+                val found = withContext(Dispatchers.IO) { TorrentArtwork.loadPoster(movie.poster) } ?: return@withLock
+                coverEdits++
+                try {
+                    managedCovers = withContext(Dispatchers.IO) { ManagedCoverStore.importTorrentAutomatic(this@MainActivity, id, found.bytes, found.sourceName, found.sourceUrl) }
+                    coverRevision++
+                } finally { coverEdits-- }
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) { mediaCoverAttempts.remove(id); throw e }
+        catch (_: Exception) { /* Keep the title placeholder if the image is unavailable. */ }
     }
     private val torrFolderPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         val request = pendingTorrDownload
@@ -1162,10 +1183,12 @@ class MainActivity : ComponentActivity() {
     val libraryOptions = LocalLibraryOptions.current
     val appsOptions = LocalAppsOptions.current
     val downloadsVisible = rememberDownloadsVisible()
-    val visibleTabs = remember(libraryOptions.tabVisible, appsOptions.tabVisible, downloadsVisible, tab) {
+    val mediaTabVisible = rememberMediaTabVisible()
+    val visibleTabs = remember(libraryOptions.tabVisible, appsOptions.tabVisible, downloadsVisible, mediaTabVisible, tab) {
         buildList {
             add("home")
             if (libraryOptions.tabVisible) add("library")
+            if (mediaTabVisible || tab == "movies") add("movies")
             if (appsOptions.tabVisible) add("apps")
             if (downloadsVisible || tab == "downloads") add("downloads")
         }
@@ -1263,6 +1286,10 @@ class MainActivity : ComponentActivity() {
         value = withContext(Dispatchers.IO) { activity.apps() }
     }
     val apps = loadedApps.orEmpty()
+    val movieResult by produceState<Result<List<SavedMovie>>?>(null, activity.resumeVersion) {
+        value = withContext(Dispatchers.IO) { runCatching { MovieLibraryStore.read(activity) } }
+    }
+    val movies = movieResult?.getOrDefault(emptyList()).orEmpty()
     val homeOptions = rememberHomeOptions()
     val clockOptions = rememberClockOptions()
     val clockInstant = rememberClockInstant(clockOptions.visible && clockOptions.zones.isNotEmpty() && detail == null)
@@ -1456,6 +1483,9 @@ class MainActivity : ComponentActivity() {
                         onGameOpen = ::openGame, onGameMenu = ::gameMenu,
                         onAppOpen = activity::openApp, onAppMenu = ::appMenu,
                         onEmptySettings = { settingsInitialSection = "homeOptions"; settingsReturnFocus = null; settingsOpen = true })
+                } else if (tab == "movies") {
+                    MediaScreen(activity, movies, movieResult != null, movieResult?.isFailure == true,
+                        inputEnabled = !settingsOpen && !mediaOpen, modifier = Modifier.weight(1f))
                 } else if (tab == "downloads") {
                     val downloadsFocus = remember { FocusRequester() }
                     BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
@@ -1557,7 +1587,7 @@ class MainActivity : ComponentActivity() {
                 }
                 Row(Modifier.fillMaxWidth().padding(horizontal = 36.dp, vertical = 8.dp)) {
                     Box(Modifier.weight(1f).horizontalScroll(rememberScrollState())) {
-                        ControlHints(R.string.control_select, R.string.back, showHomeNavigation = tab == "home", showHoldMenu = true)
+                        ControlHints(R.string.control_select, R.string.back, showHomeNavigation = tab == "home", showHoldMenu = tab != "movies")
                     }
                     Spacer(Modifier.width(8.dp)); Text("GOSTEX", color = Lime, fontSize = 10.sp, fontFamily = FontFamily.Monospace, letterSpacing = 1.sp, maxLines = 1)
                 }
@@ -1893,6 +1923,7 @@ private fun settingsTitle(section: String): Int = when {
                 SettingRow(tr(R.string.media_player), tr(R.string.media_settings_summary), rowFocus("nowPlaying"), onClick = { onSection("nowPlaying") })
                 SettingRow(tr(R.string.torr_download_channel), modifier = rowFocus("downloads"), onClick = { onSection("downloads") })
                 SettingRow(tr(R.string.movies_title), modifier = rowFocus("movies"), onClick = { activity.startActivity(Intent(activity, MovieLibraryActivity::class.java)) })
+                MediaAutoCoverSetting()
             } else if (section == "libraryGroup") {
                 if (activity.legacyRecoveryPending) SettingRow(tr(R.string.legacy_recovery_title), tr(R.string.legacy_recovery_summary),
                     rowFocus("legacyRecovery"), onClick = { activity.retryLegacyRecovery() })
@@ -1978,6 +2009,7 @@ private fun settingsTitle(section: String): Int = when {
                 ClockSettings(initialFocus, section, onSection)
             } else if (section == "homeOptions") {
                 SectionSettings(initialFocus, apps, games)
+                MediaVisibilitySetting()
                 DownloadsVisibilitySetting()
             } else if (section == "appearance") {
                 AppearanceSettings(initialFocus)

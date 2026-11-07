@@ -39,4 +39,9 @@
     <string name="movies_choose_video">Выбери видеофайл</string>
     <string name="movies_torrent_timeout">Состав раздачи не успел загрузиться. Возможно, недоступны участники или соединение; попробуй ещё раз.</string>
     <string name="movies_metadata_unavailable">TorrServer пока не сообщил состав раздачи. Попробуй ещё раз.</string>
+    <string name="media_tab_title">Медиа</string>
+    <string name="media_tab_visibility">Показывать вкладку медиа</string>
+    <string name="media_manage">Управление медиа</string>
+    <string name="media_library_empty">Пока нет фильмов. Выбери «Управление медиа», чтобы добавить фильм.</string>
+    <string name="media_auto_cover">Автоматически загружать обложки медиа</string>
 </resources>

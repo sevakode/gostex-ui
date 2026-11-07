@@ -39,4 +39,9 @@
     <string name="movies_choose_video">Choose a video file</string>
     <string name="movies_torrent_timeout">Torrent metadata took too long to arrive. Peers or the connection may be unavailable; try again.</string>
     <string name="movies_metadata_unavailable">TorrServer has not reported the file list yet. Try again.</string>
+    <string name="media_tab_title">Media</string>
+    <string name="media_tab_visibility">Show media tab</string>
+    <string name="media_manage">Manage media</string>
+    <string name="media_library_empty">No films yet. Choose “Manage media” to add one.</string>
+    <string name="media_auto_cover">Automatically load media covers</string>
 </resources>

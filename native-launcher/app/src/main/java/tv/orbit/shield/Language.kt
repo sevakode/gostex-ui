@@ -28,7 +28,7 @@ internal object Language {
     "library" -> R.string.library
     "downloads" -> R.string.torr_download_channel
     "favorites" -> R.string.favorites
-    "movies" -> R.string.movies
+    "movies" -> R.string.media_tab_title
     "apps" -> R.string.apps
     "settings" -> R.string.settings
     else -> R.string.home

@@ -38,7 +38,7 @@ internal object TorrentArtwork {
             return loadPoster(results.single().poster ?: return null)
         } finally { client?.close() }
     }
-    private fun loadPoster(poster: String): Found? {
+    internal fun loadPoster(poster: String): Found? {
         val url = URL(poster)
         if (url.protocol != "https" || url.host != "images.metahub.space" || url.userInfo != null || url.port !in listOf(-1, 443)) return null
         val connection = url.openConnection() as HttpsURLConnection

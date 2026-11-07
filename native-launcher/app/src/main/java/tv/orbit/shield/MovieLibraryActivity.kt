@@ -64,8 +64,15 @@ class MovieLibraryActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         if (!PortableRestoreStartup.ready || PortableMaintenance.running) { finish(); return }
         refresh()
+        intent.getStringExtra(EXTRA_MOVIE_ID)?.let { id ->
+            saved.firstOrNull { it.id == id }?.let { movie ->
+                openMovie(MovieCatalogItem(movie.id, movie.title, movie.year, movie.poster, durationSeconds = movie.durationSeconds))
+            }
+        }
         setContent { MovieScreen() }
     }
+
+    companion object { internal const val EXTRA_MOVIE_ID = "movie_id" }
 
     private fun toast(resource: Int) = Toast.makeText(this, resource, Toast.LENGTH_LONG).show()
     private fun refresh() {

@@ -85,7 +85,8 @@
     <string name="downloads_options_hide">Hide options</string>
     <string name="downloads_magnet_show">Add via magnet link</string>
     <string name="downloads_magnet_hide">Close magnet input</string>
-    <string name="downloads_external_confirm">Add this torrent to the downloads list?</string>
+    <string name="downloads_external_confirm">Where do you want to add this torrent?</string>
+    <string name="downloads_external_queue">Downloads</string>
     <string name="downloads_choose_cover">Choose cover</string>
     <string name="downloads_auto_cover">Automatically find covers</string>
     <string name="downloads_library_group">Game library</string>
@@ -96,7 +97,7 @@
     <string name="downloads_indicator_queued">Downloads queued</string>
     <string name="torr_remove_links_count">Linked media cards: %1$d. Their torrent source will not work until the same torrent is added again.</string>
     <string name="torr_remove_links_unknown">Could not check linked media cards. Some sources may stop working.</string>
-    <string name="downloads_external_magnet_confirm">Add this magnet link to the torrent list?</string>
+    <string name="downloads_external_magnet_confirm">Where do you want to add this magnet link?</string>
     <string name="torr_media_show_setting">Show media torrents in downloads</string>
     <string name="torr_media_show_hint">Media sources stay on the server even when hidden; download jobs remain visible.</string>
     <string name="torr_media_protected_title">Media source protected</string>

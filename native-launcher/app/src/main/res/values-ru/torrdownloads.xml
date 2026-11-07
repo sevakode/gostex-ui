@@ -85,7 +85,8 @@
     <string name="downloads_options_hide">Скрыть параметры</string>
     <string name="downloads_magnet_show">Добавить magnet-ссылку</string>
     <string name="downloads_magnet_hide">Закрыть ввод ссылки</string>
-    <string name="downloads_external_confirm">Добавить этот торрент в список загрузок?</string>
+    <string name="downloads_external_confirm">Куда добавить этот торрент?</string>
+    <string name="downloads_external_queue">В загрузки</string>
     <string name="downloads_choose_cover">Выбрать обложку</string>
     <string name="downloads_auto_cover">Автоматически искать обложки</string>
     <string name="downloads_library_group">Игровая библиотека</string>
@@ -96,7 +97,7 @@
     <string name="downloads_indicator_queued">Загрузки в очереди</string>
     <string name="torr_remove_links_count">Связанных карточек медиа: %1$d. Источник в них не будет работать, пока тот же торрент не добавлен снова.</string>
     <string name="torr_remove_links_unknown">Не удалось проверить связи с медиатекой. Некоторые источники могут перестать работать.</string>
-    <string name="downloads_external_magnet_confirm">Добавить эту magnet-ссылку в список торрентов?</string>
+    <string name="downloads_external_magnet_confirm">Куда добавить эту magnet-ссылку?</string>
     <string name="torr_media_show_setting">Показывать медиа в загрузках</string>
     <string name="torr_media_show_hint">Источники остаются на сервере даже когда скрыты; очередь скачивания всегда видна.</string>
     <string name="torr_media_protected_title">Источник медиатеки защищён</string>

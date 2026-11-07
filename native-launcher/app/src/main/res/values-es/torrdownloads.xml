@@ -85,7 +85,8 @@
     <string name="downloads_options_hide">Ocultar opciones</string>
     <string name="downloads_magnet_show">Añadir enlace magnet</string>
     <string name="downloads_magnet_hide">Cerrar entrada del enlace</string>
-    <string name="downloads_external_confirm">¿Añadir este torrent a la lista de descargas?</string>
+    <string name="downloads_external_confirm">¿Dónde quieres añadir este torrent?</string>
+    <string name="downloads_external_queue">Descargas</string>
     <string name="downloads_choose_cover">Elegir portada</string>
     <string name="downloads_auto_cover">Buscar portadas automáticamente</string>
     <string name="downloads_library_group">Biblioteca de juegos</string>
@@ -96,7 +97,7 @@
     <string name="downloads_indicator_queued">Descargas en cola</string>
     <string name="torr_remove_links_count">Fichas multimedia vinculadas: %1$d. Su fuente dejará de funcionar hasta volver a añadir el mismo torrent.</string>
     <string name="torr_remove_links_unknown">No se pudieron comprobar los medios vinculados. Algunas fuentes pueden dejar de funcionar.</string>
-    <string name="downloads_external_magnet_confirm">¿Añadir este enlace magnet a la lista de torrents?</string>
+    <string name="downloads_external_magnet_confirm">¿Dónde quieres añadir este enlace magnet?</string>
     <string name="torr_media_show_setting">Mostrar torrents de medios en descargas</string>
     <string name="torr_media_show_hint">Las fuentes permanecen en el servidor aunque estén ocultas; las descargas siguen visibles.</string>
     <string name="torr_media_protected_title">Fuente multimedia protegida</string>

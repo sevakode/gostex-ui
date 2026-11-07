@@ -210,31 +210,43 @@ class MainActivity : ComponentActivity() {
     private val torrFilePicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) importTorrentUri(uri)
     }
-    internal fun importTorrentUri(uri: Uri) {
+    internal fun importTorrentUri(uri: Uri, openMedia: Boolean = false) {
         if (!PortableMaintenance.running) importScope.launch {
             try {
                 val entry = withContext(Dispatchers.IO) {
                     contentResolver.openInputStream(uri)?.use { TorrServerCatalog.upload(it) }
                         ?: throw java.io.IOException("Cannot open torrent")
                 }
-                torrCatalogRevision++
-                torrDownloadMessage = getString(R.string.torr_download_torrent_added)
-                findTorrentCover(entry)
-            } catch (_: Exception) { torrDownloadMessage = getString(R.string.torr_download_failed) }
+                onTorrentImported(entry, openMedia)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) { torrDownloadMessage = getString(R.string.torr_download_failed) }
         }
     }
-    internal fun importMagnet(uri: Uri) {
+    internal fun importMagnet(uri: Uri, openMedia: Boolean = false) {
         val magnet = uri.toString()
         if (PortableMaintenance.running || !MovieLibraryStore.validSource(magnet) ||
             !uri.scheme.equals("magnet", ignoreCase = true) || magnet.contains('\r') || magnet.contains('\n')) return
         importScope.launch {
             try {
                 val entry = withContext(Dispatchers.IO) { TorrServerCatalog.addMagnet(magnet) }
-                torrCatalogRevision++
-                torrDownloadMessage = getString(R.string.torr_download_torrent_added)
-                findTorrentCover(entry)
+                onTorrentImported(entry, openMedia)
             } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
             catch (_: Exception) { torrDownloadMessage = getString(R.string.torr_download_failed) }
+        }
+    }
+
+    private fun onTorrentImported(entry: TorrCatalogEntry, openMedia: Boolean) {
+        torrCatalogRevision++
+        torrDownloadMessage = getString(R.string.torr_download_torrent_added)
+        findTorrentCover(entry)
+        // Never interrupt another app if the import finished after the user left.
+        if (openMedia && !isFinishing && !isDestroyed &&
+            lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) {
+            runCatching { startActivity(Intent(this, MovieLibraryActivity::class.java).apply {
+                putExtra(MovieLibraryActivity.EXTRA_TORRENT_HASH, entry.hash)
+                putExtra(MovieLibraryActivity.EXTRA_TORRENT_TITLE, entry.title)
+            }) }.onSuccess { torrDownloadMessage = "" }
+                .onFailure { torrDownloadMessage = getString(R.string.torr_download_failed) }
         }
     }
 
@@ -1291,9 +1303,14 @@ class MainActivity : ComponentActivity() {
             val dialog = android.app.AlertDialog.Builder(activity)
                 .setTitle(if (magnet) R.string.torr_download_add_magnet else R.string.torr_download_add_file)
                 .setMessage(if (magnet) R.string.downloads_external_magnet_confirm else R.string.downloads_external_confirm)
-                .setPositiveButton(if (magnet) R.string.torr_download_add_magnet else R.string.torr_download_add_file) { _, _ ->
+                .setPositiveButton(R.string.downloads_external_queue) { _, _ ->
                     activity.incomingTorrentUri = null
                     if (magnet) activity.importMagnet(incomingTorrent) else activity.importTorrentUri(incomingTorrent)
+                }
+                .setNeutralButton(R.string.movies_add_torrent_media) { _, _ ->
+                    activity.incomingTorrentUri = null
+                    if (magnet) activity.importMagnet(incomingTorrent, openMedia = true)
+                    else activity.importTorrentUri(incomingTorrent, openMedia = true)
                 }
                 .setNegativeButton(R.string.cancel) { _, _ -> activity.incomingTorrentUri = null }
                 .setOnCancelListener { activity.incomingTorrentUri = null }

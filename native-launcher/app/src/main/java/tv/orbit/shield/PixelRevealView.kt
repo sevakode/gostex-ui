@@ -129,6 +129,7 @@ internal class PixelArtView(context: Context) : View(context) {
                             BitmapFactory.Options().apply { inSampleSize = 2 }) }
                     }.getOrNull()
                 }
+                currentCoroutineContext().ensureActive()
                 if (snakeAct != null) image = snakeAct.renderSnapshot()
                 if (image == null) {
                     // Keep the actual world even if its asset cannot be decoded. Categories
@@ -145,6 +146,7 @@ internal class PixelArtView(context: Context) : View(context) {
                     RectF((cols-w)/2, (rows-h)/2, (cols+w)/2, (rows+h)/2), Paint(Paint.FILTER_BITMAP_FLAG))
                 val colors = IntArray(cols * rows)
                 mosaic.getPixels(colors, 0, cols, 0, 0, cols, rows)
+                currentCoroutineContext().ensureActive()
                 val style = treatment.style
                 val motionKind = when (style) {
                     RevealStyle.BLOCKS -> PixelMotionKind.BLOCKS
@@ -159,6 +161,7 @@ internal class PixelArtView(context: Context) : View(context) {
                 val motionColors = motion?.let { plan -> IntArray(plan.columns * plan.rows).also {
                     requireNotNull(motionImage).getPixels(it, 0, plan.columns, 0, 0, plan.columns, plan.rows)
                 } } ?: IntArray(0)
+                currentCoroutineContext().ensureActive()
                 val starts = if (snakeAct != null) DoubleArray(0) else if (style == RevealStyle.SCENE)
                     SceneRevealField.create(entry.reveal, colors, cols, rows)
                 else revealField(style, requestedSeed + requestedScene + entry.id.hashCode())
@@ -172,6 +175,7 @@ internal class PixelArtView(context: Context) : View(context) {
                 } + mosaic else emptyList()
                 val retainedGrid = if (treatment.retainPixelGrid) motionImage ?:
                     Bitmap.createScaledBitmap(mosaic, treatment.columns, treatment.rows, true) else null
+                currentCoroutineContext().ensureActive()
                 Artwork(entry, picture, mosaic, Bitmap.createBitmap(cols, rows, Bitmap.Config.ARGB_8888),
                     colors, IntArray(cols * rows), starts, details, levels, style, motion, motionImage, motionColors,
                     snakeAct, retainedGrid)

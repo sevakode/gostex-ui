@@ -78,4 +78,11 @@
     <string name="movies_restore_hint">Попробовать magnet по hash. Для закрытых трекеров может понадобиться исходный торрент-файл.</string>
     <string name="movies_restore_working">Проверяем TorrServer…</string>
     <string name="movies_restore_sent">Запрос принят. Если участников нет, добавь исходный торрент с трекерами.</string>
+    <string name="movies_buffer_title">Подготовка видео</string>
+    <string name="movies_buffer_starting">Подключаемся к раздаче…</string>
+    <string name="movies_buffer_open">Открыть плеер сейчас</string>
+    <string name="movies_buffer_unknown">Неизвестно</string>
+    <string name="movies_buffer_status">Кэш: %1$s / %2$s\nСкорость раздачи: %3$s\n\nОткройте плеер, когда будете готовы.</string>
+    <string name="movies_buffer_waiting">Сервер ещё не ответил. Можно открыть плеер сейчас или отменить.</string>
+    <string name="movies_buffer_finished">Сервер завершил запрос подготовки. Откройте плеер, чтобы попробовать воспроизведение.</string>
 </resources>

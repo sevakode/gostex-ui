@@ -17,10 +17,14 @@ compiler = [jar('org.jetbrains.kotlin', a, v) for a, v in [
     ('kotlin-script-runtime', '2.4.21'), ('kotlin-reflect', '1.6.10'),
 ]] + [jar('org.jetbrains.kotlinx', 'kotlinx-coroutines-core-jvm', '1.9.0'), jar('org.jetbrains', 'annotations', '13.0')]
 json_jar = next((Path.home() / '.gradle/caches/modules-2/files-2.1/org.json/json/20180813').glob('*/*.jar'))
-ENTRY = {'hash':'a'*40, 'title':'test', 'file_stats':[{'id':1,'path':'dir/game.bin','length':4096}], 'download_speed':259364.74951573115, 'connected_seeders':3}
+ENTRY = {'hash':'a'*40, 'title':'test', 'file_stats':[{'id':1,'path':'dir/game.bin','length':4096}], 'download_speed':259364.74951573115, 'connected_seeders':3, 'preloaded_bytes':4194304, 'preload_size':33554432, 'stat':2}
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args): pass
     def do_GET(self):
+        if self.path == '/stream?link=' + 'a'*40 + '&index=2&preload&stat':
+            payload = json.dumps(ENTRY).encode()
+            self.send_response(200); self.send_header('Content-Length', str(len(payload))); self.end_headers(); self.wfile.write(payload)
+            return
         if self.path == '/stream?link=' + 'b'*40 + '&stat=1':
             time.sleep(0.6)
             self.send_response(200); self.send_header('Content-Length', '2'); self.end_headers()
@@ -52,7 +56,7 @@ class Handler(BaseHTTPRequestHandler):
             if request['action'] == 'get' and request.get('hash') == 'b'*40:
                 result = {'hash':'b'*40,'title':'unknown'}
             if request['action'] == 'get' and request.get('hash') == 'c'*40:
-                result = {'hash':'c'*40,'title':'bad','download_speed':-1,'connected_seeders':3.5}
+                result = {'hash':'c'*40,'title':'bad','download_speed':-1,'connected_seeders':3.5,'preloaded_bytes':-1,'preload_size':0,'stat':99}
             if request['action'] == 'get' and request.get('hash') == 'd'*40:
                 result = {'hash':'d'*40,'file_stats':[{'id':1,'path':'first.mkv','length':5},{'id':1,'path':'second.mkv','length':6}]}
             payload = b'' if request['action'] == 'rem' else json.dumps([result] if request['action'] == 'list' else result).encode()
@@ -75,10 +79,15 @@ fun main(args: Array<String>) {
     val entry = TorrServerCatalog.list(port).single()
     check(entry.hash == hash && entry.title == "test" && entry.files.single() == TorrCatalogFile(1,"dir/game.bin",4096))
     check(entry.downloadBytesPerSecond == 259364L && entry.connectedSeeders == 3)
+    val buffer = TorrServerCatalog.preload(hash,2,port)
+    check(buffer.cachedBytes == 4194304L && buffer.preloadBytes == 33554432L && buffer.serverState == 2)
+    check(runCatching { TorrServerCatalog.preload(hash,0,port) }.isFailure)
     val unknown = TorrServerCatalog.get("b".repeat(40),port)
     check(unknown.downloadBytesPerSecond == null && unknown.connectedSeeders == null)
+    check(unknown.cachedBytes == null && unknown.preloadBytes == null && unknown.serverState == null)
     val malformed = TorrServerCatalog.get("c".repeat(40),port)
     check(malformed.downloadBytesPerSecond == null && malformed.connectedSeeders == null)
+    check(malformed.cachedBytes == null && malformed.preloadBytes == null && malformed.serverState == null)
     check(runCatching { TorrServerCatalog.get("d".repeat(40),port) }.isFailure)
     check(runCatching { TorrServerCatalog.get("e".repeat(40),port) }.exceptionOrNull() is TorrEntryMissing)
     check(runCatching { TorrServerCatalog.get("f".repeat(40),port) }.exceptionOrNull() is java.io.IOException)

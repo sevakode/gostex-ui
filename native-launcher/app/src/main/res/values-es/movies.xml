@@ -78,4 +78,11 @@
     <string name="movies_restore_hint">Probar un magnet por hash. Los rastreadores privados pueden requerir el archivo torrent original.</string>
     <string name="movies_restore_working">Comprobando TorrServer…</string>
     <string name="movies_restore_sent">Solicitud aceptada. Si no hay participantes, añade el torrent original con sus rastreadores.</string>
+    <string name="movies_buffer_title">Preparando vídeo</string>
+    <string name="movies_buffer_starting">Conectando con los pares…</string>
+    <string name="movies_buffer_open">Abrir reproductor ahora</string>
+    <string name="movies_buffer_unknown">Desconocido</string>
+    <string name="movies_buffer_status">Caché: %1$s / %2$s\nVelocidad del torrent: %3$s\n\nAbre el reproductor cuando quieras.</string>
+    <string name="movies_buffer_waiting">El servidor aún no responde. Puedes abrir el reproductor ahora o cancelar.</string>
+    <string name="movies_buffer_finished">El servidor terminó la solicitud de preparación. Abre el reproductor para probar la reproducción.</string>
 </resources>

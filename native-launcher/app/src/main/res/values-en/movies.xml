@@ -78,4 +78,11 @@
     <string name="movies_restore_hint">Use its hash to try a magnet. Private trackers may require the original torrent file.</string>
     <string name="movies_restore_working">Checking TorrServer…</string>
     <string name="movies_restore_sent">Request accepted. If peers are unavailable, add the original torrent with its trackers.</string>
+    <string name="movies_buffer_title">Preparing video</string>
+    <string name="movies_buffer_starting">Connecting to peers…</string>
+    <string name="movies_buffer_open">Open player now</string>
+    <string name="movies_buffer_unknown">Unknown</string>
+    <string name="movies_buffer_status">Cache: %1$s / %2$s\nTorrent speed: %3$s\n\nOpen the player when ready.</string>
+    <string name="movies_buffer_waiting">Still waiting for the server. You can open the player now or cancel.</string>
+    <string name="movies_buffer_finished">The server finished its preparation request. Open the player to try playback.</string>
 </resources>

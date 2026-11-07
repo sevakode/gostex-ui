@@ -29,6 +29,8 @@ import androidx.tv.material3.Text
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 
 /** Film metadata and user-owned sources; streaming is delegated to an installed player. */
@@ -49,6 +51,7 @@ class MovieLibraryActivity : ComponentActivity() {
     private var readFailed = false
     private var requestGeneration = 0L
     private var sourceLookupJob: Job? = null
+    private var bufferDialog: AlertDialog? = null
     private var sourceRemovalVersion by mutableIntStateOf(0)
     private var pendingFileId: String? = null
     private var pendingTorrentHash: String? = null
@@ -92,6 +95,11 @@ class MovieLibraryActivity : ComponentActivity() {
         if (savedInstanceState == null && pendingTorrentHash != null) {
             TorrentArtworkPolicy.query(pendingTorrentTitle).takeIf { it.length >= 3 }?.let(::searchFor)
         }
+    }
+
+    override fun onStop() {
+        bufferDialog?.dismiss()
+        super.onStop()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -372,7 +380,7 @@ class MovieLibraryActivity : ComponentActivity() {
                     val file = videos[index]
                     val intent = Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse(TorrPlayback.url(entry.hash, file.id)), "video/*")
                     val identified = episode?.takeIf { episodeFileMatchesHistory(paths, it.season, it.episode, index) }
-                    startMovieIntent(intent, identified, choosePlayer)
+                    showTorrentBuffer(entry.hash, file.id) { startMovieIntent(intent, identified, choosePlayer) }
                 }
                 if (videos.size == 1) open(0)
                 else {
@@ -397,6 +405,46 @@ class MovieLibraryActivity : ComponentActivity() {
                     })
                 }
             }
+        }
+    }
+
+    private fun showTorrentBuffer(hash: String, fileId: Int, openPlayer: () -> Unit) {
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(R.string.movies_buffer_title)
+            .setMessage(R.string.movies_buffer_starting)
+            .setNegativeButton(R.string.movies_cancel, null)
+            .setPositiveButton(R.string.movies_buffer_open, null)
+            .create()
+        var monitor: Job? = null
+        var preload: Job? = null
+        var lastStatus = ""
+        bufferDialog?.dismiss()
+        bufferDialog = dialog
+        dialog.setOnDismissListener { monitor?.cancel(); preload?.cancel(); if (bufferDialog === dialog) bufferDialog = null }
+        dialog.show()
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener { dialog.dismiss(); openPlayer() }
+        monitor = lifecycleScope.launch {
+            while (isActive && dialog.isShowing) {
+                val entry = runCatching { withContext(Dispatchers.IO) { TorrServerCatalog.get(hash) } }.getOrNull()
+                if (entry != null && dialog.isShowing) {
+                    val speed = entry.downloadBytesPerSecond?.let { android.text.format.Formatter.formatFileSize(this@MovieLibraryActivity, it) + "/s" }
+                        ?: getString(R.string.movies_buffer_unknown)
+                    val cached = entry.cachedBytes?.let { android.text.format.Formatter.formatFileSize(this@MovieLibraryActivity, it) }
+                        ?: getString(R.string.movies_buffer_unknown)
+                    val target = entry.preloadBytes?.let { android.text.format.Formatter.formatFileSize(this@MovieLibraryActivity, it) }
+                        ?: getString(R.string.movies_buffer_unknown)
+                    lastStatus = getString(R.string.movies_buffer_status, cached, target, speed)
+                    dialog.setMessage(lastStatus)
+                }
+                delay(2000)
+            }
+        }
+        preload = lifecycleScope.launch {
+            val result = runCatching { withContext(Dispatchers.IO) { TorrServerCatalog.preload(hash, fileId) } }
+            if (!isActive || !dialog.isShowing) return@launch
+            monitor?.cancel()
+            val message = getString(if (result.isSuccess) R.string.movies_buffer_finished else R.string.movies_buffer_waiting)
+            dialog.setMessage(listOf(lastStatus, message).filter { it.isNotEmpty() }.joinToString("\n\n"))
         }
     }
 

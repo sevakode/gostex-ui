@@ -18,6 +18,7 @@ private class TorrHttpNotFound : IOException("Server endpoint or torrent not fou
 internal data class TorrCatalogEntry(
     val hash: String, val title: String, val files: List<TorrCatalogFile>,
     val downloadBytesPerSecond: Long? = null, val connectedSeeders: Int? = null,
+    val cachedBytes: Long? = null, val preloadBytes: Long? = null, val serverState: Int? = null,
 )
 
 /** Explicit user operations against the local server only, never background polling. */
@@ -76,6 +77,23 @@ internal object TorrServerCatalog {
         } finally {
             connection.disconnect()
         }
+    }
+
+    /** Explicitly starts server preloading for the selected file; this call can wait for peers. */
+    fun preload(hash: String, fileId: Int, port: Int = 8090): TorrCatalogEntry {
+        require(HASH.matches(hash) && fileId > 0 && port in 1..65535)
+        val connection = URL("http://127.0.0.1:$port/stream?link=$hash&index=$fileId&preload&stat").openConnection(Proxy.NO_PROXY) as HttpURLConnection
+        try {
+            connection.connectTimeout = 5000
+            connection.readTimeout = 120000
+            connection.instanceFollowRedirects = false
+            connection.useCaches = false
+            if (connection.responseCode != 200) throw IOException("Cannot prepare torrent")
+            if (connection.contentLengthLong > MAX_RESPONSE) throw IOException("Server response too large")
+            return parseEntry(JSONObject(connection.inputStream.use { String(readLimited(it, MAX_RESPONSE), Charsets.UTF_8) })).also {
+                if (!it.hash.equals(hash, ignoreCase = true)) throw IOException("Unexpected torrent identity")
+            }
+        } finally { connection.disconnect() }
     }
 
     fun addMagnet(magnet: String, port: Int = 8090): TorrCatalogEntry {
@@ -145,7 +163,10 @@ internal object TorrServerCatalog {
         }
         val rate = nonNegativeNumber("download_speed", 1_000_000_000.0)?.toLong()
         val seeds = nonNegativeNumber("connected_seeders", 1_000_000.0)?.takeIf { it % 1.0 == 0.0 }?.toInt()
-        return TorrCatalogEntry(hash, title, entries, rate, seeds)
+        val cached = nonNegativeNumber("preloaded_bytes", Long.MAX_VALUE.toDouble())?.toLong()
+        val preload = nonNegativeNumber("preload_size", Long.MAX_VALUE.toDouble())?.toLong()?.takeIf { it > 0 }
+        val state = nonNegativeNumber("stat", 5.0)?.takeIf { it % 1.0 == 0.0 }?.toInt()
+        return TorrCatalogEntry(hash, title, entries, rate, seeds, cached, preload, state)
     }
 
     private fun request(port: Int, path: String, type: String, body: ByteArray): String {

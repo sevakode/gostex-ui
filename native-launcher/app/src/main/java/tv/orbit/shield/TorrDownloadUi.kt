@@ -383,6 +383,13 @@ import kotlinx.coroutines.withContext
                 }
             }
         })
+        Spacer(Modifier.width(8.dp))
+        CompactIconButton(CompactIcon.Add, tr(R.string.movies_add_torrent_media), enabled = !busy, onClick = {
+            activity.startActivity(android.content.Intent(activity, MovieLibraryActivity::class.java).apply {
+                putExtra(MovieLibraryActivity.EXTRA_TORRENT_HASH, entry.hash)
+                putExtra(MovieLibraryActivity.EXTRA_TORRENT_TITLE, entry.title)
+            })
+        })
         }
     }
     if (page > 0) SettingRow("‹", onClick = { page-- })

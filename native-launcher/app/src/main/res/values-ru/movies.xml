@@ -91,4 +91,13 @@
     <string name="movies_status_refresh">Обновить</string>
     <string name="movies_status_unavailable">Не удалось получить статус. Проверьте TorrServer и попробуйте снова.</string>
     <string name="movies_status_values">Кэш раздачи: %1$s / %2$s\nСкорость раздачи: %3$s\n\nЭто снимок данных, они могут измениться.</string>
+    <string name="movies_status_metrics">Состояние сервера: %1$s\nЗанято кэша: %2$s\nЦель начального буфера: %3$s\nСкорость раздачи: %4$s\nПодключено сидов: %5$s</string>
+    <string name="movies_status_snapshot">Это снимок данных, они могут измениться.</string>
+    <string name="movies_status_open_hint">Откройте плеер, когда будете готовы.</string>
+    <string name="movies_state_added">Добавлена</string>
+    <string name="movies_state_metadata">Получение данных</string>
+    <string name="movies_state_preload">Подготовка буфера</string>
+    <string name="movies_state_working">Активна</string>
+    <string name="movies_state_closed">Закрыта</string>
+    <string name="movies_state_stored">В списке сервера</string>
 </resources>

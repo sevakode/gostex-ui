@@ -91,4 +91,13 @@
     <string name="movies_status_refresh">Actualizar</string>
     <string name="movies_status_unavailable">No se pudo obtener el estado. Comprueba TorrServer e inténtalo de nuevo.</string>
     <string name="movies_status_values">Caché del torrent: %1$s / %2$s\nVelocidad del torrent: %3$s\n\nLos valores pueden cambiar.</string>
+    <string name="movies_status_metrics">Estado en el servidor: %1$s\nCaché ocupado: %2$s\nObjetivo del búfer inicial: %3$s\nVelocidad del torrent: %4$s\nFuentes completas conectadas: %5$s</string>
+    <string name="movies_status_snapshot">Los valores pueden cambiar.</string>
+    <string name="movies_status_open_hint">Abre el reproductor cuando quieras.</string>
+    <string name="movies_state_added">Añadido</string>
+    <string name="movies_state_metadata">Obteniendo metadatos</string>
+    <string name="movies_state_preload">Preparando búfer</string>
+    <string name="movies_state_working">Activo</string>
+    <string name="movies_state_closed">Cerrado</string>
+    <string name="movies_state_stored">Guardado en el servidor</string>
 </resources>

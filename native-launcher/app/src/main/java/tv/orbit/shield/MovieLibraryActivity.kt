@@ -438,13 +438,7 @@ class MovieLibraryActivity : ComponentActivity() {
             while (isActive && dialog.isShowing) {
                 val entry = runCatching { withContext(Dispatchers.IO) { TorrServerCatalog.get(hash) } }.getOrNull()
                 if (entry != null && dialog.isShowing) {
-                    val speed = entry.downloadBytesPerSecond?.let { android.text.format.Formatter.formatFileSize(this@MovieLibraryActivity, it) + "/s" }
-                        ?: getString(R.string.movies_buffer_unknown)
-                    val cached = entry.cachedBytes?.let { android.text.format.Formatter.formatFileSize(this@MovieLibraryActivity, it) }
-                        ?: getString(R.string.movies_buffer_unknown)
-                    val target = entry.preloadBytes?.let { android.text.format.Formatter.formatFileSize(this@MovieLibraryActivity, it) }
-                        ?: getString(R.string.movies_buffer_unknown)
-                    lastStatus = getString(R.string.movies_buffer_status, cached, target, speed)
+                    lastStatus = torrentStatusText(entry, false)
                     dialog.setMessage(lastStatus)
                 }
                 delay(2000)
@@ -457,6 +451,24 @@ class MovieLibraryActivity : ComponentActivity() {
             val message = getString(if (result.isSuccess) R.string.movies_buffer_finished else R.string.movies_buffer_waiting)
             dialog.setMessage(listOf(lastStatus, message).filter { it.isNotEmpty() }.joinToString("\n\n"))
         }
+    }
+
+    private fun torrentStatusText(entry: TorrCatalogEntry, snapshot: Boolean): String {
+        val unknown = getString(R.string.movies_buffer_unknown)
+        fun size(value: Long?) = value?.let { android.text.format.Formatter.formatFileSize(this, it) } ?: unknown
+        val speed = entry.downloadBytesPerSecond?.let { size(it) + "/s" } ?: unknown
+        val state = when (entry.serverState) {
+            0 -> R.string.movies_state_added
+            1 -> R.string.movies_state_metadata
+            2 -> R.string.movies_state_preload
+            3 -> R.string.movies_state_working
+            4 -> R.string.movies_state_closed
+            5 -> R.string.movies_state_stored
+            else -> R.string.movies_buffer_unknown
+        }
+        val values = getString(R.string.movies_status_metrics, getString(state), size(entry.cachedBytes),
+            size(entry.preloadBytes), speed, entry.connectedSeeders?.toString() ?: unknown)
+        return values + "\n\n" + getString(if (snapshot) R.string.movies_status_snapshot else R.string.movies_status_open_hint)
     }
 
     /** An explicit snapshot of the last prepared torrent; it does not resume or start playback. */
@@ -483,10 +495,7 @@ class MovieLibraryActivity : ComponentActivity() {
                     dialog.setMessage(getString(R.string.movies_status_unavailable))
                     return@launch
                 }
-                fun size(value: Long?) = value?.let { android.text.format.Formatter.formatFileSize(this@MovieLibraryActivity, it) }
-                    ?: getString(R.string.movies_buffer_unknown)
-                val speed = entry.downloadBytesPerSecond?.let { size(it) + "/s" } ?: getString(R.string.movies_buffer_unknown)
-                dialog.setMessage(getString(R.string.movies_status_values, size(entry.cachedBytes), size(entry.preloadBytes), speed))
+                dialog.setMessage(torrentStatusText(entry, true))
             }
         }
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener { refreshStatus() }

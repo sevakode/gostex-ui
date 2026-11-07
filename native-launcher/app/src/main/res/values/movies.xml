@@ -91,4 +91,13 @@
     <string name="movies_status_refresh">Refresh</string>
     <string name="movies_status_unavailable">Cannot get the status. Check TorrServer and try again.</string>
     <string name="movies_status_values">Torrent cache: %1$s / %2$s\nTorrent speed: %3$s\n\nValues are a snapshot and may change.</string>
+    <string name="movies_status_metrics">Server state: %1$s\nCache filled: %2$s\nInitial buffer target: %3$s\nTorrent speed: %4$s\nConnected seeders: %5$s</string>
+    <string name="movies_status_snapshot">Values are a snapshot and may change.</string>
+    <string name="movies_status_open_hint">Open the player when ready.</string>
+    <string name="movies_state_added">Added</string>
+    <string name="movies_state_metadata">Fetching metadata</string>
+    <string name="movies_state_preload">Preparing buffer</string>
+    <string name="movies_state_working">Active</string>
+    <string name="movies_state_closed">Closed</string>
+    <string name="movies_state_stored">Stored on server</string>
 </resources>

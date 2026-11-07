@@ -44,6 +44,8 @@ import kotlinx.coroutines.withContext
     var magnet by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var preparingHash by remember { mutableStateOf<String?>(null) }
+    var metadataRetryInFlight by remember { mutableStateOf(false) }
+    var metadataRetryGeneration by remember { mutableStateOf(0L) }
     var failed by remember { mutableStateOf(false) }
     var journalFailed by remember { mutableStateOf(false) }
     var journalLoading by remember { mutableStateOf(true) }
@@ -95,7 +97,11 @@ import kotlinx.coroutines.withContext
             finally { removingJobId = null }
         }
     }
-    BackHandler(enabled = selected != null) { selected = null; filePage = 0; chosenFiles = emptySet() }
+    fun leaveSelected() {
+        if (metadataRetryInFlight) { metadataRetryGeneration++; busy = false }
+        selected = null; filePage = 0; chosenFiles = emptySet()
+    }
+    BackHandler(enabled = selected != null) { leaveSelected() }
     LaunchedEffect(selected) {
         if (selected == null) { withFrameNanos { }; runCatching { initialFocus.requestFocus() } }
     }
@@ -103,7 +109,7 @@ import kotlinx.coroutines.withContext
     val current = selected
     if (current != null) {
         LaunchedEffect(current.hash, current.files.isEmpty()) { runCatching { fileFocus.requestFocus() } }
-        SettingRow(tr(R.string.torr_download_back), modifier = Modifier.focusRequester(fileFocus), onClick = { selected = null; filePage = 0; chosenFiles = emptySet() })
+        SettingRow(tr(R.string.torr_download_back), modifier = Modifier.focusRequester(fileFocus), onClick = { leaveSelected() })
         Text(current.title, color = Color.White, fontSize = 16.sp)
         val coverId = remember(current.hash) { TorrentArtwork.id(current.hash) }
         val cover = activity.managedCovers[coverId]
@@ -188,19 +194,26 @@ import kotlinx.coroutines.withContext
         if (current.files.isEmpty()) {
             Text(tr(R.string.torr_download_no_files), color = Color.LightGray, fontSize = 13.sp)
             SettingRow(tr(R.string.torr_download_refresh), if (busy) tr(R.string.torr_download_preparing_files) else "", onClick = {
-                if (!busy) {
+                if (!busy && !metadataRetryInFlight) {
                     busy = true
+                    metadataRetryInFlight = true
+                    val generation = ++metadataRetryGeneration
+                    preparingHash = current.hash
                     activity.torrDownloadMessage = ""
                     scope.launch {
                         try {
                             val loaded = withContext(Dispatchers.IO) { TorrServerCatalog.loadFiles(current.hash) }
-                            if (selected?.hash == current.hash) { selected = loaded; filePage = 0; chosenFiles = emptySet() }
+                            if (generation == metadataRetryGeneration && selected?.hash == current.hash) { selected = loaded; filePage = 0; chosenFiles = emptySet() }
                         } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
                         catch (_: TorrMetadataTimeout) {
-                            if (selected?.hash == current.hash) activity.torrDownloadMessage = activity.getString(R.string.movies_torrent_timeout)
+                            if (generation == metadataRetryGeneration && selected?.hash == current.hash) activity.torrDownloadMessage = activity.getString(R.string.movies_torrent_timeout)
                         } catch (_: Exception) {
-                            if (selected?.hash == current.hash) activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed)
-                        } finally { busy = false }
+                            if (generation == metadataRetryGeneration && selected?.hash == current.hash) activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed)
+                        } finally {
+                            metadataRetryInFlight = false
+                            preparingHash = null
+                            if (generation == metadataRetryGeneration) busy = false
+                        }
                     }
                 }
             })
@@ -420,7 +433,7 @@ import kotlinx.coroutines.withContext
         } else CoverArtwork(artwork, Modifier.width(100.dp).height(57.dp))
         Spacer(Modifier.width(10.dp))
         SettingRow(entry.title, if (preparingHash == entry.hash) tr(R.string.torr_download_preparing_files) else "", modifier = Modifier.weight(1f), onClick = {
-            if (!busy) {
+            if (!busy && !metadataRetryInFlight) {
                 busy = true
                 preparingHash = entry.hash
                 activity.torrDownloadMessage = ""

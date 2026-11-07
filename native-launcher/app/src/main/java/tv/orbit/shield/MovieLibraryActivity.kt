@@ -15,6 +15,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -316,10 +317,10 @@ class MovieLibraryActivity : ComponentActivity() {
         if (isTorrent) { prepareTorrent(uri, episode); return }
         val intent = if (uri.scheme.equals("acestream", true)) Intent(Intent.ACTION_VIEW, uri)
             else Intent(Intent.ACTION_VIEW).setDataAndType(uri, "video/*")
-        startMovieIntent(intent)
+        startMovieIntent(intent, episode)
     }
 
-    private fun startMovieIntent(intent: Intent) {
+    private fun startMovieIntent(intent: Intent, episode: MovieEpisode? = null) {
         runCatching {
             val id = selected?.id ?: error("Missing media")
             val resolved = packageManager.resolveActivity(intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo
@@ -327,12 +328,13 @@ class MovieLibraryActivity : ComponentActivity() {
             val direct = resolved != null && handlers.any { it.activityInfo.packageName == resolved.packageName && it.activityInfo.name == resolved.name }
             if (direct) {
                 startActivity(intent)
-                MoviePlaybackReceipt.mark(this, id)
+                MoviePlaybackReceipt.mark(this, id, episode?.id)
             } else {
                 val receipt = Intent(this, MoviePlaybackReceipt::class.java).apply {
                     action = MoviePlaybackReceipt.ACTION
                     data = Uri.Builder().scheme("gostex-recent").authority("choice").appendPath(java.util.UUID.randomUUID().toString()).build()
                     putExtra(MoviePlaybackReceipt.EXTRA_ID, id)
+                    putExtra(MoviePlaybackReceipt.EXTRA_EPISODE_ID, episode?.id)
                 }
                 val sender = PendingIntent.getBroadcast(this, 0, receipt, PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE).intentSender
                 startActivity(Intent.createChooser(intent, null, sender))
@@ -363,7 +365,7 @@ class MovieLibraryActivity : ComponentActivity() {
                 if (videos.isEmpty()) { toast(R.string.movies_no_video); return@launch }
                 fun open(file: TorrCatalogFile) {
                     val intent = Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse(TorrPlayback.url(entry.hash, file.id)), "video/*")
-                    startMovieIntent(intent)
+                    startMovieIntent(intent, episode)
                 }
                 if (videos.size == 1) open(videos.single())
                 else {
@@ -404,6 +406,7 @@ class MovieLibraryActivity : ComponentActivity() {
 
     @Composable private fun MovieScreen() {
         val savedFocus = remember { FocusRequester() }
+        val lastEpisode = rememberLastEpisode(selected?.takeIf { it.mediaType == "series" }?.id)
         LaunchedEffect(sourceRemovalVersion) {
             if (sourceRemovalVersion > 0) {
                 withFrameNanos { }
@@ -465,6 +468,10 @@ class MovieLibraryActivity : ComponentActivity() {
                             item { SettingRow(tr(R.string.movies_add_file), onClick = { addFile() }) }
                             item { SettingRow(tr(if (movie.mediaType == "series") R.string.movies_find_episode_sources else R.string.movies_sources),
                                 onClick = { if (movie.mediaType == "series") chooseEpisode() else findSources() }) }
+                            if (lastEpisode != null) item(key = "last-episode") {
+                                SettingRow(tr(R.string.movies_last_episode), getString(R.string.movies_episode_selected, lastEpisode.season, episodeLabel(lastEpisode)),
+                                    onClick = { findSources(lastEpisode) })
+                            }
                             item { Text(tr(R.string.movies_torrent_hint), color = Color.LightGray, fontSize = 13.sp) }
                             stored?.sources?.let { savedSources ->
                                 items(savedSources, key = { "saved:${it.uri}:${it.fileIndex}" }) { source ->
@@ -480,7 +487,7 @@ class MovieLibraryActivity : ComponentActivity() {
                                 item { Text(tr(if (movie.mediaType == "series") R.string.movies_no_series_sources else R.string.movies_no_sources), color = Color.LightGray) }
                             sourceEpisode?.let { episode -> item { Text(getString(R.string.movies_episode_selected, episode.season, episodeLabel(episode)), color = Color.LightGray) } }
                             if (searchedSources && !busy && sources.isEmpty() && error.isBlank()) item { Text(tr(R.string.movies_search_empty), color = Color.LightGray) }
-                            items(sources) { stream ->
+                            itemsIndexed(sources, key = { index, _ -> "found:$index" }) { _, stream ->
                                 val hint = if (stream.external) listOf(tr(R.string.movies_external_open), stream.description).filter { it.isNotBlank() }.joinToString(" · ") else stream.description
                                 SettingRow(stream.name.ifBlank { tr(if (stream.external) R.string.movies_external_open else R.string.movies_play) }, hint, onClick = { chooseStream(stream) })
                                 val estimate = stream.sizeBytes?.let { size -> movie.durationSeconds?.let { MoviePlaybackEstimator.estimate(size, it, null) } }
@@ -491,6 +498,23 @@ class MovieLibraryActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    @Composable private fun rememberLastEpisode(seriesId: String?): MovieEpisode? {
+        val prefs = remember { getSharedPreferences("orbit", MODE_PRIVATE) }
+        fun read(): MovieEpisode? = seriesId?.let { id ->
+            runCatching { decodeEpisodeHistory(id, prefs.getString(episodeHistoryKey(id), null)) }.getOrNull()
+        }
+        var episode by remember(seriesId) { mutableStateOf(read()) }
+        DisposableEffect(prefs, seriesId) {
+            val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+                if (seriesId != null && (key == null || key == episodeHistoryKey(seriesId))) episode = read()
+            }
+            prefs.registerOnSharedPreferenceChangeListener(listener)
+            episode = read()
+            onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+        }
+        return episode
     }
 }
 

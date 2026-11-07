@@ -11,11 +11,13 @@ import kotlinx.coroutines.launch
 class MoviePlaybackReceipt : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val id = intent.getStringExtra(EXTRA_ID)?.takeIf { it.isNotBlank() && it.length <= 256 } ?: return
+        val episodeId = intent.getStringExtra(EXTRA_EPISODE_ID)
         if (intent.action != ACTION) return
         val pending = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                if (runCatching { MovieLibraryStore.read(context).any { it.id == id } }.getOrDefault(false)) mark(context, id)
+                val movie = runCatching { MovieLibraryStore.read(context).firstOrNull { it.id == id } }.getOrNull()
+                if (movie != null) mark(context, id, episodeId.takeIf { movie.mediaType == "series" })
             } finally { pending.finish() }
         }
     }
@@ -23,9 +25,12 @@ class MoviePlaybackReceipt : BroadcastReceiver() {
     internal companion object {
         const val ACTION = "tv.orbit.shield.MEDIA_PLAYER_SELECTED"
         const val EXTRA_ID = "media_id"
-        fun mark(context: Context, id: String) {
-            context.getSharedPreferences("orbit", Context.MODE_PRIVATE).edit()
-                .putLong("played:movie:$id", System.currentTimeMillis()).apply()
+        const val EXTRA_EPISODE_ID = "episode_id"
+        fun mark(context: Context, id: String, episodeId: String? = null) {
+            val edit = context.getSharedPreferences("orbit", Context.MODE_PRIVATE).edit()
+                .putLong("played:movie:$id", System.currentTimeMillis())
+            decodeEpisodeHistory(id, episodeId)?.let { edit.putString(episodeHistoryKey(id), it.id) }
+            edit.apply()
         }
     }
 }

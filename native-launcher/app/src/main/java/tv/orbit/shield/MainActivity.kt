@@ -192,23 +192,29 @@ class MainActivity : ComponentActivity() {
         }
     }
     private val mediaCoverLock = Mutex()
-    private val mediaCoverAttempts = mutableSetOf<String>()
+    private val mediaCoverAttempts = MediaCoverRetry()
     internal suspend fun fetchMediaCover(movie: SavedMovie) {
         val id = "movie:${movie.id}"
-        if (movie.poster == null || managedCovers[id]?.let { it.manual.isNotEmpty() || it.original.isNotEmpty() } == true) return
-        if (!mediaCoverAttempts.add(id)) return
+        val poster = movie.poster ?: return
+        fun enabled() = getSharedPreferences("orbit", MODE_PRIVATE).readBooleanOrDefault(MediaNavigation.AUTO_COVER_KEY, true)
+        if (!enabled() || managedCovers[id]?.let { it.manual.isNotEmpty() || it.original.isNotEmpty() } == true) return
+        if (!mediaCoverAttempts.begin(id, poster, android.os.SystemClock.elapsedRealtime())) return
+        var failedAttempt = false
         try {
             mediaCoverLock.withLock {
-                if (PortableMaintenance.running) return@withLock
-                val found = withContext(Dispatchers.IO) { TorrentArtwork.loadPoster(movie.poster) } ?: return@withLock
+                if (!enabled() || PortableMaintenance.running) return@withLock
+                val found = withContext(Dispatchers.IO) { TorrentArtwork.loadPoster(poster) }
+                if (found == null) { failedAttempt = true; return@withLock }
+                if (!enabled() || PortableMaintenance.running) return@withLock
                 coverEdits++
                 try {
                     managedCovers = withContext(Dispatchers.IO) { ManagedCoverStore.importTorrentAutomatic(this@MainActivity, id, found.bytes, found.sourceName, found.sourceUrl) }
                     coverRevision++
                 } finally { coverEdits-- }
             }
-        } catch (e: kotlinx.coroutines.CancellationException) { mediaCoverAttempts.remove(id); throw e }
-        catch (_: Exception) { /* Keep the title placeholder if the image is unavailable. */ }
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+        catch (_: Exception) { failedAttempt = true /* Keep the title placeholder. */ }
+        finally { mediaCoverAttempts.finish(id, poster, android.os.SystemClock.elapsedRealtime(), failedAttempt) }
     }
     private val torrFolderPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         val request = pendingTorrDownload

@@ -425,6 +425,7 @@ class MovieLibraryActivity : ComponentActivity() {
         var monitor: Job? = null
         var preload: Job? = null
         var lastStatus = ""
+        var preloadMessage = ""
         bufferDialog?.dismiss()
         bufferDialog = dialog
         dialog.setOnDismissListener { monitor?.cancel(); preload?.cancel(); if (bufferDialog === dialog) bufferDialog = null }
@@ -439,7 +440,7 @@ class MovieLibraryActivity : ComponentActivity() {
                 val entry = runCatching { withContext(Dispatchers.IO) { TorrServerCatalog.get(hash) } }.getOrNull()
                 if (entry != null && dialog.isShowing) {
                     lastStatus = torrentStatusText(entry, false)
-                    dialog.setMessage(lastStatus)
+                    dialog.setMessage(listOf(lastStatus, preloadMessage).filter { it.isNotEmpty() }.joinToString("\n\n"))
                 }
                 delay(2000)
             }
@@ -447,9 +448,8 @@ class MovieLibraryActivity : ComponentActivity() {
         preload = lifecycleScope.launch {
             val result = runCatching { withContext(Dispatchers.IO) { TorrServerCatalog.preload(hash, fileId) } }
             if (!isActive || !dialog.isShowing) return@launch
-            monitor?.cancel()
-            val message = getString(if (result.isSuccess) R.string.movies_buffer_finished else R.string.movies_buffer_waiting)
-            dialog.setMessage(listOf(lastStatus, message).filter { it.isNotEmpty() }.joinToString("\n\n"))
+            preloadMessage = getString(if (result.isSuccess) R.string.movies_buffer_finished else R.string.movies_buffer_waiting)
+            dialog.setMessage(listOf(lastStatus, preloadMessage).filter { it.isNotEmpty() }.joinToString("\n\n"))
         }
     }
 

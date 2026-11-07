@@ -97,4 +97,11 @@
     <string name="torr_remove_links_count">Fichas multimedia vinculadas: %1$d. Su fuente dejará de funcionar hasta volver a añadir el mismo torrent.</string>
     <string name="torr_remove_links_unknown">No se pudieron comprobar los medios vinculados. Algunas fuentes pueden dejar de funcionar.</string>
     <string name="downloads_external_magnet_confirm">¿Añadir este enlace magnet a la lista de torrents?</string>
+    <string name="torr_media_show_setting">Mostrar torrents de medios en descargas</string>
+    <string name="torr_media_show_hint">Las fuentes permanecen en el servidor aunque estén ocultas; las descargas siguen visibles.</string>
+    <string name="torr_media_protected_title">Fuente multimedia protegida</string>
+    <string name="torr_media_protected_message">Tu biblioteca usa este torrent. Ocúltalo de esta lista para mantener la reproducción.</string>
+    <string name="torr_media_check_failed">No se pudieron comprobar los vínculos. No se puede eliminar del servidor hasta leer la biblioteca.</string>
+    <string name="torr_media_hide_action">Ocultar medios en descargas</string>
+    <string name="torr_media_all_hidden">Las fuentes están ocultas aquí y siguen en tu biblioteca multimedia.</string>
 </resources>

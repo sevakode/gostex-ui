@@ -19,6 +19,14 @@ fun main() {
         SavedMovie("b", "B", "", null, listOf(same, other)),
         SavedMovie("c", "C", "", null, listOf(magnet, other)),
         SavedMovie("d", "D", "", null))
+    check(linkedTorrentHashes(movies) == setOf(hash, "b".repeat(40)))
+    val independent = listOf(SavedMovie("x", "X", "", null, listOf(
+        MovieSource("encoded", "magnet:?xt=urn%3Abtih%3A${"c".repeat(40)}"),
+        MovieSource("base32", "magnet:?xt=urn:btih:${"A".repeat(32)}"),
+        MovieSource("multiple", "magnet:?xt=urn:btih:bad&xt=urn:btih:${"d".repeat(40)}"),
+        MovieSource("invalid", "magnet:?xt=urn:btih:bad"))))
+    check(linkedTorrentHashes(independent) == setOf("c".repeat(40), "0".repeat(40), "d".repeat(40)))
+    check(linkedTorrentHashes(emptyList()).isEmpty())
     check(linkedTorrentMovieCount(movies, hash) == 2)
     check(linkedTorrentMovieCount(movies, "b".repeat(40)) == 2)
     check(linkedTorrentMovieCount(movies, "c".repeat(40)) == 0)

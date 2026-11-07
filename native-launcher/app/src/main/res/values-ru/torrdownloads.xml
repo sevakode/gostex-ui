@@ -97,4 +97,11 @@
     <string name="torr_remove_links_count">Связанных карточек медиа: %1$d. Источник в них не будет работать, пока тот же торрент не добавлен снова.</string>
     <string name="torr_remove_links_unknown">Не удалось проверить связи с медиатекой. Некоторые источники могут перестать работать.</string>
     <string name="downloads_external_magnet_confirm">Добавить эту magnet-ссылку в список торрентов?</string>
+    <string name="torr_media_show_setting">Показывать медиа в загрузках</string>
+    <string name="torr_media_show_hint">Источники остаются на сервере даже когда скрыты; очередь скачивания всегда видна.</string>
+    <string name="torr_media_protected_title">Источник медиатеки защищён</string>
+    <string name="torr_media_protected_message">Этот торрент используется в медиатеке. Скрой его из списка, чтобы фильм продолжал работать.</string>
+    <string name="torr_media_check_failed">Не удалось проверить связи с медиатекой. Удаление с сервера недоступно, пока медиатека не прочитана.</string>
+    <string name="torr_media_hide_action">Скрыть медиа из загрузок</string>
+    <string name="torr_media_all_hidden">Источники скрыты здесь и доступны в медиатеке.</string>
 </resources>

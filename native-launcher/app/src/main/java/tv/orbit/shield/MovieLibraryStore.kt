@@ -21,6 +21,7 @@ internal object MovieLibraryStore {
     private const val KEY = "movies.library.v1"
     private const val MAX_MOVIES = 1000
     private const val MAX_BYTES = 4 * 1024 * 1024
+    private val torrentRemovals = mutableSetOf<String>()
 
     private fun prefs(context: Context) = context.getSharedPreferences("orbit", Context.MODE_PRIVATE)
 
@@ -89,6 +90,9 @@ internal object MovieLibraryStore {
         val existing = read(context)
         require(movie.id.isNotBlank() && movie.id.length <= 256 && movie.title.isNotBlank() && movie.title.length <= 256)
         require(movie.year.length <= 64 && (movie.poster == null || movie.poster.length <= 2048))
+        // A server removal is reserved only after checking the current library.
+        // Do not add a new dependent source while the network removal is in flight.
+        require(torrentRemovals.none { hash -> movie.sources.any { it.uri.equals("torrserver://$hash", ignoreCase = true) } })
         require(movie.sources.size <= 100 && movie.sources.all {
             it.label.length <= 256 && validSource(it.uri) && (it.fileIndex == null || it.fileIndex >= 0) &&
                 (it.sizeBytes == null || it.sizeBytes > 0) && (it.filenameHint == null || validFilenameHint(it.filenameHint))
@@ -99,6 +103,21 @@ internal object MovieLibraryStore {
             else existing + movie
         require(updated.size <= MAX_MOVIES)
         return write(context, updated)
+    }
+
+    /** Reserve only unreferenced server entries; never hold this lock during network I/O. */
+    @Synchronized fun reserveTorrentRemoval(context: Context, hash: String): Boolean {
+        require(hash.matches(Regex("(?i)[0-9a-f]{40}")))
+        val normalized = hash.lowercase(java.util.Locale.ROOT)
+        if (normalized in torrentRemovals || read(context).any { movie ->
+                movie.sources.any { it.uri.equals("torrserver://$normalized", ignoreCase = true) }
+            }) return false
+        torrentRemovals.add(normalized)
+        return true
+    }
+
+    @Synchronized fun endTorrentRemoval(hash: String) {
+        torrentRemovals.remove(hash.lowercase(java.util.Locale.ROOT))
     }
 
     @Synchronized fun remove(context: Context, id: String): Boolean {

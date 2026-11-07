@@ -73,6 +73,15 @@ fun main() {
     check(MovieLibraryStore.save(ctx, movie.copy(sources = listOf(withHint))))
     check(MovieLibraryStore.read(ctx).first().sources.single().filenameHint == "Show.S02E03.mkv")
     check(runCatching { MovieLibraryStore.save(ctx, movie.copy(sources = listOf(withHint.copy(filenameHint = "x".repeat(513))))) }.isFailure)
+    val targetHash = "b".repeat(40)
+    check(MovieLibraryStore.reserveTorrentRemoval(ctx, targetHash))
+    check(!MovieLibraryStore.reserveTorrentRemoval(ctx, targetHash))
+    val linkedDuringRemoval = movie.copy(sources = listOf(MovieSource("Linked", "torrserver://$targetHash")))
+    check(runCatching { MovieLibraryStore.save(ctx, linkedDuringRemoval) }.isFailure)
+    MovieLibraryStore.endTorrentRemoval(targetHash)
+    check(MovieLibraryStore.save(ctx, linkedDuringRemoval))
+    check(!MovieLibraryStore.reserveTorrentRemoval(ctx, targetHash))
+    check(MovieLibraryStore.save(ctx, movie))
     val one = MovieSource("First", "torrserver://$hash", 0)
     val two = MovieSource("Second", "torrserver://$hash", 1)
     val third = MovieSource("Link", "https://example.com/test.mp4")
@@ -89,6 +98,7 @@ fun main() {
     val broken = "{bad"
     ctx.prefs.raw = broken
     check(runCatching { MovieLibraryStore.save(ctx, movie) }.isFailure)
+    check(runCatching { MovieLibraryStore.reserveTorrentRemoval(ctx, hash) }.isFailure)
     check(ctx.prefs.raw == broken)
     val addonContext = Context()
     val firstAddon = ConfiguredMovieAddon(MovieAddon("https://example.com/first/manifest.json", "First"), true)

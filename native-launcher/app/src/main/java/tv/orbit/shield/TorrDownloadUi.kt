@@ -61,6 +61,25 @@ import kotlinx.coroutines.withContext
     var writeRateKiB by remember { mutableStateOf(TorrDownloadWriteRate.read(activity)) }
     var autoRetry by remember { mutableStateOf(TorrDownloadRetryOptions.read(activity)) }
     val autoCover = rememberTorrentAutoCover()
+    val showMediaTorrents = rememberTorrMediaVisibility()
+    var linkedHashes by remember { mutableStateOf<Set<String>?>(null) }
+    var linkCheckFailed by remember { mutableStateOf(false) }
+    LaunchedEffect(activity.resumeVersion, activity.torrCatalogRevision) {
+        linkedHashes = null
+        linkCheckFailed = false
+        linkedHashes = try {
+            withContext(Dispatchers.IO) { linkedTorrentHashes(MovieLibraryStore.read(activity.applicationContext)) }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (_: Exception) { linkCheckFailed = true; null }
+    }
+    LaunchedEffect(linkedHashes, showMediaTorrents) {
+        val currentHash = selected?.hash?.lowercase(java.util.Locale.ROOT)
+        if (!showMediaTorrents && currentHash != null && linkedHashes?.contains(currentHash) == true) {
+            selected = null
+            filePage = 0
+            chosenFiles = emptySet()
+        }
+    }
     val fileFocus = remember { FocusRequester() }
     val revision = activity.torrCatalogRevision
 
@@ -152,11 +171,19 @@ import kotlinx.coroutines.withContext
                     catch (_: Exception) { null }
                     finally { busy = false }
                     if (selected?.hash != current.hash || activity.isFinishing || activity.isDestroyed) return@launch
-                    val extra = when {
-                        linked == null -> activity.getString(R.string.torr_remove_links_unknown)
-                        linked > 0 -> activity.getString(R.string.torr_remove_links_count, linked)
-                        else -> ""
+                    if (linked == null || linked > 0) {
+                        val dialog = android.app.AlertDialog.Builder(activity)
+                            .setTitle(R.string.torr_media_protected_title)
+                            .setMessage(if (linked == null) R.string.torr_media_check_failed else R.string.torr_media_protected_message)
+                            .setNegativeButton(R.string.cancel, null)
+                        if (linked != null) dialog.setPositiveButton(R.string.torr_media_hide_action) { _, _ ->
+                            TorrMediaVisibility.write(activity, false)
+                            selected = null
+                        }
+                        dialog.show()
+                        return@launch
                     }
+                    val extra = ""
                     val message = listOf(activity.getString(R.string.torr_remove_server_message), extra)
                         .filter { it.isNotEmpty() }.joinToString("\n\n")
                     android.app.AlertDialog.Builder(activity)
@@ -167,20 +194,29 @@ import kotlinx.coroutines.withContext
                                 busy = true
                                 scope.launch {
                                     var acquired = false
+                                    var mediaReserved = false
                                     var removed = false
                                     try {
                                         if (journalLoading || journalFailed) throw IllegalStateException("Queue unavailable")
                                         acquired = TorrDownloadStore.beginTorrentRemoval(activity, current.hash)
                                         if (!acquired) activity.torrDownloadMessage = activity.getString(R.string.torr_remove_server_pending)
                                         else {
-                                            withContext(Dispatchers.IO) { TorrServerCatalog.remove(current.hash) }
-                                            selected = null; chosenFiles = emptySet(); filePage = 0
-                                            activity.torrDownloadMessage = activity.getString(R.string.torr_remove_server_done)
-                                            removed = true
+                                            // Reserve the media relationship without holding a lock across HTTP.
+                                            withContext(Dispatchers.IO + NonCancellable) {
+                                                mediaReserved = MovieLibraryStore.reserveTorrentRemoval(activity.applicationContext, current.hash)
+                                            }
+                                            if (!mediaReserved) activity.torrDownloadMessage = activity.getString(R.string.torr_media_protected_message)
+                                            else {
+                                                withContext(Dispatchers.IO + NonCancellable) { TorrServerCatalog.remove(current.hash) }
+                                                selected = null; chosenFiles = emptySet(); filePage = 0
+                                                activity.torrDownloadMessage = activity.getString(R.string.torr_remove_server_done)
+                                                removed = true
+                                            }
                                         }
                                     } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
                                     catch (_: Exception) { activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed) }
                                     finally {
+                                        if (mediaReserved) MovieLibraryStore.endTorrentRemoval(current.hash)
                                         if (acquired) TorrDownloadStore.endTorrentRemoval(current.hash)
                                         busy = false
                                     }
@@ -279,6 +315,10 @@ import kotlinx.coroutines.withContext
             .onSuccess { autoRetry = next }
             .onFailure { activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed) }
     })
+    SettingRow(tr(R.string.torr_media_show_setting), tr(if (showMediaTorrents) R.string.enabled else R.string.disabled), onClick = {
+        TorrMediaVisibility.write(activity, !showMediaTorrents)
+    })
+    Text(tr(R.string.torr_media_show_hint), color = Color.LightGray, fontSize = 12.sp)
     SettingRow(tr(R.string.downloads_auto_cover), tr(if (autoCover) R.string.enabled else R.string.disabled), onClick = {
         TorrentArtwork.enabled(activity, !autoCover)
     })
@@ -421,8 +461,16 @@ import kotlinx.coroutines.withContext
         SettingRow(tr(R.string.torr_download_refresh), if (busy) tr(R.string.torr_download_loading) else "", modifier = Modifier.width(150.dp), onClick = { refresh() })
     }
     if (busy) Text(tr(R.string.torr_download_loading), color = Color.LightGray, fontSize = 13.sp)
-    if (entries.isEmpty() && !busy && !failed) Text(tr(R.string.torr_download_empty), color = Color.LightGray, fontSize = 13.sp)
-    entries.drop(page * 20).take(20).forEach { entry ->
+    val visibleEntries = remember(entries, linkedHashes, showMediaTorrents) {
+        if (showMediaTorrents || linkedHashes == null) entries
+        else entries.filterNot { it.hash.lowercase(java.util.Locale.ROOT) in linkedHashes!! }
+    }
+    LaunchedEffect(visibleEntries.size) { page = page.coerceAtMost(((visibleEntries.size - 1).coerceAtLeast(0)) / 20) }
+    if (linkCheckFailed) Text(tr(R.string.torr_media_check_failed), color = Color.LightGray, fontSize = 12.sp)
+    if (visibleEntries.isEmpty() && !busy && !failed) Text(
+        tr(if (entries.isNotEmpty() && linkedHashes != null && !showMediaTorrents) R.string.torr_media_all_hidden else R.string.torr_download_empty),
+        color = Color.LightGray, fontSize = 13.sp)
+    visibleEntries.drop(page * 20).take(20).forEach { entry ->
         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
         val coverId = remember(entry.hash) { TorrentArtwork.id(entry.hash) }
         val cover = activity.managedCovers[coverId]
@@ -459,5 +507,5 @@ import kotlinx.coroutines.withContext
         }
     }
     if (page > 0) SettingRow("‹", onClick = { page-- })
-    if ((page + 1) * 20 < entries.size) SettingRow("›", onClick = { page++ })
+    if ((page + 1) * 20 < visibleEntries.size) SettingRow("›", onClick = { page++ })
 }

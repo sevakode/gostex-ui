@@ -102,7 +102,7 @@ import kotlinx.coroutines.withContext
 
     val current = selected
     if (current != null) {
-        LaunchedEffect(current.hash) { runCatching { fileFocus.requestFocus() } }
+        LaunchedEffect(current.hash, current.files.isEmpty()) { runCatching { fileFocus.requestFocus() } }
         SettingRow(tr(R.string.torr_download_back), modifier = Modifier.focusRequester(fileFocus), onClick = { selected = null; filePage = 0; chosenFiles = emptySet() })
         Text(current.title, color = Color.White, fontSize = 16.sp)
         val coverId = remember(current.hash) { TorrentArtwork.id(current.hash) }
@@ -187,6 +187,23 @@ import kotlinx.coroutines.withContext
         })
         if (current.files.isEmpty()) {
             Text(tr(R.string.torr_download_no_files), color = Color.LightGray, fontSize = 13.sp)
+            SettingRow(tr(R.string.torr_download_refresh), if (busy) tr(R.string.torr_download_preparing_files) else "", onClick = {
+                if (!busy) {
+                    busy = true
+                    activity.torrDownloadMessage = ""
+                    scope.launch {
+                        try {
+                            val loaded = withContext(Dispatchers.IO) { TorrServerCatalog.loadFiles(current.hash) }
+                            if (selected?.hash == current.hash) { selected = loaded; filePage = 0; chosenFiles = emptySet() }
+                        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                        catch (_: TorrMetadataTimeout) {
+                            if (selected?.hash == current.hash) activity.torrDownloadMessage = activity.getString(R.string.movies_torrent_timeout)
+                        } catch (_: Exception) {
+                            if (selected?.hash == current.hash) activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed)
+                        } finally { busy = false }
+                    }
+                }
+            })
         } else {
             Text(tr(R.string.torr_download_choose_file), color = Color.LightGray, fontSize = 13.sp)
             if (chosenFiles.isNotEmpty()) SettingRow(tr(R.string.torr_download_selected, chosenFiles.size), onClick = {

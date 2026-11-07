@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="default_home_title">Основной лаунчер</string>
+    <string name="default_home_current">GOSTEX выбран основным лаунчером</string>
+    <string name="default_home_hint">Выберите GOSTEX в системном окне Android</string>
+    <string name="default_home_failed">Откройте настройки Android и выберите основной лаунчер</string>
+</resources>

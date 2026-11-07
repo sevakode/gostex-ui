@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="default_home_title">Default launcher</string>
+    <string name="default_home_current">GOSTEX is the default launcher</string>
+    <string name="default_home_hint">Choose GOSTEX on the Android screen</string>
+    <string name="default_home_failed">Open Android settings and choose a default launcher</string>
+</resources>

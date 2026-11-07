@@ -65,4 +65,6 @@
     <string name="movies_episode_selected">Season %1$d · %2$s</string>
     <string name="movies_search_empty">No playable sources found for this selection.</string>
     <string name="movies_partial_sources">Some add-ons did not respond. Results may be incomplete.</string>
+    <string name="movies_remove_addon">Remove add-on</string>
+    <string name="movies_remove_addon_confirm">Remove “%1$s”? Saved media and links will remain.</string>
 </resources>

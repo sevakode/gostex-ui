@@ -220,6 +220,19 @@ class MovieLibraryActivity : ComponentActivity() {
             }.show()
     }
 
+    private fun confirmRemoveAddon(entry: ConfiguredMovieAddon) {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.movies_remove_addon)
+            .setMessage(getString(R.string.movies_remove_addon_confirm, entry.addon.name))
+            .setNegativeButton(R.string.movies_cancel, null)
+            .setPositiveButton(R.string.movies_remove_addon) { _, _ ->
+                if (!readFailed && runCatching { MovieAddonPreferences.remove(this, entry.addon.manifestUrl) }.getOrDefault(false)) {
+                    refresh()
+                    sourceRemovalVersion++
+                } else toast(R.string.movies_source_failed)
+            }.show()
+    }
+
     private fun addAddon() = input(R.string.movies_add_addon, R.string.movies_addon_hint) { value ->
         stopSourceLookup()
         val generation = ++requestGeneration
@@ -414,10 +427,13 @@ class MovieLibraryActivity : ComponentActivity() {
                         item { Text(tr(R.string.movies_addon_privacy), color = Color.LightGray, fontSize = 13.sp) }
                         item { SettingRow(tr(R.string.movies_add_addon), onClick = { addAddon() }) }
                         items(addons, key = { it.addon.manifestUrl }) { entry ->
-                            SettingRow(entry.addon.name, tr(if (entry.enabled) R.string.movies_disable else R.string.movies_enable), onClick = {
-                                if (!readFailed && runCatching { MovieAddonPreferences.save(this@MovieLibraryActivity, entry.copy(enabled = !entry.enabled)) }.getOrDefault(false)) refresh()
-                                else toast(R.string.movies_source_failed)
-                            })
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                SettingRow(entry.addon.name, tr(if (entry.enabled) R.string.movies_disable else R.string.movies_enable), modifier = Modifier.weight(1f), onClick = {
+                                    if (!readFailed && runCatching { MovieAddonPreferences.save(this@MovieLibraryActivity, entry.copy(enabled = !entry.enabled)) }.getOrDefault(false)) refresh()
+                                    else toast(R.string.movies_source_failed)
+                                })
+                                SettingRow(tr(R.string.movies_remove_addon), modifier = Modifier.widthIn(max = 180.dp), onClick = { confirmRemoveAddon(entry) })
+                            }
                         }
                     }
                     "detail" -> {

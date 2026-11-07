@@ -86,6 +86,15 @@ fun main() {
     ctx.prefs.raw = broken
     check(runCatching { MovieLibraryStore.save(ctx, movie) }.isFailure)
     check(ctx.prefs.raw == broken)
+    val addonContext = Context()
+    val firstAddon = ConfiguredMovieAddon(MovieAddon("https://example.com/first/manifest.json", "First"), true)
+    val secondAddon = ConfiguredMovieAddon(MovieAddon("https://example.com/second/manifest.json", "Second"), false)
+    check(MovieAddonPreferences.save(addonContext, firstAddon) && MovieAddonPreferences.save(addonContext, secondAddon))
+    check(MovieAddonPreferences.remove(addonContext, firstAddon.addon.manifestUrl))
+    check(MovieAddonPreferences.read(addonContext) == listOf(secondAddon))
+    addonContext.prefs.raw = "{bad"
+    check(runCatching { MovieAddonPreferences.remove(addonContext, secondAddon.addon.manifestUrl) }.isFailure)
+    check(addonContext.prefs.raw == "{bad")
     val addon = MovieAddon("https://example.com/plugin/manifest.json", "test")
     check(MovieAddonClient.streamUrl(addon, "movie", "tt123").toString() == "https://example.com/plugin/stream/movie/tt123.json")
     check(MovieAddonClient.streamUrl(addon, "series", "tt123:2:4").toString() == "https://example.com/plugin/stream/series/tt123:2:4.json")
@@ -119,7 +128,7 @@ with tempfile.TemporaryDirectory(prefix='gostex-movies-') as td:
     src = ROOT / 'native-launcher/app/src/main/java/tv/orbit/shield'
     result = subprocess.run([str(JAVA), '-cp', ':'.join(map(str, compiler)), 'org.jetbrains.kotlin.cli.jvm.K2JVMCompiler',
         '-no-stdlib', '-no-reflect', '-classpath', cp, '-d', str(folder / 'classes'),
-        str(src / 'MovieLibraryStore.kt'), str(src / 'MovieAddonClient.kt'), str(src / 'MovieCatalogClient.kt'),
+        str(src / 'MovieLibraryStore.kt'), str(src / 'MovieAddonClient.kt'), str(src / 'MovieCatalogClient.kt'), str(src / 'MovieAddonPreferences.kt'),
         str(folder / 'Context.kt'), str(folder / 'Uri.kt'), str(folder / 'Checks.kt')], capture_output=True, text=True)
     if result.returncode:
         raise SystemExit(result.stderr)

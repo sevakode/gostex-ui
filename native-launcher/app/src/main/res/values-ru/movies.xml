@@ -65,4 +65,6 @@
     <string name="movies_episode_selected">Сезон %1$d · %2$s</string>
     <string name="movies_search_empty">Для выбранного видео подходящие источники не найдены.</string>
     <string name="movies_partial_sources">Некоторые дополнения не ответили. Список может быть неполным.</string>
+    <string name="movies_remove_addon">Удалить дополнение</string>
+    <string name="movies_remove_addon_confirm">Удалить «%1$s»? Сохранённые фильмы и ссылки останутся.</string>
 </resources>

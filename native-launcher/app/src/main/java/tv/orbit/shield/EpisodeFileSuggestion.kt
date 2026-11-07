@@ -1,5 +1,14 @@
 package tv.orbit.shield
 
+/** Exact unique filename is only a hint; the user confirms the selected file. */
+internal fun suggestFilename(paths: List<String>, filename: String?): Int? {
+    if (filename.isNullOrBlank() || filename.length > 512 || filename.any { it.isISOControl() }) return null
+    fun basename(value: String) = value.substringAfterLast('/').substringAfterLast('\\')
+    val name = basename(filename)
+    if (name.isBlank()) return null
+    return paths.indices.filter { basename(paths[it]).equals(name, ignoreCase = true) }.singleOrNull()
+}
+
 /** Conservative hint only: a user still confirms the file in the system list. */
 internal fun suggestEpisodeFile(paths: List<String>, season: Int, episode: Int): Int? {
     if (season !in 0..9999 || episode !in 0..99999) return null

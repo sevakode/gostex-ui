@@ -5,7 +5,7 @@ import android.net.Uri
 import org.json.JSONArray
 import org.json.JSONObject
 
-internal data class MovieSource(val label: String, val uri: String, val fileIndex: Int? = null, val sizeBytes: Long? = null)
+internal data class MovieSource(val label: String, val uri: String, val fileIndex: Int? = null, val sizeBytes: Long? = null, val filenameHint: String? = null)
 internal data class SavedMovie(
     val id: String,
     val title: String,
@@ -45,7 +45,10 @@ internal object MovieLibraryStore {
                 val size = if (source.has("sizeBytes") && !source.isNull("sizeBytes")) {
                     source.getLong("sizeBytes").also { require(it > 0) }
                 } else null
-                MovieSource(source.getString("label").also { require(it.length <= 256) }, uri, fileIndex, size)
+                val filenameHint = if (source.has("filenameHint") && !source.isNull("filenameHint")) {
+                    source.getString("filenameHint").also { require(validFilenameHint(it)) }
+                } else null
+                MovieSource(source.getString("label").also { require(it.length <= 256) }, uri, fileIndex, size, filenameHint)
             }
             SavedMovie(item.getString("id").also { require(it.isNotBlank() && it.length <= 256) },
                 item.getString("title").also { require(it.isNotBlank() && it.length <= 256) },
@@ -58,6 +61,9 @@ internal object MovieLibraryStore {
         require(movies.map { it.id }.distinct().size == movies.size)
         return movies
     }
+
+    fun validFilenameHint(value: String): Boolean =
+        value.isNotBlank() && value.length <= 512 && value.none { it.isISOControl() }
 
     fun validSource(value: String): Boolean {
         if (value.length !in 1..8192) return false
@@ -85,7 +91,7 @@ internal object MovieLibraryStore {
         require(movie.year.length <= 64 && (movie.poster == null || movie.poster.length <= 2048))
         require(movie.sources.size <= 100 && movie.sources.all {
             it.label.length <= 256 && validSource(it.uri) && (it.fileIndex == null || it.fileIndex >= 0) &&
-                (it.sizeBytes == null || it.sizeBytes > 0)
+                (it.sizeBytes == null || it.sizeBytes > 0) && (it.filenameHint == null || validFilenameHint(it.filenameHint))
         })
         require(movie.durationSeconds == null || movie.durationSeconds > 0)
         require(movie.mediaType in setOf("movie", "series"))
@@ -115,7 +121,8 @@ internal object MovieLibraryStore {
             val sources = JSONArray()
             entry.sources.forEach {
                 sources.put(JSONObject().put("label", it.label).put("uri", it.uri)
-                    .put("fileIndex", it.fileIndex ?: JSONObject.NULL).put("sizeBytes", it.sizeBytes ?: JSONObject.NULL))
+                    .put("fileIndex", it.fileIndex ?: JSONObject.NULL).put("sizeBytes", it.sizeBytes ?: JSONObject.NULL)
+                    .put("filenameHint", it.filenameHint ?: JSONObject.NULL))
             }
             array.put(JSONObject().put("id", entry.id).put("title", entry.title).put("year", entry.year)
                 .put("poster", entry.poster ?: "").put("sources", sources)

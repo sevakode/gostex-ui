@@ -6,6 +6,12 @@ from kotlin_toolchain import JAVA, COMPILER, ROOT
 source = ROOT / 'native-launcher/app/src/main/java/tv/orbit/shield/EpisodeFileSuggestion.kt'
 checks = '''package tv.orbit.shield
 fun main() {
+    check(suggestFilename(listOf("folder/one.mkv", "folder/TWO.MKV"), "two.mkv") == 1)
+    check(suggestFilename(listOf("a/one.mkv", "b/one.mkv"), "one.mkv") == null)
+    check(suggestFilename(listOf("folder/one.mkv"), "") == null)
+    check(suggestFilename(listOf("folder/one.mkv"), "missing.mkv") == null)
+    check(suggestFilename(listOf("folder/one.mkv"), null) == null)
+    check(suggestFilename(listOf("folder/one.mkv"), "a".repeat(513)) == null)
     fun hint(vararg paths: String) = suggestEpisodeFile(paths.toList(), 2, 3)
     check(hint("Season 2/Show.S02E01.mkv", "Season 2/Show.S02E03.1080p.mkv") == 1)
     check(hint("Show.2x03.720p.mp4") == 0)

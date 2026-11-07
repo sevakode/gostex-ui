@@ -6,7 +6,7 @@ import java.net.URL
 import java.net.URLEncoder
 
 internal data class MovieAddon(val manifestUrl: String, val name: String)
-internal data class MovieStreamOption(val name: String, val description: String, val uri: String, val fileIndex: Int?, val sizeBytes: Long?, val external: Boolean = false)
+internal data class MovieStreamOption(val name: String, val description: String, val uri: String, val fileIndex: Int?, val sizeBytes: Long?, val external: Boolean = false, val filenameHint: String? = null)
 
 /** Opt-in add-ons are queried only for a film explicitly selected by the user. */
 internal object MovieAddonClient {
@@ -92,8 +92,10 @@ internal object MovieAddonClient {
                 val uri = direct ?: torrent ?: external ?: continue
                 val fileIndex = if (entry.has("fileIdx") && !entry.isNull("fileIdx"))
                     entry.optInt("fileIdx", -1).takeIf { it >= 0 } else null
-                val size = entry.optJSONObject("behaviorHints")?.optLong("videoSize", -1)?.takeIf { it > 0 }
-                add(MovieStreamOption(entry.optString("name").take(256), entry.optString("description").ifBlank { entry.optString("title") }.take(1024), uri, fileIndex, size, direct == null && torrent == null))
+                val hints = entry.optJSONObject("behaviorHints")
+                val size = hints?.optLong("videoSize", -1)?.takeIf { it > 0 }
+                val filename = (hints?.opt("filename") as? String)?.takeIf { MovieLibraryStore.validFilenameHint(it) }
+                add(MovieStreamOption(entry.optString("name").take(256), entry.optString("description").ifBlank { entry.optString("title") }.take(1024), uri, fileIndex, size, direct == null && torrent == null, filename))
             }
         }
     }

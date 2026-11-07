@@ -332,7 +332,7 @@ class MovieLibraryActivity : ComponentActivity() {
         val uri = Uri.parse(source.uri)
         val isTorrent = uri.scheme.equals("torrserver", true) || uri.scheme.equals("magnet", true) || uri.scheme.equals("content", true) ||
             ((uri.scheme.equals("http", true) || uri.scheme.equals("https", true)) && uri.path?.endsWith(".torrent", ignoreCase = true) == true)
-        if (isTorrent) { prepareTorrent(uri, episode, choosePlayer); return }
+        if (isTorrent) { prepareTorrent(uri, episode, choosePlayer, source.filenameHint); return }
         val intent = if (uri.scheme.equals("acestream", true)) Intent(Intent.ACTION_VIEW, uri)
             else Intent(Intent.ACTION_VIEW).setDataAndType(uri, "video/*")
         startMovieIntent(intent, episode, choosePlayer)
@@ -360,7 +360,7 @@ class MovieLibraryActivity : ComponentActivity() {
         }.onFailure { toast(R.string.movies_player_missing) }
     }
 
-    private fun prepareTorrent(uri: Uri, episode: MovieEpisode?, choosePlayer: Boolean) {
+    private fun prepareTorrent(uri: Uri, episode: MovieEpisode?, choosePlayer: Boolean, filenameHint: String?) {
         if (busy) return
         val generation = ++requestGeneration
         busy = true; progressMessage = getString(R.string.movies_torrent_preparing); error = ""
@@ -390,7 +390,7 @@ class MovieLibraryActivity : ComponentActivity() {
                 }
                 if (videos.size == 1) open(0)
                 else {
-                    val suggested = episode?.let { suggestEpisodeFile(paths, it.season, it.episode) }
+                    val suggested = suggestFilename(paths, filenameHint) ?: episode?.let { suggestEpisodeFile(paths, it.season, it.episode) }
                     val labels = mediaFileLabels(videos).mapIndexed { index, label ->
                         if (index == suggested) getString(R.string.movies_suggested_file, label) else label
                     }
@@ -534,7 +534,7 @@ class MovieLibraryActivity : ComponentActivity() {
         }
         val movie = saveSelected() ?: return
         val label = listOf(stream.name, stream.description).filter { it.isNotBlank() }.joinToString(" · ").take(256)
-        val source = MovieSource(label, stream.uri, stream.fileIndex, stream.sizeBytes)
+        val source = MovieSource(label, stream.uri, stream.fileIndex, stream.sizeBytes, stream.filenameHint)
         if (movie.mediaType == "series") { play(source, sourceEpisode, choosePlayer); return }
         val updated = movie.copy(sources = movie.sources.filterNot { it.uri == source.uri && it.fileIndex == source.fileIndex } + source)
         if (runCatching { MovieLibraryStore.save(this, updated) }.getOrDefault(false)) { refresh(); play(source, choosePlayer = choosePlayer) }

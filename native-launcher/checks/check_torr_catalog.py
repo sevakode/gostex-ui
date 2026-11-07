@@ -37,6 +37,14 @@ class Handler(BaseHTTPRequestHandler):
             assert request['action'] in ('list', 'get', 'add', 'rem')
             if request['action'] == 'add': assert request['save_to_db'] and (request['link'].startswith('magnet:?') or request['link'] == 'https://example.com/file.torrent')
             if request['action'] == 'rem': assert request == {'action': 'rem', 'hash': 'a'*40}
+            if request['action'] == 'get' and request.get('hash') in ('e'*40, '1'*40):
+                self.server.fail_next_list = request['hash'] == '1'*40
+                self.send_response(404); self.end_headers(); return
+            if request['action'] == 'list' and getattr(self.server, 'fail_next_list', False):
+                self.server.fail_next_list = False
+                self.send_response(404); self.end_headers(); return
+            if request['action'] == 'get' and request.get('hash') == '2'*40:
+                self.send_response(500); self.end_headers(); return
             result = ENTRY
             if request['action'] == 'get' and request.get('hash') == 'b'*40:
                 result = {'hash':'b'*40,'title':'unknown'}
@@ -69,6 +77,12 @@ fun main(args: Array<String>) {
     val malformed = TorrServerCatalog.get("c".repeat(40),port)
     check(malformed.downloadBytesPerSecond == null && malformed.connectedSeeders == null)
     check(runCatching { TorrServerCatalog.get("d".repeat(40),port) }.isFailure)
+    check(runCatching { TorrServerCatalog.get("e".repeat(40),port) }.exceptionOrNull() is TorrEntryMissing)
+    check(runCatching { TorrServerCatalog.get("f".repeat(40),port) }.exceptionOrNull() is java.io.IOException)
+    val endpointFailure = runCatching { TorrServerCatalog.get("1".repeat(40),port) }.exceptionOrNull()
+    check(endpointFailure is java.io.IOException && endpointFailure !is TorrEntryMissing)
+    val serverFailure = runCatching { TorrServerCatalog.get("2".repeat(40),port) }.exceptionOrNull()
+    check(serverFailure is java.io.IOException && serverFailure !is TorrEntryMissing)
     check(TorrServerCatalog.get(hash,port) == entry)
     check(TorrServerCatalog.loadFiles(hash,port) == entry)
     check(runCatching { TorrServerCatalog.loadFiles("b".repeat(40),port,100) }.exceptionOrNull() is TorrMetadataTimeout)

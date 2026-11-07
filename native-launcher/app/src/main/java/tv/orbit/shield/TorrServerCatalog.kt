@@ -13,6 +13,8 @@ import java.util.UUID
 
 internal data class TorrCatalogFile(val id: Int, val path: String, val size: Long)
 internal class TorrMetadataTimeout : IOException("Torrent metadata request timed out")
+internal class TorrEntryMissing : IOException("Torrent not present in server catalog")
+private class TorrHttpNotFound : IOException("Server endpoint or torrent not found")
 internal data class TorrCatalogEntry(
     val hash: String, val title: String, val files: List<TorrCatalogFile>,
     val downloadBytesPerSecond: Long? = null, val connectedSeeders: Int? = null,
@@ -36,7 +38,16 @@ internal object TorrServerCatalog {
     fun get(hash: String, port: Int = 8090): TorrCatalogEntry {
         require(HASH.matches(hash))
         val body = JSONObject().put("action", "get").put("hash", hash).toString().toByteArray()
-        return parseEntry(JSONObject(request(port, "/torrents", "application/json", body)))
+        val data = try { request(port, "/torrents", "application/json", body) }
+        catch (missing: TorrHttpNotFound) {
+            // Verify that the catalog endpoint itself works before claiming a missing entry.
+            val entries = list(port)
+            if (entries.none { it.hash.equals(hash, ignoreCase = true) }) throw TorrEntryMissing()
+            throw IOException("Server could not retrieve a listed torrent", missing)
+        }
+        return parseEntry(JSONObject(data)).also {
+            if (!it.hash.equals(hash, ignoreCase = true)) throw IOException("Unexpected torrent identity")
+        }
     }
 
     /** Removes only the server entry; downloaded documents are never touched here. */
@@ -137,7 +148,9 @@ internal object TorrServerCatalog {
             connection.setRequestProperty("Content-Type", type)
             connection.setFixedLengthStreamingMode(body.size)
             connection.outputStream.use { it.write(body) }
-            if (connection.responseCode != 200) throw IOException("Server request failed: ${connection.responseCode}")
+            val status = connection.responseCode
+            if (status == 404) throw TorrHttpNotFound()
+            if (status != 200) throw IOException("Server request failed: $status")
             if (connection.contentLengthLong > MAX_RESPONSE) throw IOException("Server response too large")
             return connection.inputStream.use { String(readLimited(it, MAX_RESPONSE), Charsets.UTF_8) }
         } finally {

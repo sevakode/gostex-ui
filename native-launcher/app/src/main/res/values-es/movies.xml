@@ -71,4 +71,5 @@
     <string name="movies_external_unavailable">No hay una aplicación para abrir el enlace del servicio.</string>
     <string name="movies_suggested_file">Posible episodio: %1$s</string>
     <string name="movies_last_episode">Buscar fuentes del último episodio identificado</string>
+    <string name="movies_torrent_missing">Este torrent ya no está en TorrServer. Añade el mismo torrent o magnet en Descargas para restaurar el enlace.</string>
 </resources>

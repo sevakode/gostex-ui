@@ -385,7 +385,11 @@ class MovieLibraryActivity : ComponentActivity() {
             } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
             catch (failure: Exception) {
                 if (generation == requestGeneration && !isFinishing && !isDestroyed) {
-                    busy = false; error = getString(if (failure is TorrMetadataTimeout) R.string.movies_torrent_timeout else R.string.movies_torrent_error)
+                    busy = false; error = getString(when (failure) {
+                        is TorrMetadataTimeout -> R.string.movies_torrent_timeout
+                        is TorrEntryMissing -> R.string.movies_torrent_missing
+                        else -> R.string.movies_torrent_error
+                    })
                 }
             }
         }

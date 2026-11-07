@@ -1990,7 +1990,7 @@ private fun settingsTitle(section: String): Int = when {
         "libraryGroup" -> (if (activity.legacyRecoveryPending) listOf("legacyRecovery") else emptyList()) +
             listOf("addGames", "folders", "portableCopy", "covers", "ndsEmulator", "androidGames", "libraryTab", "appsTab")
         "localeGroup" -> listOf("language", "clock")
-        "systemGroup" -> listOf("batteryStatus", "network", "torrServer", "torrServeInstall", "shield", "remote")
+        "systemGroup" -> listOf("batteryStatus", "network", "torrServer", "torrServeInstall", "revancedManager", "shield", "remote")
         "portableCopy" -> listOf("copyAction", "portablePreview")
         else -> emptyList()
     }
@@ -2056,6 +2056,7 @@ private fun settingsTitle(section: String): Int = when {
                 SettingRow(tr(R.string.network_settings), modifier = rowFocus("network"), onClick = { activity.openNetworkSettings() })
                 TorrServerStatusSetting(rowFocus("torrServer"))
                 TorrServeInstallSetting(activity, rowFocus("torrServeInstall"))
+                ReVancedInstallSetting(activity, rowFocus("revancedManager"))
                 SettingRow(tr(R.string.shield_settings), modifier = rowFocus("shield"), onClick = { activity.openSettings() })
                 SettingRow(tr(R.string.remote_autostart), tr(if (remoteAuto) R.string.enabled else R.string.disabled), rowFocus("remote"), onClick = {
                     remoteAuto = !remoteAuto

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="revanced_title">Install ReVanced Manager Plus</string>
+    <string name="revanced_hint">Independent project · download from GitHub</string>
+    <string name="revanced_open">Open ReVanced Manager Plus</string>
+    <string name="revanced_installed">Already installed</string>
+    <string name="revanced_downloading">Downloading APK…</string>
+    <string name="revanced_permission">Allow GOSTEX to install apps, return and select Install again</string>
+    <string name="revanced_confirm">Confirm installation in Android</string>
+    <string name="revanced_failed">Could not install. Check your connection and try again.</string>
+</resources>

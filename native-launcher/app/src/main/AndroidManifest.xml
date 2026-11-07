@@ -13,6 +13,7 @@
     <queries>
         <package android:name="com.termux" />
         <package android:name="ru.yourok.torrserve" />
+        <package android:name="com.revanced.net.revancedmanager" />
         <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LEANBACK_LAUNCHER" /></intent>
         <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent>
         <intent><action android:name="android.intent.action.OPEN_DOCUMENT_TREE" /></intent>

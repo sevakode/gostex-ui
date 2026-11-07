@@ -46,6 +46,8 @@ import kotlinx.coroutines.withContext
     var preparingHash by remember { mutableStateOf<String?>(null) }
     var failed by remember { mutableStateOf(false) }
     var journalFailed by remember { mutableStateOf(false) }
+    var journalLoading by remember { mutableStateOf(true) }
+    var removingJobId by remember { mutableStateOf<String?>(null) }
     var discardErrorId by remember { mutableStateOf<String?>(null) }
     var page by remember { mutableStateOf(0) }
     var filePage by remember { mutableStateOf(0) }
@@ -73,8 +75,25 @@ import kotlinx.coroutines.withContext
         }
     }
     LaunchedEffect(revision) {
-        journalFailed = runCatching { TorrDownloadStore.recover(activity) }.isFailure
+        journalLoading = true
+        journalFailed = try {
+            withContext(Dispatchers.IO) { TorrDownloadStore.recover(activity.applicationContext) }
+            false
+        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (_: Exception) { true }
+        journalLoading = false
         refresh()
+    }
+    fun removeJobRecord(id: String) {
+        if (journalLoading || journalFailed || removingJobId != null) return
+        removingJobId = id
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO) { TorrDownloadStore.removeRecord(activity.applicationContext, id) }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) { activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed) }
+            finally { removingJobId = null }
+        }
     }
     BackHandler(enabled = selected != null) { selected = null; filePage = 0; chosenFiles = emptySet() }
     LaunchedEffect(selected) {
@@ -144,7 +163,7 @@ import kotlinx.coroutines.withContext
                                     var acquired = false
                                     var removed = false
                                     try {
-                                        if (journalFailed) throw IllegalStateException("Queue unavailable")
+                                        if (journalLoading || journalFailed) throw IllegalStateException("Queue unavailable")
                                         acquired = TorrDownloadStore.beginTorrentRemoval(activity, current.hash)
                                         if (!acquired) activity.torrDownloadMessage = activity.getString(R.string.torr_remove_server_pending)
                                         else {
@@ -277,15 +296,17 @@ import kotlinx.coroutines.withContext
         SettingRow(tr(R.string.torr_download_open), onClick = activity::openTorrServer)
     }
     Text(tr(R.string.torr_download_queue), color = Color.White, fontSize = 16.sp)
-    val pausedCount = jobs.count { it.state == "paused" }
-    if (!journalFailed && pausedCount > 1) SettingRow(tr(R.string.torr_download_resume_paused, pausedCount), onClick = {
+    val visibleJobs = if (journalLoading || journalFailed) emptyList() else jobs
+    val pausedCount = visibleJobs.count { it.state == "paused" }
+    if (!journalLoading && !journalFailed && pausedCount > 1) SettingRow(tr(R.string.torr_download_resume_paused, pausedCount), onClick = {
         val paused = TorrDownloadStore.jobs.value.filter { it.state == "paused" }.map { it.id }
         if (paused.isNotEmpty()) runCatching { activity.startTorrDownloads(paused) }
             .onFailure { activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed) }
     })
     if (journalFailed) Text(tr(R.string.torr_download_failed), color = Color.LightGray, fontSize = 13.sp)
-    if (jobs.isEmpty()) Text(tr(R.string.torr_download_empty_queue), color = Color.LightGray, fontSize = 13.sp)
-    jobs.drop(jobPage * 20).take(20).forEach { job ->
+    if (journalLoading) Text(tr(R.string.torr_download_loading), color = Color.LightGray, fontSize = 13.sp)
+    if (!journalLoading && !journalFailed && jobs.isEmpty()) Text(tr(R.string.torr_download_empty_queue), color = Color.LightGray, fontSize = 13.sp)
+    visibleJobs.drop(jobPage * 20).take(20).forEach { job ->
         val label = when (job.state) {
             "queued" -> R.string.torr_download_queued
             "running" -> if (job.error == "retrying") R.string.torr_download_retrying else R.string.torr_download_running
@@ -327,8 +348,7 @@ import kotlinx.coroutines.withContext
             }
         }
         if (job.state == "done") SettingRow(tr(R.string.torr_download_remove), tr(R.string.torr_download_keep_file), onClick = {
-            runCatching { TorrDownloadStore.removeRecord(activity, job.id) }
-                .onFailure { activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed) }
+            removeJobRecord(job.id)
         })
         if (job.state == "paused" || job.state == "error") SettingRow(
             tr(R.string.torr_download_remove), tr(R.string.torr_download_keep_partial), onClick = {
@@ -336,8 +356,7 @@ import kotlinx.coroutines.withContext
                     .setTitle(R.string.torr_download_remove_incomplete_title)
                     .setMessage(R.string.torr_download_remove_incomplete_message)
                     .setPositiveButton(R.string.torr_download_remove) { _, _ ->
-                        runCatching { TorrDownloadStore.removeRecord(activity, job.id) }
-                            .onFailure { activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed) }
+                        removeJobRecord(job.id)
                     }
                     .setNegativeButton(R.string.cancel, null).show()
             })
@@ -366,8 +385,8 @@ import kotlinx.coroutines.withContext
             modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }, color = Color.LightGray, fontSize = 13.sp)
     }
     if (jobPage > 0) SettingRow("‹", onClick = { jobPage-- })
-    if ((jobPage + 1) * 20 < jobs.size) SettingRow("›", onClick = { jobPage++ })
-    if (jobs.any { it.state == "done" }) Text(tr(R.string.torr_download_keep_file), color = Color.LightGray, fontSize = 13.sp)
+    if ((jobPage + 1) * 20 < visibleJobs.size) SettingRow("›", onClick = { jobPage++ })
+    if (visibleJobs.any { it.state == "done" }) Text(tr(R.string.torr_download_keep_file), color = Color.LightGray, fontSize = 13.sp)
     Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
         Text(tr(R.string.torr_download_choose_torrent), modifier = Modifier.weight(1f), color = Color.White, fontSize = 16.sp)
         SettingRow(tr(R.string.torr_download_refresh), if (busy) tr(R.string.torr_download_loading) else "", modifier = Modifier.width(150.dp), onClick = { refresh() })

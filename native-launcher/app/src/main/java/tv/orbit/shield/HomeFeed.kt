@@ -99,6 +99,7 @@ internal data class HomeFeedRequest(val sequence: Long, val step: Int, val ancho
     onEmptySettings: () -> Unit
 ) {
     val currentRows by rememberUpdatedState(rows)
+    val autoMediaCover = rememberMediaAutoCover()
     LaunchedEffect(rows) { state.retain(rows) }
     suspend fun focusRow(index: Int, anchor: HomeFeedAnchor? = null) {
         val row = currentRows.getOrNull(index) ?: return
@@ -194,8 +195,7 @@ internal data class HomeFeedRequest(val sequence: Long, val step: Int, val ancho
                                     onFocus = onFocus, onClick = { onFocus(); onAppOpen(item.app) },
                                     onLongClick = { onFocus(); onAppMenu(item.app, focus) })
                                 is HomeTileItem.MovieItem -> {
-                                    val autoCover = rememberMediaAutoCover()
-                                    LaunchedEffect(item.movie.id, item.movie.poster, autoCover) { if (autoCover) onMovieCover(item.movie) }
+                                    LaunchedEffect(item.movie.id, item.movie.poster, autoMediaCover) { if (autoMediaCover) onMovieCover(item.movie) }
                                     MediaTile(item.movie, modifier = Modifier.width(tileWidth).focusRequester(focus), favorite = item.key in favorites,
                                         onFocus = onFocus, onClick = { onFocus(); onMovieOpen(item.movie) },
                                         onLongClick = { onFocus(); onMovieMenu(item.movie, focus) })

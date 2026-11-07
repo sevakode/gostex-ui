@@ -222,6 +222,21 @@ class MainActivity : ComponentActivity() {
             } catch (_: Exception) { torrDownloadMessage = getString(R.string.torr_download_failed) }
         }
     }
+    internal fun importMagnet(uri: Uri) {
+        val magnet = uri.toString()
+        if (PortableMaintenance.running || !MovieLibraryStore.validSource(magnet) ||
+            !uri.scheme.equals("magnet", ignoreCase = true) || magnet.contains('\r') || magnet.contains('\n')) return
+        importScope.launch {
+            try {
+                val entry = withContext(Dispatchers.IO) { TorrServerCatalog.addMagnet(magnet) }
+                torrCatalogRevision++
+                torrDownloadMessage = getString(R.string.torr_download_torrent_added)
+                findTorrentCover(entry)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) { torrDownloadMessage = getString(R.string.torr_download_failed) }
+        }
+    }
+
     internal fun findTorrentCover(entry: TorrCatalogEntry) {
         if (!TorrentArtwork.enabled(this) || PortableMaintenance.running) return
         val id = runCatching { TorrentArtwork.id(entry.hash) }.getOrNull() ?: return
@@ -660,7 +675,9 @@ class MainActivity : ComponentActivity() {
         val type = intent.type?.lowercase(java.util.Locale.ROOT)
         val torrentType = type in setOf("application/x-bittorrent", "application/x-torrent") ||
             (type == "application/octet-stream" && uri.lastPathSegment?.endsWith(".torrent", ignoreCase = true) == true)
-        if (intent.action == Intent.ACTION_VIEW && torrentType && uri.scheme == "content") {
+        val magnet = uri.scheme.equals("magnet", ignoreCase = true) && MovieLibraryStore.validSource(uri.toString()) &&
+            !uri.toString().contains('\r') && !uri.toString().contains('\n')
+        if (intent.action == Intent.ACTION_VIEW && ((torrentType && uri.scheme == "content") || magnet)) {
             incomingTorrentUri = uri
         }
     }
@@ -1255,12 +1272,13 @@ class MainActivity : ComponentActivity() {
     if (incomingTorrent != null) {
         LaunchedEffect(incomingTorrent) { tab = "downloads"; settingsOpen = false; detail = null }
         DisposableEffect(activity, incomingTorrent) {
+            val magnet = incomingTorrent.scheme.equals("magnet", ignoreCase = true)
             val dialog = android.app.AlertDialog.Builder(activity)
-                .setTitle(R.string.torr_download_add_file)
-                .setMessage(R.string.downloads_external_confirm)
-                .setPositiveButton(R.string.torr_download_add_file) { _, _ ->
+                .setTitle(if (magnet) R.string.torr_download_add_magnet else R.string.torr_download_add_file)
+                .setMessage(if (magnet) R.string.downloads_external_magnet_confirm else R.string.downloads_external_confirm)
+                .setPositiveButton(if (magnet) R.string.torr_download_add_magnet else R.string.torr_download_add_file) { _, _ ->
                     activity.incomingTorrentUri = null
-                    activity.importTorrentUri(incomingTorrent)
+                    if (magnet) activity.importMagnet(incomingTorrent) else activity.importTorrentUri(incomingTorrent)
                 }
                 .setNegativeButton(R.string.cancel) { _, _ -> activity.incomingTorrentUri = null }
                 .setOnCancelListener { activity.incomingTorrentUri = null }

@@ -96,4 +96,5 @@
     <string name="downloads_indicator_queued">Downloads queued</string>
     <string name="torr_remove_links_count">Linked media cards: %1$d. Their torrent source will not work until the same torrent is added again.</string>
     <string name="torr_remove_links_unknown">Could not check linked media cards. Some sources may stop working.</string>
+    <string name="downloads_external_magnet_confirm">Add this magnet link to the torrent list?</string>
 </resources>

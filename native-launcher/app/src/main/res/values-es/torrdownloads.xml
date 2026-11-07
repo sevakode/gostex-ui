@@ -89,4 +89,6 @@
     <string name="downloads_indicator_progress">Descargas · %1$d%%</string>
     <string name="downloads_indicator_active">Descargando</string>
     <string name="downloads_indicator_queued">Descargas en cola</string>
+    <string name="torr_remove_links_count">Fichas multimedia vinculadas: %1$d. Su fuente dejará de funcionar hasta volver a añadir el mismo torrent.</string>
+    <string name="torr_remove_links_unknown">No se pudieron comprobar los medios vinculados. Algunas fuentes pueden dejar de funcionar.</string>
 </resources>

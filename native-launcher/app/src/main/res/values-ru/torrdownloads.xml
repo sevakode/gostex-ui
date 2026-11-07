@@ -89,4 +89,6 @@
     <string name="downloads_indicator_progress">Загрузки · %1$d%%</string>
     <string name="downloads_indicator_active">Идёт загрузка</string>
     <string name="downloads_indicator_queued">Загрузки в очереди</string>
+    <string name="torr_remove_links_count">Связанных карточек медиа: %1$d. Источник в них не будет работать, пока тот же торрент не добавлен снова.</string>
+    <string name="torr_remove_links_unknown">Не удалось проверить связи с медиатекой. Некоторые источники могут перестать работать.</string>
 </resources>

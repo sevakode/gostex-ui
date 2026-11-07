@@ -118,35 +118,53 @@ import kotlinx.coroutines.withContext
         if (activity.torrDownloadMessage.isNotBlank()) Text(activity.torrDownloadMessage,
             modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }, color = Color.LightGray, fontSize = 13.sp)
         SettingRow(tr(R.string.torr_remove_server), onClick = {
-            if (!busy) android.app.AlertDialog.Builder(activity)
-                .setTitle(R.string.torr_remove_server_title)
-                .setMessage(R.string.torr_remove_server_message)
-                .setPositiveButton(R.string.torr_remove_server) { _, _ ->
-                    if (!busy) {
-                        busy = true
-                        scope.launch {
-                            var acquired = false
-                            var removed = false
-                            try {
-                                if (journalFailed) throw IllegalStateException("Queue unavailable")
-                                acquired = TorrDownloadStore.beginTorrentRemoval(activity, current.hash)
-                                if (!acquired) activity.torrDownloadMessage = activity.getString(R.string.torr_remove_server_pending)
-                                else {
-                                    withContext(Dispatchers.IO) { TorrServerCatalog.remove(current.hash) }
-                                    selected = null; chosenFiles = emptySet(); filePage = 0
-                                    activity.torrDownloadMessage = activity.getString(R.string.torr_remove_server_done)
-                                    removed = true
-                                }
-                            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
-                            catch (_: Exception) { activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed) }
-                            finally {
-                                if (acquired) TorrDownloadStore.endTorrentRemoval(current.hash)
-                                busy = false
-                            }
-                            if (removed) refresh()
-                        }
+            if (!busy) {
+                busy = true
+                scope.launch {
+                    val linked = try {
+                        withContext(Dispatchers.IO) { linkedTorrentMovieCount(MovieLibraryStore.read(activity), current.hash) }
+                    } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                    catch (_: Exception) { null }
+                    finally { busy = false }
+                    if (selected?.hash != current.hash || activity.isFinishing || activity.isDestroyed) return@launch
+                    val extra = when {
+                        linked == null -> activity.getString(R.string.torr_remove_links_unknown)
+                        linked > 0 -> activity.getString(R.string.torr_remove_links_count, linked)
+                        else -> ""
                     }
-                }.setNegativeButton(R.string.cancel, null).show()
+                    val message = listOf(activity.getString(R.string.torr_remove_server_message), extra)
+                        .filter { it.isNotEmpty() }.joinToString("\n\n")
+                    android.app.AlertDialog.Builder(activity)
+                        .setTitle(R.string.torr_remove_server_title)
+                        .setMessage(message)
+                        .setPositiveButton(R.string.torr_remove_server) { _, _ ->
+                            if (!busy) {
+                                busy = true
+                                scope.launch {
+                                    var acquired = false
+                                    var removed = false
+                                    try {
+                                        if (journalFailed) throw IllegalStateException("Queue unavailable")
+                                        acquired = TorrDownloadStore.beginTorrentRemoval(activity, current.hash)
+                                        if (!acquired) activity.torrDownloadMessage = activity.getString(R.string.torr_remove_server_pending)
+                                        else {
+                                            withContext(Dispatchers.IO) { TorrServerCatalog.remove(current.hash) }
+                                            selected = null; chosenFiles = emptySet(); filePage = 0
+                                            activity.torrDownloadMessage = activity.getString(R.string.torr_remove_server_done)
+                                            removed = true
+                                        }
+                                    } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                                    catch (_: Exception) { activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed) }
+                                    finally {
+                                        if (acquired) TorrDownloadStore.endTorrentRemoval(current.hash)
+                                        busy = false
+                                    }
+                                    if (removed) refresh()
+                                }
+                            }
+                        }.setNegativeButton(R.string.cancel, null).show()
+                }
+            }
         })
         if (current.files.isEmpty()) {
             Text(tr(R.string.torr_download_no_files), color = Color.LightGray, fontSize = 13.sp)

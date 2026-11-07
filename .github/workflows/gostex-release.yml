@@ -71,6 +71,7 @@ jobs:
           python3 native-launcher/checks/check_media_file_labels.py
           python3 native-launcher/checks/check_episode_file_suggestion.py
           python3 native-launcher/checks/check_episode_history.py
+          python3 native-launcher/checks/check_movie_torrent_links.py
           python3 native-launcher/checks/check_episode_receipt.py
           python3 native-launcher/checks/check_media_cover_retry.py
           python3 native-launcher/checks/check_movie_addon_lookup.py

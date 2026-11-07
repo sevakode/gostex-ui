@@ -67,8 +67,13 @@ class Handler(BaseHTTPRequestHandler):
                 result = {'hash':'d'*40,'file_stats':[{'id':1,'path':'first.mkv','length':5},{'id':1,'path':'second.mkv','length':6}]}
             payload = b'' if request['action'] == 'rem' else json.dumps([result] if request['action'] == 'list' else result).encode()
         elif self.path == '/torrent/upload':
-            assert b'name="save"\r\n\r\ntrue' in body and b'name="file"' in body and b'fixture-bytes' in body
-            payload = json.dumps(ENTRY).encode()
+            assert b'name="save"\r\n\r\ntrue' in body and b'name="file"' in body
+            self.server.uploads.append(body)
+            if b'fixture-bytes' in body: result = ENTRY
+            else:
+                assert b'd4:infod4:name5:helloee' in body
+                result = {'hash':'ceff46bbeb156d9d8ebecb01d6f8bbb8213bb97b', 'title':'restored'}
+            payload = json.dumps(result).encode()
         else: raise AssertionError(self.path)
         self.send_response(200); self.send_header('Content-Length', str(len(payload))); self.end_headers(); self.wfile.write(payload)
 checks = '''package tv.orbit.shield
@@ -122,6 +127,15 @@ fun main(args: Array<String>) {
     check(runCatching { TorrServerCatalog.addTorrentUrl("file:///tmp/file.torrent",port) }.isFailure)
     check(runCatching { TorrServerCatalog.addTorrentUrl("https://example.com/movie.mp4",port) }.isFailure)
     check(TorrServerCatalog.upload(ByteArrayInputStream("fixture-bytes".toByteArray()),port) == entry)
+    val torrent = "d4:infod4:name5:helloee".toByteArray()
+    val fileHash = "ceff46bbeb156d9d8ebecb01d6f8bbb8213bb97b"
+    check(TorrentFileIdentity.infoHash(torrent) == fileHash)
+    check(runCatching { TorrServerCatalog.restoreFromFile(ByteArrayInputStream(torrent),hash,port) }.exceptionOrNull() is TorrentIdentityMismatch)
+    check(TorrServerCatalog.restoreFromFile(ByteArrayInputStream(torrent),fileHash.uppercase(),port).hash == fileHash)
+    for (invalid in listOf("", "d4:info3:abce", "d4:infode4:infodee", "d4:infodeeEXTRA", "d4:infod1:xi-0eee", "d4:infod1:x01:aee", "d4:infod1:x999999999999:aee"))
+        check(runCatching { TorrentFileIdentity.infoHash(invalid.toByteArray()) }.isFailure)
+    check(runCatching { TorrentFileIdentity.infoHash(ByteArray(4*1024*1024+1)) }.isFailure)
+    check(runCatching { TorrentFileIdentity.infoHash(("d4:infod1:x" + "l".repeat(70) + "e".repeat(72)).toByteArray()) }.isFailure)
     TorrServerCatalog.remove(hash,port)
     check(runCatching { TorrServerCatalog.remove("invalid", port) }.isFailure)
     check(runCatching { TorrServerCatalog.get("invalid", port) }.isFailure)
@@ -130,18 +144,19 @@ fun main(args: Array<String>) {
     println("PASS: catalog list, file metadata, magnet, torrent upload and input bounds")
 }
 '''
-server = ThreadingHTTPServer(('127.0.0.1', 0), Handler); server.events = []; thread = Thread(target=server.serve_forever,daemon=True); thread.start()
+server = ThreadingHTTPServer(('127.0.0.1', 0), Handler); server.events = []; server.uploads = []; thread = Thread(target=server.serve_forever,daemon=True); thread.start()
 try:
     with tempfile.TemporaryDirectory(prefix='gostex-catalog-test-') as td:
         folder=Path(td); (folder/'Checks.kt').write_text(checks); cp=f'{compiler[1]}:{json_jar}'
         source=ROOT/'native-launcher/app/src/main/java/tv/orbit/shield/TorrServerCatalog.kt'
         result=subprocess.run([str(JAVA),'-cp',':'.join(map(str,compiler)),'org.jetbrains.kotlin.cli.jvm.K2JVMCompiler',
-            '-no-stdlib','-no-reflect','-classpath',cp,'-d',str(folder/'classes'),str(source),str(folder/'Checks.kt')],capture_output=True,text=True)
+            '-no-stdlib','-no-reflect','-classpath',cp,'-d',str(folder/'classes'),str(source),str(source.parent/'TorrentFileIdentity.kt'),str(folder/'Checks.kt')],capture_output=True,text=True)
         if result.returncode: raise SystemExit(result.stderr)
         result=subprocess.run([str(JAVA),'-cp',f'{folder / "classes"}:{cp}','tv.orbit.shield.ChecksKt',str(server.server_port)],capture_output=True,text=True)
         print(result.stdout,end='')
         if result.returncode: raise SystemExit(result.stderr)
         events = server.events
+        assert len(server.uploads) == 2  # ordinary upload plus matching restore; mismatch did not reach server
         assert any(e == {'action':'get', 'hash':'e'*40} and events[i+1] == {'action':'get', 'hash':'a'*40} for i,e in enumerate(events[:-1]))  # status 404 has no list fallback
         adds = [event['link'] for event in server.events if event.get('action') == 'add']
         assert adds.count('magnet:?xt=urn:btih:' + 'e'*40) == 1

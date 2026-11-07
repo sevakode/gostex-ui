@@ -5,6 +5,7 @@ import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
+import java.io.ByteArrayInputStream
 import java.net.HttpURLConnection
 import java.net.Proxy
 import java.net.SocketTimeoutException
@@ -14,6 +15,7 @@ import java.util.UUID
 internal data class TorrCatalogFile(val id: Int, val path: String, val size: Long)
 internal class TorrMetadataTimeout : IOException("Torrent metadata request timed out")
 internal class TorrEntryMissing : IOException("Torrent not present in server catalog")
+internal class TorrentIdentityMismatch : IOException("Torrent does not match media source")
 private class TorrHttpNotFound : IOException("Server endpoint or torrent not found")
 internal data class TorrCatalogEntry(
     val hash: String, val title: String, val files: List<TorrCatalogFile>,
@@ -121,6 +123,16 @@ internal object TorrServerCatalog {
         val added = addMagnet("magnet:?xt=urn:btih:$normalized", port)
         if (!added.hash.equals(normalized, ignoreCase = true)) throw IOException("Unexpected restored torrent identity")
         return added
+    }
+
+    /** Refuse a different torrent before sending any file or tracker details to the server. */
+    fun restoreFromFile(input: InputStream, expectedHash: String, port: Int = 8090): TorrCatalogEntry {
+        require(HASH.matches(expectedHash))
+        val bytes = readLimited(input, MAX_TORRENT)
+        if (!TorrentFileIdentity.infoHash(bytes).equals(expectedHash, ignoreCase = true)) throw TorrentIdentityMismatch()
+        return upload(ByteArrayInputStream(bytes), port).also {
+            if (!it.hash.equals(expectedHash, ignoreCase = true)) throw IOException("Unexpected restored torrent identity")
+        }
     }
 
     fun addTorrentUrl(value: String, port: Int = 8090): TorrCatalogEntry {

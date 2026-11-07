@@ -55,13 +55,19 @@ class MovieLibraryActivity : ComponentActivity() {
     private var lastPreparedHash by mutableStateOf<String?>(null)
     private var sourceRemovalVersion by mutableIntStateOf(0)
     private var pendingFileId: String? = null
+    private var pendingRestoreHash: String? = null
     private var pendingTorrentHash: String? = null
     private var pendingTorrentTitle: String = ""
 
     private val torrentPicker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val id = pendingFileId.also { pendingFileId = null }
+        val restoreHash = pendingRestoreHash.also { pendingRestoreHash = null }
         val uri = result.data?.data
         if (id != null && uri != null) {
+            if (restoreHash != null) {
+                restoreTorrentFile(id, restoreHash, uri)
+                return@registerForActivityResult
+            }
             val flags = result.data?.flags ?: 0
             val accepted = runCatching {
                 contentResolver.takePersistableUriPermission(uri, flags and Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -81,6 +87,7 @@ class MovieLibraryActivity : ComponentActivity() {
         if (!PortableRestoreStartup.ready || PortableMaintenance.running) { finish(); return }
         refresh()
         pendingFileId = savedInstanceState?.getString(STATE_PENDING_FILE_ID)
+        pendingRestoreHash = savedInstanceState?.getString(STATE_PENDING_RESTORE_HASH)?.takeIf { it.matches(Regex("(?i)[0-9a-f]{40}")) }
         lastPreparedMovie = savedInstanceState?.getString("buffer.movie")
         lastPreparedHash = savedInstanceState?.getString("buffer.hash")?.takeIf { it.matches(Regex("(?i)[0-9a-f]{40}")) }
         pendingTorrentHash = (savedInstanceState?.getString(EXTRA_TORRENT_HASH) ?: intent.getStringExtra(EXTRA_TORRENT_HASH))
@@ -107,6 +114,7 @@ class MovieLibraryActivity : ComponentActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putString(STATE_PENDING_FILE_ID, pendingFileId)
+        outState.putString(STATE_PENDING_RESTORE_HASH, pendingRestoreHash)
         outState.putString("buffer.movie", lastPreparedMovie)
         outState.putString("buffer.hash", lastPreparedHash)
         outState.putString(EXTRA_TORRENT_HASH, pendingTorrentHash)
@@ -116,6 +124,7 @@ class MovieLibraryActivity : ComponentActivity() {
 
     companion object {
         private const val STATE_PENDING_FILE_ID = "pending_file_id"
+        private const val STATE_PENDING_RESTORE_HASH = "pending_restore_hash"
         internal const val EXTRA_MOVIE_ID = "movie_id"
         internal const val EXTRA_PLAY_SINGLE = "play_single"
         internal const val EXTRA_TORRENT_HASH = "torrent_hash"
@@ -212,14 +221,37 @@ class MovieLibraryActivity : ComponentActivity() {
         }.getOrDefault(false)) toast(R.string.movies_source_failed) else refresh()
     }
 
-    private fun addFile() {
+    private fun addFile(restoreHash: String? = null) {
         val movie = saveSelected() ?: return
         pendingFileId = movie.id
+        pendingRestoreHash = restoreHash
         runCatching { torrentPicker.launch(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE); type = "*/*"
             putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/x-bittorrent", "application/octet-stream"))
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
-        }) }.onFailure { pendingFileId = null; toast(R.string.movies_file_error) }
+        }) }.onFailure { pendingFileId = null; pendingRestoreHash = null; toast(R.string.movies_file_error) }
+    }
+
+    private fun restoreTorrentFile(movieId: String, hash: String, uri: Uri) {
+        if (busy) return
+        val generation = ++requestGeneration
+        busy = true; progressMessage = getString(R.string.movies_restore_working); error = ""
+        lifecycleScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    contentResolver.openInputStream(uri)?.use { TorrServerCatalog.restoreFromFile(it, hash) }
+                        ?: throw java.io.IOException("Cannot open torrent")
+                }
+                if (generation != requestGeneration || selected?.id != movieId || isFinishing || isDestroyed) return@launch
+                missingTorrentHash = null
+                sourceRemovalVersion++
+                toast(R.string.movies_restore_file_done)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (failure: Exception) {
+                if (generation == requestGeneration && selected?.id == movieId && !isFinishing && !isDestroyed)
+                    error = getString(if (failure is TorrentIdentityMismatch) R.string.movies_restore_file_mismatch else R.string.movies_torrent_error)
+            } finally { if (generation == requestGeneration) busy = false }
+        }
     }
 
     private fun confirmRemoveSource(movieId: String, source: MovieSource) {
@@ -556,6 +588,8 @@ class MovieLibraryActivity : ComponentActivity() {
                             item { Text(listOf(movie.year, movie.description).filter { it.isNotBlank() }.joinToString(" · "), color = Color.LightGray, fontSize = 14.sp) }
                             missingTorrentHash?.let { hash -> item(key = "restore-torrent") {
                                 SettingRow(tr(R.string.movies_restore_torrent), tr(R.string.movies_restore_hint), onClick = { restoreMissingTorrent(hash) })
+                            }; item(key = "restore-torrent-file") {
+                                SettingRow(tr(R.string.movies_restore_file), tr(R.string.movies_restore_file_hint), onClick = { addFile(hash) })
                             } }
                             if (pendingTorrentHash != null) item { SettingRow(tr(R.string.movies_attach_torrent), pendingTorrentTitle, onClick = { attachPendingTorrent() }) }
                             item { SettingRow(tr(if (stored == null) R.string.movies_save else R.string.movies_remove), onClick = {

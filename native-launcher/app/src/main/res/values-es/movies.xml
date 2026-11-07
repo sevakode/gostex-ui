@@ -73,8 +73,12 @@
     <string name="movies_external_unavailable">No hay una aplicación para abrir el enlace del servicio.</string>
     <string name="movies_suggested_file">Posible episodio: %1$s</string>
     <string name="movies_last_episode">Buscar fuentes del último episodio identificado</string>
-    <string name="movies_torrent_missing">Este torrent ya no está en TorrServer. Intenta restaurarlo abajo o añade el torrent original en Descargas.</string>
+    <string name="movies_torrent_missing">Este torrent ya no está en TorrServer. Restáuralo abajo usando su hash o el archivo torrent original.</string>
     <string name="movies_restore_torrent">Restaurar torrent</string>
+    <string name="movies_restore_file">Restaurar desde archivo torrent</string>
+    <string name="movies_restore_file_hint">Elige el archivo original con sus rastreadores. Primero se comprueba su identidad.</string>
+    <string name="movies_restore_file_done">Torrent restaurado. Elige la fuente de nuevo para reproducir.</string>
+    <string name="movies_restore_file_mismatch">Este torrent corresponde a otra fuente. Elige el archivo original.</string>
     <string name="movies_restore_hint">Probar un magnet por hash. Los rastreadores privados pueden requerir el archivo torrent original.</string>
     <string name="movies_restore_working">Comprobando TorrServer…</string>
     <string name="movies_restore_sent">Solicitud aceptada. Si no hay participantes, añade el torrent original con sus rastreadores.</string>

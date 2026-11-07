@@ -73,8 +73,12 @@
     <string name="movies_external_unavailable">Нет приложения для открытия ссылки сервиса.</string>
     <string name="movies_suggested_file">Возможно, нужная серия: %1$s</string>
     <string name="movies_last_episode">Найти источники последней известной серии</string>
-    <string name="movies_torrent_missing">Этого торрента больше нет в TorrServer. Попробуй восстановить его ниже или добавь исходный торрент в «Загрузках».</string>
+    <string name="movies_torrent_missing">Этого торрента больше нет в TorrServer. Восстанови его ниже по хешу или из исходного торрент-файла.</string>
     <string name="movies_restore_torrent">Восстановить торрент</string>
+    <string name="movies_restore_file">Восстановить из торрент-файла</string>
+    <string name="movies_restore_file_hint">Выбери исходный файл с трекерами. Сначала проверим, что он подходит.</string>
+    <string name="movies_restore_file_done">Торрент восстановлен. Выбери источник ещё раз для просмотра.</string>
+    <string name="movies_restore_file_mismatch">Этот торрент относится к другому источнику. Выбери исходный файл.</string>
     <string name="movies_restore_hint">Попробовать magnet по hash. Для закрытых трекеров может понадобиться исходный торрент-файл.</string>
     <string name="movies_restore_working">Проверяем TorrServer…</string>
     <string name="movies_restore_sent">Запрос принят. Если участников нет, добавь исходный торрент с трекерами.</string>

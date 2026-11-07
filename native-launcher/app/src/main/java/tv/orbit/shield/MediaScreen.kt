@@ -100,8 +100,11 @@ internal fun openMediaLibrary(context: Context, id: String? = null, playIfSingle
             border = ClickableSurfaceDefaults.border(border = Border(BorderStroke(1.dp, Color(0xFF424244))), focusedBorder = Border(BorderStroke(2.dp, Color(0xFFCCFF00))))
         ) {
             val cover = LocalManagedCovers.current[key]
+            val torrentArtwork = if (cover?.manual.isNullOrEmpty() && cover?.original.isNullOrEmpty()) {
+                mediaTorrentArtwork(movie, LocalManagedCovers.current, LocalManagedCoverOptions.current.choices)
+            } else ""
             Box(Modifier.fillMaxSize()) {
-                CoverArtwork(cover?.manual?.takeIf { it.isNotEmpty() } ?: cover?.original.orEmpty(),
+                CoverArtwork(cover?.manual?.takeIf { it.isNotEmpty() } ?: cover?.original?.ifEmpty { torrentArtwork } ?: torrentArtwork,
                     Modifier.fillMaxSize(), key, movie.title)
                 if (favorite) FavoriteBadge(Modifier.align(Alignment.TopEnd).padding(7.dp))
             }

@@ -19,6 +19,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.platform.LocalConfiguration
@@ -1029,6 +1030,7 @@ class MainActivity : ComponentActivity() {
     var chosenId by rememberSaveable { mutableStateOf(HomePreferences.selectedId(activity)) }
     var detail by remember { mutableStateOf<Game?>(null) }
     val mediaOptions = rememberMediaPlayerOptions()
+    val batteryVisible = rememberBatteryVisible()
     val mediaVisible = mediaOptions.visible
     var mediaOpen by rememberSaveable { mutableStateOf(false) }
     val mediaPlayback = rememberMediaPlayback(activity, (mediaVisible && detail == null) || settingsOpen || mediaOpen,
@@ -1093,8 +1095,8 @@ class MainActivity : ComponentActivity() {
     val homeGames = remember(games, favorites, played, homeOptions.order) {
         orderedHomeGames(games, favorites, played, homeOptions.order)
     }
-    val shelfContents = remember(sectionOptions, homeGames, apps, played) {
-        homeShelfContents(sectionOptions, homeGames, apps, played)
+    val shelfContents = remember(sectionOptions, homeGames, apps, played, libraryOptions.androidGamesVisible) {
+        homeShelfContents(sectionOptions, homeGames, apps, played, libraryOptions.androidGamesVisible)
     }
     val chosen = games.firstOrNull { it.id == chosenId } ?: homeGames.firstOrNull()
     val locale = LocalConfiguration.current.locales[0].toLanguageTag()
@@ -1107,6 +1109,20 @@ class MainActivity : ComponentActivity() {
     val filtered = remember(homeGames, tab, platform, searchIndex, searchQuery) {
         if (tab == "home") homeGames.filter { platform == "all" || it.platform == platform }
         else searchIndex.filter(searchQuery)
+    }
+    val androidGameApps = remember(apps, libraryOptions.androidGamesVisible) {
+        if (libraryOptions.androidGamesVisible) apps.filter { it.isGame } else emptyList()
+    }
+    val scopedAndroidGames = remember(androidGameApps, platform) {
+        if (platform == "all" || platform == "android-apps") androidGameApps else emptyList()
+    }
+    val filteredAndroidGames = remember(scopedAndroidGames, searchQuery) {
+        val query = searchQuery.trim()
+        scopedAndroidGames.filter { query.isEmpty() || it.name.contains(query, ignoreCase = true) }
+    }
+    val libraryIsEmpty = filtered.isEmpty() && filteredAndroidGames.isEmpty()
+    LaunchedEffect(platform, androidGameApps) {
+        if (platform == "android-apps" && androidGameApps.isEmpty()) platform = "all"
     }
     LaunchedEffect(tab, visibleTabs) {
         if (tab !in visibleTabs) {
@@ -1199,6 +1215,7 @@ class MainActivity : ComponentActivity() {
                             Image(painterResource(R.drawable.gostex_logo), contentDescription = "GOSTEX", modifier = Modifier.width(76.dp).height(34.dp))
                             Row(Modifier.weight(1f).padding(start = 8.dp, end = 8.dp), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
                                 HeaderClock(clockOptions, clockInstant)
+                                if (batteryVisible) { Spacer(Modifier.width(6.dp)); BatteryStatus(activity) { percent, charging -> activity.getString(if (charging) R.string.battery_charging else R.string.battery_level, percent) } }
                                 if (mediaVisible) headerMediaSession?.let { session ->
                                     Spacer(Modifier.width(6.dp))
                                     MediaPlayerButton(session, Modifier.focusRequester(mediaFocus)) { mediaOpen = true }
@@ -1227,6 +1244,7 @@ class MainActivity : ComponentActivity() {
                     }
                     Row(Modifier.weight(1f).padding(start = 12.dp, end = 8.dp), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
                         HeaderClock(clockOptions, clockInstant)
+                        if (batteryVisible) { Spacer(Modifier.width(10.dp)); BatteryStatus(activity) { percent, charging -> activity.getString(if (charging) R.string.battery_charging else R.string.battery_level, percent) } }
                         if (mediaVisible) headerMediaSession?.let { session ->
                             Spacer(Modifier.width(10.dp))
                             MediaPlayerButton(session, Modifier.focusRequester(mediaFocus)) { mediaOpen = true }
@@ -1266,28 +1284,41 @@ class MainActivity : ComponentActivity() {
                         inputEnabled = !settingsOpen && !mediaOpen && tileMenu == null && membershipItem == null && favoriteOrderItem == null,
                         onOpen = activity::openApp, onMenu = ::appMenu, modifier = Modifier.weight(1f))
                 } else {
-                    Row(Modifier.padding(start = 36.dp, end = 36.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(tabTitle(tab).uppercase(), fontSize = 28.sp, fontWeight = FontWeight.Bold, color = White)
-                        Spacer(Modifier.width(16.dp)); Text(gameCount(filtered.size), color = Muted, fontSize = 13.sp)
-                        Spacer(Modifier.weight(1f))
-                        if (searchQuery.isNotBlank()) {
-                            Text(searchQuery, Modifier.widthIn(max = 180.dp).padding(end = 12.dp), color = Lime,
-                                fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            CompactIconButton(CompactIcon.Clear, tr(R.string.clear_search), onClick = { applySearch("") })
-                            Spacer(Modifier.width(6.dp))
+                    BoxWithConstraints(Modifier.fillMaxWidth()) {
+                        val compact = maxWidth < 600.dp
+                        @Composable fun title() {
+                            Text(tabTitle(tab).uppercase(), fontSize = 28.sp, fontWeight = FontWeight.Bold, color = White)
+                            Spacer(Modifier.width(16.dp)); Text(gameCount(filtered.size + filteredAndroidGames.size), color = Muted, fontSize = 13.sp)
                         }
-                        CompactIconButton(CompactIcon.Search, tr(R.string.search_games), active = searchQuery.isNotBlank(), modifier = Modifier.focusRequester(searchFocus),
-                            onClick = { searchReturnTarget = ""; searchOpen = true })
-                        Spacer(Modifier.width(6.dp))
-                        CompactIconButton(CompactIcon.Add, tr(if (activity.scanning) R.string.scanning else R.string.add_games), enabled = !activity.scanning,
-                            onClick = { activity.chooseFolder(platform) })
-                        Spacer(Modifier.width(6.dp))
-                        CompactIconButton(CompactIcon.Folder, tr(R.string.folders), onClick = { activity.manageFolders() })
+                        @Composable fun actions() {
+                            if (searchQuery.isNotBlank()) {
+                                Text(searchQuery, Modifier.widthIn(max = 120.dp).padding(end = 12.dp), color = Lime,
+                                    fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                CompactIconButton(CompactIcon.Clear, tr(R.string.clear_search), onClick = { applySearch("") })
+                                Spacer(Modifier.width(6.dp))
+                            }
+                            CompactIconButton(CompactIcon.Search, tr(R.string.search_games), active = searchQuery.isNotBlank(), modifier = Modifier.focusRequester(searchFocus),
+                                onClick = { searchReturnTarget = ""; searchOpen = true })
+                            Spacer(Modifier.width(6.dp))
+                            CompactIconButton(CompactIcon.Add, tr(if (activity.scanning) R.string.scanning else R.string.add_games), enabled = !activity.scanning,
+                                onClick = { activity.chooseFolder(if (platform == "android-apps") "all" else platform) })
+                            Spacer(Modifier.width(6.dp))
+                            CompactIconButton(CompactIcon.Folder, tr(R.string.folders), onClick = { activity.manageFolders() })
+                        }
+                        if (compact) Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) { title() }
+                            Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) { actions() }
+                        } else Row(Modifier.fillMaxWidth().padding(start = 36.dp, end = 36.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            title(); Spacer(Modifier.weight(1f)); actions()
+                        }
                     }
-                    if (games.isNotEmpty() || searchQuery.isNotBlank()) {
+                    if (games.isNotEmpty() || androidGameApps.isNotEmpty() || searchQuery.isNotBlank()) {
                         Row(Modifier.fillMaxWidth().padding(horizontal = 36.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                             LazyRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(3.dp)) {
                                 item(key = "all") { Action(tr(R.string.all), compact = true, active = platform == "all", onClick = { platform = "all" }) }
+                                if (androidGameApps.isNotEmpty()) item(key = "android-apps") {
+                                    Action(tr(R.string.android_games_platform), compact = true, active = platform == "android-apps", onClick = { platform = "android-apps" })
+                                }
                                 items(PlatformRegistry.all, key = { it.id }) { p ->
                                     Action(tr(p.titleRes), compact = true, active = platform == p.id, onClick = { platform = p.id })
                                 }
@@ -1295,7 +1326,7 @@ class MainActivity : ComponentActivity() {
                         }
                         if (tab == "library") {
                             val selectedPlatform = PlatformRegistry.resolve(platform, libraryOptions.ndsEmulator)
-                            val importHint = if (selectedPlatform == null) tr(R.string.platform_import_hint) else {
+                            val importHint = if (platform == "android-apps") tr(R.string.android_games_hint) else if (selectedPlatform == null) tr(R.string.platform_import_hint) else {
                                 val formats = selectedPlatform.extensions.sorted().joinToString(" · ") { it.uppercase(java.util.Locale.ROOT) }
                                 tr(R.string.platform_formats, selectedPlatform.emulator, formats) +
                                     (selectedPlatform.hintRes?.let { "\n" + tr(it) } ?: "")
@@ -1303,40 +1334,51 @@ class MainActivity : ComponentActivity() {
                             Text(importHint, Modifier.padding(start = 36.dp, end = 36.dp, bottom = 6.dp), color = Muted, fontSize = 11.sp, lineHeight = 15.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
                         }
                     }
-                    if (filtered.isEmpty()) Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    if (libraryIsEmpty) Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                         if (searchQuery.isNotBlank()) Text(tr(R.string.search_empty), Modifier.padding(horizontal = 36.dp), color = Muted, fontSize = 18.sp)
                         else Column(Modifier.widthIn(max = 660.dp).padding(horizontal = 36.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             Text(tr(R.string.library_empty_title), color = White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                             Text(tr(R.string.library_import_steps, tr(R.string.add_games)), color = Muted, fontSize = 14.sp, lineHeight = 22.sp)
                             Action(if (activity.scanning) tr(R.string.scanning) else tr(R.string.add_games), modifier = Modifier.focusRequester(addGamesFocus),
-                                onClick = { if (!activity.scanning) activity.chooseFolder(if (games.isEmpty()) "all" else platform) })
+                                onClick = { if (!activity.scanning) activity.chooseFolder(if (games.isEmpty() || platform == "android-apps") "all" else platform) })
                             Text(tr(R.string.library_optional_hint), color = Muted, fontSize = 12.sp, lineHeight = 17.sp)
                         }
                     } else BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
                       LazyVerticalGrid(columns = GridCells.Fixed(TileLayout.columns(maxWidth, LocalTileSize.current)), state = libraryScroll, modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(start = TileLayout.screenInset + TileLayout.focusInset, end = TileLayout.screenInset + TileLayout.focusInset, top = 8.dp, bottom = 18.dp),
                         horizontalArrangement = Arrangement.spacedBy(TileLayout.gap), verticalArrangement = Arrangement.spacedBy(TileLayout.gap)) {
-                        items(filtered, key = { it.id }) { g ->
+                        items(filtered, key = { "game:${it.id}" }) { g ->
                             val cardFocus = remember(g.id) { FocusRequester() }
                             Poster(g, Modifier.fillMaxWidth()
                                 .then(if (g.id == chosen?.id || (chosen !in filtered && g == filtered.first())) Modifier.focusRequester(firstFocus) else Modifier)
                                 .focusRequester(cardFocus), g.id in favorites, onFocus = { selectGame(g) },
                                 onClick = { openGame(g, cardFocus) }, onLongClick = { gameMenu(g, cardFocus) })
                         }
+                        items(filteredAndroidGames, key = { "app:${it.packageName}" }) { app ->
+                            val cardFocus = remember(app.packageName) { FocusRequester() }
+                            val first = filtered.isEmpty() && app == filteredAndroidGames.firstOrNull()
+                            AppTile(app, modifier = Modifier.fillMaxWidth()
+                                .then(if (first) Modifier.focusRequester(firstFocus) else Modifier)
+                                .focusRequester(cardFocus), favorite = homeAppKey(app.packageName) in favoriteRefs,
+                                onFocus = { selectedAppPackage = app.packageName },
+                                onClick = { activity.openApp(app) }, onLongClick = { appMenu(app, cardFocus) })
+                        }
                       }
                     }
                 }
                 Row(Modifier.fillMaxWidth().padding(horizontal = 36.dp, vertical = 8.dp)) {
-                    ControlHints(R.string.control_select, R.string.back, showHomeNavigation = tab == "home", showHoldMenu = true)
-                    Spacer(Modifier.weight(1f)); Text("GOSTEX", color = Lime, fontSize = 10.sp, fontFamily = FontFamily.Monospace, letterSpacing = 1.sp)
+                    Box(Modifier.weight(1f).horizontalScroll(rememberScrollState())) {
+                        ControlHints(R.string.control_select, R.string.back, showHomeNavigation = tab == "home", showHoldMenu = true)
+                    }
+                    Spacer(Modifier.width(8.dp)); Text("GOSTEX", color = Lime, fontSize = 10.sp, fontFamily = FontFamily.Monospace, letterSpacing = 1.sp, maxLines = 1)
                 }
             }
-            LaunchedEffect(tab, platform, homeOptions.order, searchQuery, searchOpen, filtered.isEmpty()) {
+            LaunchedEffect(tab, platform, homeOptions.order, searchQuery, searchOpen, libraryIsEmpty) {
                 if (!settingsOpen && !mediaOpen && !searchOpen && tileMenu == null && membershipItem == null && favoriteOrderItem == null && tab == "library") {
-                    if (searchReturnTarget == "button" || filtered.isEmpty()) {
+                    if (searchReturnTarget == "button" || libraryIsEmpty) {
                         withFrameNanos { }
-                        runCatching { if (filtered.isEmpty() && searchQuery.isBlank()) addGamesFocus.requestFocus() else searchFocus.requestFocus() }
-                    } else if (filtered.isNotEmpty()) {
+                        runCatching { if (libraryIsEmpty && searchQuery.isBlank()) addGamesFocus.requestFocus() else searchFocus.requestFocus() }
+                    } else if (!libraryIsEmpty) {
                         val index = filtered.indexOfFirst { it.id == chosen?.id }.coerceAtLeast(0)
                         libraryScroll.scrollToItem(index)
                         withFrameNanos { }
@@ -1393,14 +1435,14 @@ class MainActivity : ComponentActivity() {
     activity.coverEditorId?.let { id -> games.firstOrNull { it.id == id }?.let { game ->
         GameCoverEditor(activity, game, onClose = { activity.coverEditorId = null })
     } }
-    if (searchOpen) GameSearchDrawer(searchQuery, searchIndex,
-        scopeLabel = listOf(tabTitle(tab), platformTitle(platform).takeIf { platform != "all" }).filterNotNull().joinToString(" / "),
+    if (searchOpen) GameSearchDrawer(searchQuery, searchIndex, scopedAndroidGames,
+        scopeLabel = listOf(tabTitle(tab), (if (platform == "android-apps") tr(R.string.android_games_platform) else platformTitle(platform)).takeIf { platform != "all" }).filterNotNull().joinToString(" / "),
         onApply = ::applySearch, onClose = { searchReturnTarget = "button"; searchOpen = false })
 
 }
 
 @Composable private fun GameSearchDrawer(
-    query: String, index: GameSearchIndex, scopeLabel: String, onApply: (String) -> Unit, onClose: () -> Unit
+    query: String, index: GameSearchIndex, androidGames: List<TvApp>, scopeLabel: String, onApply: (String) -> Unit, onClose: () -> Unit
 ) {
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         // Keep editing reads inside the dialog composition. Updating the outer Dialog on every
@@ -1410,7 +1452,9 @@ class MainActivity : ComponentActivity() {
         val resultsFocus = remember { FocusRequester() }
         var inputFocused by remember { mutableStateOf(false) }
         val draft = state.text.toString()
-        val resultCount = remember(index, draft) { index.filter(draft).size }
+        val resultCount = remember(index, draft, androidGames) {
+            index.filter(draft).size + androidGames.count { draft.isBlank() || it.name.contains(draft.trim(), ignoreCase = true) }
+        }
         val keyboard = LocalSoftwareKeyboardController.current
         val submit = { keyboard?.hide(); onApply(draft) }
         val close = { keyboard?.hide(); onClose() }
@@ -1609,9 +1653,9 @@ private fun settingsTitle(section: String): Int = when {
         "root" -> listOf("homeOptions", "appearanceGroup", "mediaGroup", "controller", "localeGroup", "systemGroup", "updates")
         "appearanceGroup" -> listOf("appearance", "art", "grafana")
         "mediaGroup" -> (if (activity.legacyRecoveryPending) listOf("legacyRecovery") else emptyList()) +
-            listOf("addGames", "folders", "portableCopy", "covers", "nowPlaying", "ndsEmulator", "libraryTab", "appsTab")
+            listOf("addGames", "folders", "portableCopy", "covers", "nowPlaying", "ndsEmulator", "androidGames", "libraryTab", "appsTab")
         "localeGroup" -> listOf("language", "clock")
-        "systemGroup" -> listOf("networkStatus", "network", "shield", "remote")
+        "systemGroup" -> listOf("batteryStatus", "networkStatus", "network", "shield", "remote")
         "portableCopy" -> listOf("copyAction", "portablePreview")
         else -> emptyList()
     }
@@ -1660,12 +1704,15 @@ private fun settingsTitle(section: String): Int = when {
                 SettingRow(tr(R.string.covers_title), tr(R.string.covers_summary), rowFocus("covers"), onClick = { onSection("covers") })
                 SettingRow(tr(R.string.media_player), tr(R.string.media_settings_summary), rowFocus("nowPlaying"), onClick = { onSection("nowPlaying") })
                 NintendoDsEmulatorSetting(rowFocus("ndsEmulator"))
+                AndroidGamesVisibilitySetting(rowFocus("androidGames"))
                 LibraryVisibilitySetting(rowFocus("libraryTab"))
                 AppsVisibilitySetting(rowFocus("appsTab"))
             } else if (section == "localeGroup") {
                 SettingRow(tr(R.string.language), language, rowFocus("language"), onClick = { onSection("language") })
                 SettingRow(tr(R.string.clock_title), modifier = rowFocus("clock"), onClick = { onSection("clock") })
             } else if (section == "systemGroup") {
+                val batteryVisible = rememberBatteryVisible()
+                SettingRow(tr(R.string.battery_visibility), tr(if (batteryVisible) R.string.enabled else R.string.disabled), rowFocus("batteryStatus"), onClick = { BatteryPreferences.visible(activity, !batteryVisible) })
                 val networkVisible = rememberNetworkVisible()
                 SettingRow(tr(R.string.network_status_visibility), tr(if (networkVisible) R.string.enabled else R.string.disabled), rowFocus("networkStatus"), onClick = { NetworkPreferences.visible(activity, !networkVisible) })
                 SettingRow(tr(R.string.network_settings), modifier = rowFocus("network"), onClick = { activity.openNetworkSettings() })

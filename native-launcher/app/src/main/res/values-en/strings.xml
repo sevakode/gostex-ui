@@ -218,4 +218,10 @@
     <string name="portable_restore_failed">Restore could not be completed. Check the copy and try again.</string>
     <string name="portable_copy_installed_3ds">Cannot make a complete copy. Installed 3DS games: %1$d. Transfer of these Azahar titles is not supported yet; your original games remain unchanged.</string>
     <string name="portable_copy_verify_progress">Verifying source files: %1$d/%2$d</string>
+    <string name="android_games_platform">Android games</string>
+    <string name="android_games_visibility">Show Android games in library</string>
+    <string name="android_games_hint">Games identified by Android appear automatically. Some apps may not report their category.</string>
+    <string name="battery_visibility">Show battery level</string>
+    <string name="battery_level">Battery: %1$d%%</string>
+    <string name="battery_charging">Battery: %1$d%%, charging</string>
 </resources>

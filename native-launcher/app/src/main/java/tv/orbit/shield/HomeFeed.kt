@@ -30,7 +30,8 @@ internal data class HomeShelfContent(val section: HomeSection, val items: List<H
 }
 
 internal fun homeShelfContents(
-    options: HomeSectionsOptions, games: List<Game>, apps: List<TvApp>, played: Map<String, Long>
+    options: HomeSectionsOptions, games: List<Game>, apps: List<TvApp>, played: Map<String, Long>,
+    includeAndroidGames: Boolean = true
 ): List<HomeShelfContent> {
     val gameItems = games.distinctBy(Game::id).map(HomeTileItem::GameItem)
     val appItems = apps.distinctBy(TvApp::packageName).map(HomeTileItem::AppItem)
@@ -42,7 +43,7 @@ internal fun homeShelfContents(
             HomeSectionKind.FAVORITES -> resolve(options.favorites)
             HomeSectionKind.RECENT -> gameItems.filter { (played[it.game.id] ?: 0L) > 0L }
                 .sortedWith(compareByDescending<HomeTileItem.GameItem> { played[it.game.id] ?: 0L }.thenBy { it.game.id })
-            HomeSectionKind.GAMES -> gameItems
+            HomeSectionKind.GAMES -> gameItems + if (includeAndroidGames) appItems.filter { it.app.isGame } else emptyList()
             HomeSectionKind.APPS -> appItems
         }
         HomeShelfContent(section, items)

@@ -7,7 +7,7 @@ import re
 import subprocess
 import tempfile
 
-from check_art_catalog import validate
+from check_art_catalog import WORLDS, validate
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "native-launcher/app/src/main/java/tv/orbit/shield/ArtDirection.kt"
@@ -114,7 +114,7 @@ with tempfile.TemporaryDirectory(prefix="gostex-art-direction-") as folder:
             paintings = [entry for entry in catalog["artworks"] if entry["direction"]["kind"] == "painting"]
             snakes = [entry for entry in catalog["artworks"] if entry["direction"]["kind"] == "snakes"]
             assert len(paintings) >= 8 and len(snakes) == 1
-            assert len({entry["world"] for entry in catalog["artworks"]}) == 8
+            assert {entry["world"] for entry in catalog["artworks"]} == WORLDS
             assert snakes[0]["world"] == "snake" and snakes[0]["direction"]["treatments"] == []
             report["checks"].append("The catalog contains a separate Snake act alongside eight distinct paintings")
             assert all(any(t["style"] == "still" for t in entry["direction"]["treatments"]) for entry in paintings)

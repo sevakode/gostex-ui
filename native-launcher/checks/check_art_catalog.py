@@ -17,7 +17,7 @@ from urllib.parse import urlsplit
 PROJECT = Path(__file__).resolve().parents[1]
 ASSETS = PROJECT / "app/src/main/assets"
 THEMES = {"games", "media", "comics", "books", "history"}
-WORLDS = {"hyrule", "tatooine", "gotham", "tetromino", "london", "b612", "tranquility", "snake"}
+WORLDS = {"hyrule", "tatooine", "gotham", "lands-between", "berserk", "castlevania", "tetromino", "london", "b612", "tranquility", "snake"}
 LANGUAGES = ("en", "ru", "es")
 MAX_REVEAL_ANCHORS = 8
 PAINTING_STYLES = {"scene", "ink", "tiles", "focus", "blocks", "weave", "still"}
@@ -25,6 +25,7 @@ PAINTING_STYLES = {"scene", "ink", "tiles", "focus", "blocks", "weave", "still"}
 PRIMARY_HOSTS = {
     "zelda.nintendo.com", "www.starwars.com", "tetris.com", "play.tetris.com",
     "www.doctorwho.tv", "www.dc.com", "www.lepetitprince.com", "www.nasa.gov", "www.hmd.com",
+    "www.bandainamcoent.com", "berserk-me.com", "www.konami.com",
 }
 
 

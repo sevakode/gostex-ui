@@ -220,4 +220,10 @@
     <string name="portable_restore_failed">Не удалось завершить восстановление. Проверьте копию и попробуйте снова.</string>
     <string name="portable_copy_installed_3ds">Не удалось создать полную копию: игр 3DS, установленных в Azahar, — %1$d. Их перенос пока не поддерживается; оригинальные игры не изменены.</string>
     <string name="portable_copy_verify_progress">Проверка исходных файлов: %1$d/%2$d</string>
+    <string name="android_games_platform">Игры Android</string>
+    <string name="android_games_visibility">Игры Android в библиотеке</string>
+    <string name="android_games_hint">Игры появляются автоматически, если Android определил их категорию. Некоторые приложения её не указывают.</string>
+    <string name="battery_visibility">Показывать заряд батареи</string>
+    <string name="battery_level">Заряд батареи: %1$d%%</string>
+    <string name="battery_charging">Заряд батареи: %1$d%%, зарядка</string>
 </resources>

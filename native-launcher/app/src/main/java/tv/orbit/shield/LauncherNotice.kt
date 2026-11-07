@@ -27,7 +27,7 @@ import androidx.tv.material3.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-internal data class LauncherNotice(val id: Long, val message: String)
+internal data class LauncherNotice(val id: Long, val message: String, val actionLabel: String? = null, val action: (() -> Unit)? = null)
 
 /** Identity belongs to an occurrence, so repeating the same error gives it a fresh timeout. */
 internal class LauncherNoticeState {
@@ -35,8 +35,8 @@ internal class LauncherNoticeState {
     var current by mutableStateOf<LauncherNotice?>(null)
         private set
 
-    fun show(message: String) {
-        current = message.takeIf(String::isNotBlank)?.let { LauncherNotice(++nextId, it) }
+    fun show(message: String, actionLabel: String? = null, action: (() -> Unit)? = null) {
+        current = message.takeIf(String::isNotBlank)?.let { LauncherNotice(++nextId, it, actionLabel, action) }
     }
 
     /** An old timeout or click must never clear a newer message. */
@@ -71,7 +71,9 @@ internal class LauncherNoticeState {
     ) ?: 8_000L
     var remaining by remember(notice.id, timeout) { mutableLongStateOf(timeout.coerceAtLeast(0L)) }
     // Replacing the text does not recreate the close button or revoke its current focus.
-    var focused by remember { mutableStateOf(false) }
+    var actionFocused by remember { mutableStateOf(false) }
+    var closeFocused by remember { mutableStateOf(false) }
+    val focused = actionFocused || closeFocused
     var started by remember(lifecycleOwner) {
         mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
     }
@@ -112,8 +114,18 @@ internal class LauncherNoticeState {
             Text(notice.message, modifier = Modifier.weight(1f, fill = false),
                 color = Color(0xFFF5F5F5), fontSize = 13.sp, lineHeight = 18.sp,
                 maxLines = 4, overflow = TextOverflow.Ellipsis)
+            if (notice.actionLabel != null && notice.action != null) {
+                val perform = { val action = notice.action; close(); action.invoke() }
+                Surface(onClick = perform, modifier = Modifier.touchSurface(onClick = perform)
+                    .onFocusChanged { actionFocused = it.hasFocus },
+                    shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(4.dp)),
+                    colors = ClickableSurfaceDefaults.colors(containerColor = Color(0xFF424A22), focusedContainerColor = Color(0xFFCCFF00)),
+                    scale = ClickableSurfaceDefaults.scale(focusedScale = 1f)) {
+                    Text(notice.actionLabel, Modifier.padding(horizontal = 12.dp, vertical = 8.dp), color = if (actionFocused) Color.Black else Color.White, fontSize = 13.sp)
+                }
+            }
             Surface(onClick = ::close, modifier = Modifier.size(32.dp).touchSurface(onClick = ::close)
-                .onFocusChanged { focused = it.hasFocus }
+                .onFocusChanged { closeFocused = it.hasFocus }
                 .semantics { contentDescription = closeLabel },
                 shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(4.dp)),
                 colors = ClickableSurfaceDefaults.colors(containerColor = Color.Transparent,

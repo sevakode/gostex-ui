@@ -131,6 +131,12 @@ fun main() {
     verify("Hidden Library persists across a fresh context", !LibraryPreferences.read(TestContext(preferences)).tabVisible)
     LibraryPreferences.setTabVisible(context, true)
     verify("Reenabling the tab preserves roots and custom home sections", LibraryPreferences.read(context).tabVisible && preferences.values["libraryRoots"] == "unchanged" && preferences.values["home.sections.v1"] == "unchanged")
+    verify("Android games default to visible", LibraryPreferences.read(context).androidGamesVisible)
+    LibraryPreferences.setAndroidGamesVisible(context, false)
+    verify("Android games choice persists without changing roots", !LibraryPreferences.read(TestContext(preferences)).androidGamesVisible && preferences.values["libraryRoots"] == "unchanged")
+    preferences.values["library.androidGamesVisible"] = "invalid"
+    verify("Invalid Android games preference uses the safe default", LibraryPreferences.read(context).androidGamesVisible)
+    preferences.values.remove("library.androidGamesVisible")
     preferences.values["library.tabVisible"] = "invalid"
     verify("Malformed preferences fall back safely", LibraryPreferences.read(context).tabVisible)
     verify("Unrelated preference changes do not refresh tab state",

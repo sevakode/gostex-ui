@@ -218,4 +218,10 @@
     <string name="portable_restore_failed">No se pudo completar la restauración. Comprueba la copia y vuelve a intentarlo.</string>
     <string name="portable_copy_installed_3ds">No se puede crear una copia completa. Juegos de 3DS instalados: %1$d. La transferencia de estos títulos de Azahar aún no es compatible; los originales no se han modificado.</string>
     <string name="portable_copy_verify_progress">Comprobando archivos de origen: %1$d/%2$d</string>
+    <string name="android_games_platform">Juegos de Android</string>
+    <string name="android_games_visibility">Mostrar juegos Android en la biblioteca</string>
+    <string name="android_games_hint">Los juegos identificados por Android aparecen automáticamente. Algunas aplicaciones no indican su categoría.</string>
+    <string name="battery_visibility">Mostrar batería</string>
+    <string name="battery_level">Batería: %1$d%%</string>
+    <string name="battery_charging">Batería: %1$d%%, cargando</string>
 </resources>

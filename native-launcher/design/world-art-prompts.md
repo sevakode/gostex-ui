@@ -63,3 +63,7 @@ Constraints: recognizable Gotham city throughout. No forest, no lake, no mountai
 ```
 
 
+
+## 2026-11-06: dark fantasy scenes
+
+Original AI-generated pixel-art illustrations commissioned for GOSTEX: Elden Ring (Tarnished, Erdtree and grace), Berserk (Guts, greatsword and eclipse), and Castlevania (vampire hunter, whip and Dracula’s castle). Their catalog links identify the referenced works; those pages are not sources of the generated image files. The fictional works and characters remain their respective owners’ property. Each scene was visually reviewed before inclusion.

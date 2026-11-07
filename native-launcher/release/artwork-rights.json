@@ -18,6 +18,24 @@
       "sha256": "48d5d9109c9cb60f7dd89e04a907994298e1416aea8f9aef977c3101c710bc1d",
       "inclusionBasis": "Owner commissioned the generated fan art and explicitly requested its inclusion in the public release; no ownership of the referenced fictional works is asserted.",
       "evidence": "Generation prompts and image provenance: native-launcher/design/world-art-prompts.md. Owner requested retaining these screensaver illustrations on 2026-11-05."
+    },
+    {
+      "path": "assets/art/elden-ring.png",
+      "sha256": "ba29892a73ed5766afa5899592dba00c96b7b549829e58fd5d433830a5013769",
+      "inclusionBasis": "User requested this newly generated fan art for the launcher; no ownership of the referenced work is asserted.",
+      "evidence": "Generated with imagegen for the user request; see native-launcher/design/world-art-prompts.md."
+    },
+    {
+      "path": "assets/art/berserk.png",
+      "sha256": "a366357a6fc1da230f55bdb4180986d3013358cdef73e05f9dfebcd9a3a4fcb4",
+      "inclusionBasis": "User requested this newly generated fan art for the launcher; no ownership of the referenced work is asserted.",
+      "evidence": "Generated with imagegen for the user request; see native-launcher/design/world-art-prompts.md."
+    },
+    {
+      "path": "assets/art/castlevania.png",
+      "sha256": "83762bb5e0961ab4239d9fbe10c1efe450e285ea49643441f24a963644514b68",
+      "inclusionBasis": "User requested this newly generated fan art for the launcher; no ownership of the referenced work is asserted.",
+      "evidence": "Generated with imagegen for the user request; see native-launcher/design/world-art-prompts.md."
     }
   ]
 }

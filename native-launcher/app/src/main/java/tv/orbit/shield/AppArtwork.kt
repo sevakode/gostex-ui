@@ -60,10 +60,12 @@ data class TvApp(
     val packageName: String,
     val activityName: String = "",
     val versionCode: Long = 0L,
-    val lastUpdateTime: Long = 0L
+    val lastUpdateTime: Long = 0L,
+    val isGame: Boolean = false
 )
 
 /** Call off the UI thread. An app with both launchers keeps its TV activity and artwork. */
+@Suppress("DEPRECATION")
 internal fun loadTvApps(context: Context): List<TvApp> {
     val pm = context.packageManager
     return listOf(Intent.CATEGORY_LEANBACK_LAUNCHER, Intent.CATEGORY_LAUNCHER)
@@ -79,7 +81,9 @@ internal fun loadTvApps(context: Context): List<TvApp> {
                 packageName = info.packageName,
                 activityName = info.name,
                 versionCode = installed?.longVersionCode ?: 0L,
-                lastUpdateTime = installed?.lastUpdateTime ?: 0L
+                lastUpdateTime = installed?.lastUpdateTime ?: 0L,
+                isGame = info.applicationInfo.category == android.content.pm.ApplicationInfo.CATEGORY_GAME ||
+                    (info.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_IS_GAME) != 0
             )
         }
         .sortedBy { it.name.lowercase(Locale.ROOT) }

@@ -25,6 +25,9 @@ internal object WeeklyLandscape {
             ArtWorld.HYRULE -> scene.hyrule()
             ArtWorld.TATOOINE -> scene.tatooine()
             ArtWorld.GOTHAM -> scene.gotham()
+            ArtWorld.LANDS_BETWEEN -> scene.landsBetween()
+            ArtWorld.BERSERK -> scene.berserk()
+            ArtWorld.CASTLEVANIA -> scene.castlevania()
             ArtWorld.TETROMINO -> scene.arcade()
             ArtWorld.LONDON -> scene.london()
             ArtWorld.B612 -> scene.asteroid()
@@ -99,6 +102,53 @@ internal object WeeklyLandscape {
                         tint, random.nextInt((alpha / 2).coerceAtLeast(1), alpha))
                 }
             }
+        }
+
+        /** Golden Erdtree and a site of grace over the Lands Between. */
+        fun landsBetween() {
+            gradient(0x171A31, 0x626074, 0, 142)
+            poly(0x31313B, 0f, 135f, 55f, 99f, 106f, 123f, 150f, 96f, 212f, 127f, 260f, 103f, 320f, 131f, 320f, 180f, 0f, 180f)
+            rect(224f, 43f, 5f, 80f, 0xD5A849)
+            for (i in 0..32) {
+                val x = 174f + random.nextInt(100)
+                val y = 8f + random.nextInt(44)
+                oval(x, y, 20f, 12f, 0xB38637, 140)
+            }
+            for ((x, top) in listOf(225f to 16f, 209f to 24f, 245f to 22f))
+                line(226f, 62f, x, top, 0xF1C96C)
+            rect(0f, 145f, 320f, 35f, 0x1B1B25)
+            oval(54f, 155f, 28f, 5f, 0xD6AD5F)
+            oval(65f, 150f, 5f, 7f, 0xF6D68A)
+            rect(34f, 114f, 8f, 32f, 0x12131B); oval(35f, 106f, 7f, 8f, 0x22232A)
+            line(42f, 127f, 51f, 151f, 0xB7A68B)
+        }
+
+        /** Red eclipse and the Black Swordsman's oversized sword. */
+        fun berserk() {
+            gradient(0x321524, 0x171A27, 0, 150)
+            oval(112f, 19f, 78f, 78f, 0xB73B3B)
+            oval(117f, 24f, 68f, 68f, 0x160F19)
+            poly(0x24242D, 0f, 130f, 43f, 110f, 88f, 127f, 130f, 106f, 188f, 131f, 246f, 103f, 320f, 125f, 320f, 180f, 0f, 180f)
+            poly(0x101018, 31f, 180f, 38f, 115f, 50f, 99f, 61f, 112f, 91f, 136f, 67f, 130f, 74f, 180f)
+            oval(42f, 96f, 11f, 12f, 0x15151C)
+            rect(21f, 100f, 8f, 67f, 0x92929A); rect(18f, 107f, 14f, 3f, 0xD0C4B8)
+            rect(23f, 92f, 4f, 10f, 0x6B605C)
+        }
+
+        /** Dracula's castle, blood moon and whip-bearing hunter. */
+        fun castlevania() {
+            gradient(0x12182D, 0x35445A, 0, 150)
+            oval(190f, 12f, 72f, 72f, 0xA53E49)
+            poly(0x252A3D, 0f, 140f, 65f, 116f, 112f, 129f, 167f, 95f, 214f, 113f, 259f, 95f, 320f, 130f, 320f, 180f, 0f, 180f)
+            rect(192f, 62f, 72f, 68f, 0x151A2A)
+            for ((x, top) in listOf(193f to 45f, 214f to 30f, 241f to 40f, 256f to 49f)) {
+                rect(x, top, 8f, 89f - top + 40f, 0x101625)
+                poly(0x101625, x - 3f, top, x + 4f, top - 13f, x + 11f, top)
+                rect(x + 3f, top + 10f, 2f, 5f, 0xD17456)
+            }
+            rect(0f, 149f, 320f, 31f, 0x11151E)
+            rect(40f, 121f, 8f, 27f, 0x171922); oval(40f, 113f, 8f, 8f, 0x33303B)
+            line(48f, 131f, 61f, 148f, 0xBF9F7D); line(61f, 148f, 69f, 139f, 0xBF9F7D)
         }
 
         /** Hyrule's forest sanctuary: a distant castle, ruined arches and the Master Sword. */

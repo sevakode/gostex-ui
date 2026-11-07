@@ -18,8 +18,11 @@ import androidx.tv.material3.Text
 /** A persistent foreground action supplements the transient discovery notice without taking focus. */
 @Composable internal fun UpdateAvailableAction(activity: MainActivity, modifier: Modifier = Modifier, onOpen: () -> Unit) {
     val release = activity.updates.release ?: return
-    SettingRow(tr(R.string.updates_available_version, release.versionName),
-        tr(if (activity.updates.ready) R.string.updates_ready else R.string.updates_open_settings), modifier, onClick = onOpen)
+    SettingRow(
+        if (activity.updates.ready) tr(R.string.updates_install) else tr(R.string.updates_available_version, release.versionName),
+        if (activity.updates.ready) tr(R.string.updates_available_version, release.versionName) else tr(R.string.updates_open_settings),
+        modifier, onClick = onOpen
+    )
 }
 
 @Composable internal fun UpdateSettings(activity: MainActivity, initialFocus: FocusRequester) {
@@ -32,12 +35,14 @@ import androidx.tv.material3.Text
     Text(tr(R.string.updates_current_version, updates.versionName), color = Color(0xFFCCFF00), fontSize = 14.sp)
     Text(tr(updates.status), color = Color(0xFFADADB0), fontSize = 13.sp)
     updates.release?.let { Text(tr(R.string.updates_available_version, it.versionName), color = Color.White, fontSize = 14.sp) }
-    SettingRow(tr(R.string.updates_check_now), tr(if (updates.busy) R.string.updates_busy else R.string.updates_manual_hint),
-        Modifier.focusRequester(initialFocus), onClick = { updates.check(true) })
-    // Keep row identity stable as the update transitions through checking/download/ready.
-    SettingRow(tr(if (updates.ready) R.string.updates_install else R.string.updates_download),
-        tr(when { updates.busy -> R.string.updates_busy; updates.release == null -> R.string.updates_no_release; updates.ready -> R.string.updates_confirm_hint; else -> R.string.updates_download_hint }),
+    // When an update exists, put its primary action first and give it initial D-pad focus.
+    // Keep this row present while downloading so focus survives the ready transition.
+    if (updates.release != null) SettingRow(tr(if (updates.ready) R.string.updates_install else R.string.updates_download),
+        tr(when { updates.busy -> R.string.updates_busy; updates.ready -> R.string.updates_confirm_hint; else -> R.string.updates_download_hint }),
+        modifier = Modifier.focusRequester(initialFocus),
         onClick = { if (updates.ready) updates.installUpdate() else updates.downloadUpdate() })
+    SettingRow(tr(R.string.updates_check_now), tr(if (updates.busy) R.string.updates_busy else R.string.updates_manual_hint),
+        if (updates.release == null) Modifier.focusRequester(initialFocus) else Modifier, onClick = { updates.check(true) })
     Text(tr(R.string.updates_confirmation_note), color = Color(0xFFADADB0), fontSize = 12.sp)
     SettingRow(tr(R.string.updates_checks), tr(if (options.checksEnabled) R.string.enabled else R.string.disabled),
         onClick = { UpdatePreferences.setBoolean(activity, "updates.checksEnabled", !options.checksEnabled) })

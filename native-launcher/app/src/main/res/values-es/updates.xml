@@ -17,7 +17,7 @@
     <string name="updates_install_success">GOSTEX se actualizó correctamente.</string>
     <string name="updates_install_failed">No se instaló la actualización. Puedes intentarlo de nuevo.</string>
     <string name="updates_found_notice">GOSTEX %1$s está disponible. Abre Actualizaciones y diagnóstico en Ajustes.</string>
-    <string name="updates_ready_notice">GOSTEX %1$s está verificado. Instálalo desde Ajustes.</string>
+    <string name="updates_ready_notice">GOSTEX %1$s está verificado y listo para instalar.</string>
     <string name="updates_available_version">Actualización disponible · GOSTEX %1$s</string>
     <string name="updates_current_version">Instalado · GOSTEX %1$s</string>
     <string name="updates_open_settings">Abrir ajustes de actualización</string>
@@ -46,4 +46,5 @@
     <string name="updates_export_failed">No se pudo exportar o borrar el diagnóstico.</string>
     <string name="updates_clear_debug">Borrar registros de diagnóstico</string>
     <string name="updates_debug_cleared">Registros borrados.</string>
+    <string name="updates_install_action">Instalar</string>
 </resources>

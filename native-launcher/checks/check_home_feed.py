@@ -75,6 +75,15 @@ fun main() {
     check(rows.row("video").section === video)
     pass("A populated home follows the saved section order and retains its custom section model")
 
+    val nativeGame = TvApp("Native game", "example.native.game", isGame = true)
+    val withNative = homeShelfContents(options, games, apps + nativeGame, played)
+    check(homeAppKey(nativeGame.packageName) in withNative.row("games").keys)
+    check(homeAppKey(nativeGame.packageName) in withNative.row("apps").keys)
+    val hiddenNative = homeShelfContents(options, games, apps + nativeGame, played, includeAndroidGames = false)
+    check(homeAppKey(nativeGame.packageName) !in hiddenNative.row("games").keys)
+    check(homeAppKey(nativeGame.packageName) in hiddenNative.row("apps").keys)
+    pass("Android games appear in games with their app identity and respect the library preference")
+
     val recent = rows.row("recent").games()
     check(recent == listOf(newest, tieA, tieB))
     check(recent.all { (played[it.id] ?: 0L) > 0L })
@@ -230,7 +239,7 @@ with tempfile.TemporaryDirectory(prefix="gostex-home-feed-") as directory:
         run = subprocess.run([str(JAVA), "-cp", f"{output_classes}:{classpath}", "tv.orbit.shield.ChecksKt"], capture_output=True, text=True)
         report["run"] = {"returncode": run.returncode, "stdout": run.stdout, "stderr": run.stderr}
         report["checks"] = [line.removeprefix("PASS|") for line in run.stdout.splitlines() if line.startswith("PASS|")]
-        report["passed"] = run.returncode == 0 and len(report["checks"]) == 14
+        report["passed"] = run.returncode == 0 and len(report["checks"]) == 15
 
 output = ROOT / ".reports/sections21/feed-checks.json"
 output.parent.mkdir(parents=True, exist_ok=True)

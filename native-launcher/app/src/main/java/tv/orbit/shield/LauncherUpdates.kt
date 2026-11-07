@@ -95,7 +95,9 @@ internal class AndroidInstallGate {
     private var awaitingToken: String? = null
     private var confirmationOpened = false
     fun resume(value: Any) {
-        if (owner !== value) { awaitingToken = null; confirmationOpened = false }
+        // A system installer can cover the launcher without stopping it. Returning
+        // from that Activity is still a new explicit-retry opportunity.
+        if (owner !== value || confirmationOpened) { awaitingToken = null; confirmationOpened = false }
         owner = value
     }
     fun stop(value: Any) { if (owner === value) { cancel(value); owner = null } }
@@ -316,8 +318,11 @@ internal class LauncherUpdates(private val activity: MainActivity) {
                 if (generation != operationId) return@launch
                 cacheRelease(feed, result)
                 cacheRestored = true
-                release = result; ready = false; download = null
+                val alreadyVerified = result != null && result == release && ready && download?.isFile == true
+                release = result
+                if (!alreadyVerified) { ready = false; download = null }
                 if (result == null) status = R.string.updates_current
+                else if (alreadyVerified) status = R.string.updates_ready
                 else {
                     status = R.string.updates_available_status
                     activity.notice = activity.getString(R.string.updates_found_notice, result.versionName)
@@ -353,7 +358,8 @@ internal class LauncherUpdates(private val activity: MainActivity) {
         currentCoroutineContext().ensureActive()
         if (generation != operationId) return
         download = file; ready = true; status = R.string.updates_ready
-        activity.notice = activity.getString(R.string.updates_ready_notice, target.versionName)
+        activity.notices.show(activity.getString(R.string.updates_ready_notice, target.versionName),
+            activity.getString(R.string.updates_install_action), ::installUpdate)
         AndroidDiagnostics.event("update.verified", "code=${target.versionCode}")
     }
     /** Validate identity/signers and manifest, in addition to the signed feed's size/SHA-256. */
@@ -370,7 +376,12 @@ internal class LauncherUpdates(private val activity: MainActivity) {
         val installed = installedInfo()
         require(archive.packageName == activity.packageName && archive.longVersionCode == target.versionCode.toLong() && archive.longVersionCode > installed.longVersionCode) { "Wrong APK package or version" }
         val oldSigners = installed.signingInfo?.apkContentsSigners?.map { it.toByteArray().toList() }?.toSet().orEmpty()
-        val newSigners = archive.signingInfo?.apkContentsSigners?.map { it.toByteArray().toList() }?.toSet().orEmpty()
+        // Android 9 can omit signingInfo when parsing an archive even though
+        // GET_SIGNING_CERTIFICATES works for installed packages. The legacy
+        // parser still verifies and returns archive signers on those devices.
+        val archiveSignatures = archive.signingInfo?.apkContentsSigners
+            ?: activity.packageManager.getPackageArchiveInfo(file.absolutePath, PackageManager.GET_SIGNATURES)?.signatures
+        val newSigners = archiveSignatures?.map { it.toByteArray().toList() }?.toSet().orEmpty()
         require(oldSigners.isNotEmpty() && oldSigners == newSigners) { "Wrong APK signing identity" }
     }
     private fun installRecord() = AndroidInstallRecovery.Record(

@@ -4,4 +4,5 @@
     <string name="default_home_current">GOSTEX es el launcher predeterminado</string>
     <string name="default_home_hint">Elige GOSTEX en la pantalla de Android</string>
     <string name="default_home_failed">Abre los ajustes de Android y elige un launcher predeterminado</string>
+    <string name="default_home_mismatch">Android seleccionó GOSTEX, pero dirige Inicio a otra aplicación.</string>
 </resources>

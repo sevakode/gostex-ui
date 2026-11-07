@@ -27,18 +27,26 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
         owner.lifecycle.addObserver(observer)
         onDispose { owner.lifecycle.removeObserver(observer) }
     }
-    val isDefault = remember(revision) {
+    val (isDefault, resolutionMismatch) = remember(revision) {
         runCatching {
+            val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+            val resolved = runCatching {
+                activity.packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName
+            }.getOrNull()
             if (Build.VERSION.SDK_INT >= 29) {
                 val manager = activity.getSystemService(Context.ROLE_SERVICE) as? RoleManager
-                manager != null && manager.isRoleAvailable(RoleManager.ROLE_HOME) && manager.isRoleHeld(RoleManager.ROLE_HOME)
+                if (manager != null && manager.isRoleAvailable(RoleManager.ROLE_HOME)) {
+                    val held = manager.isRoleHeld(RoleManager.ROLE_HOME)
+                    held to (held && resolved != null && resolved != activity.packageName)
+                } else {
+                    (resolved == activity.packageName) to false
+                }
             } else {
-                val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
-                activity.packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName == activity.packageName
+                (resolved == activity.packageName) to false
             }
-        }.getOrDefault(false)
+        }.getOrDefault(false to false)
     }
-    SettingRow(tr(R.string.default_home_title), tr(if (failed) R.string.default_home_failed else if (isDefault) R.string.default_home_current else R.string.default_home_hint), modifier,
+    SettingRow(tr(R.string.default_home_title), tr(if (failed) R.string.default_home_failed else if (resolutionMismatch) R.string.default_home_mismatch else if (isDefault) R.string.default_home_current else R.string.default_home_hint), modifier,
         onClick = {
             val launched = runCatching {
                 if (Build.VERSION.SDK_INT >= 29) {

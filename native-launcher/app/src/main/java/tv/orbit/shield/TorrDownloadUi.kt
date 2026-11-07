@@ -12,10 +12,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -62,9 +64,18 @@ import kotlinx.coroutines.withContext
     var autoRetry by remember { mutableStateOf(TorrDownloadRetryOptions.read(activity)) }
     val autoCover = rememberTorrentAutoCover()
     val showMediaTorrents = rememberTorrMediaVisibility()
+    val mediaPrefs = remember(activity) { activity.getSharedPreferences("orbit", android.content.Context.MODE_PRIVATE) }
+    var mediaRevision by remember { mutableIntStateOf(0) }
+    DisposableEffect(mediaPrefs) {
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == null || key == MovieLibraryStore.KEY) mediaRevision++
+        }
+        mediaPrefs.registerOnSharedPreferenceChangeListener(listener)
+        onDispose { mediaPrefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
     var linkedHashes by remember { mutableStateOf<Set<String>?>(null) }
     var linkCheckFailed by remember { mutableStateOf(false) }
-    LaunchedEffect(activity.resumeVersion, activity.torrCatalogRevision) {
+    LaunchedEffect(activity.resumeVersion, activity.torrCatalogRevision, mediaRevision) {
         linkedHashes = null
         linkCheckFailed = false
         linkedHashes = try {
@@ -461,13 +472,15 @@ import kotlinx.coroutines.withContext
         SettingRow(tr(R.string.torr_download_refresh), if (busy) tr(R.string.torr_download_loading) else "", modifier = Modifier.width(150.dp), onClick = { refresh() })
     }
     if (busy) Text(tr(R.string.torr_download_loading), color = Color.LightGray, fontSize = 13.sp)
-    val visibleEntries = remember(entries, linkedHashes, showMediaTorrents) {
-        if (showMediaTorrents || linkedHashes == null) entries
+    val visibleEntries = remember(entries, linkedHashes, showMediaTorrents, linkCheckFailed) {
+        if (showMediaTorrents || linkCheckFailed) entries
+        else if (linkedHashes == null) emptyList()
         else entries.filterNot { it.hash.lowercase(java.util.Locale.ROOT) in linkedHashes!! }
     }
     LaunchedEffect(visibleEntries.size) { page = page.coerceAtMost(((visibleEntries.size - 1).coerceAtLeast(0)) / 20) }
     if (linkCheckFailed) Text(tr(R.string.torr_media_check_failed), color = Color.LightGray, fontSize = 12.sp)
-    if (visibleEntries.isEmpty() && !busy && !failed) Text(
+    if (linkedHashes == null && !linkCheckFailed && !showMediaTorrents) Text(tr(R.string.torr_download_loading), color = Color.LightGray, fontSize = 13.sp)
+    if (visibleEntries.isEmpty() && !busy && !failed && (linkedHashes != null || linkCheckFailed || showMediaTorrents)) Text(
         tr(if (entries.isNotEmpty() && linkedHashes != null && !showMediaTorrents) R.string.torr_media_all_hidden else R.string.torr_download_empty),
         color = Color.LightGray, fontSize = 13.sp)
     visibleEntries.drop(page * 20).take(20).forEach { entry ->

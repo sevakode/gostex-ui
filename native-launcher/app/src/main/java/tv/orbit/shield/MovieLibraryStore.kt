@@ -18,7 +18,7 @@ internal data class SavedMovie(
 
 /** User collection is independent of the ROM library; invalid stored data is never overwritten. */
 internal object MovieLibraryStore {
-    private const val KEY = "movies.library.v1"
+    internal const val KEY = "movies.library.v1"
     private const val MAX_MOVIES = 1000
     private const val MAX_BYTES = 4 * 1024 * 1024
     private val torrentRemovals = mutableSetOf<String>()

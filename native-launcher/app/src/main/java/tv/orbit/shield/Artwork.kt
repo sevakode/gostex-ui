@@ -63,7 +63,8 @@ private object ArtCache {
             // A failed asset stays a neutral placeholder; never reuse another game's art.
             val entry = CachedArtwork(path, source, source?.let(::makeAmbient))
             currentCoroutineContext().ensureActive()
-            entries.put(path, entry)
+            // Missing or temporarily unreadable files can become available later.
+            if (source != null) entries.put(path, entry)
             entry
         }
     }

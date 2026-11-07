@@ -670,6 +670,16 @@ class MainActivity : ComponentActivity() {
     }
     internal var pendingEmulatorApk: java.io.File? = null
     internal var emulatorInstallJob: Job? = null
+    internal var pendingEmulatorPermission: String? = null
+    internal val emulatorPermissionLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        val pkg = pendingEmulatorPermission
+        pendingEmulatorPermission = null
+        if (pkg != null && packageManager.canRequestPackageInstalls() && !PortableMaintenance.running) {
+            downloadOfficialEmulator(pkg)
+        } else if (pkg != null) {
+            notice = ""
+        }
+    }
     private var importPlatform = ""
     private var importSource = LibrarySource.FILES
     private var importHintRoot: LibraryImport.Root? = null
@@ -1089,6 +1099,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        pendingEmulatorPermission = savedInstanceState?.getString("pendingEmulatorPermission")?.takeIf(OfficialEmulatorApk::supports)
         if (PortableRestoreStartup.ready && !PortableMaintenance.running) {
             torrDownloadFolder = getSharedPreferences("orbit", MODE_PRIVATE).getString("downloads.folder", "").orEmpty()
         }
@@ -1154,6 +1165,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString("pendingEmulatorPermission", pendingEmulatorPermission)
         outState.putString("importPlatform", importPlatform)
         outState.putString("importSource", importSource.value)
         outState.putString("pendingCoverId", pendingCoverId)

@@ -5,7 +5,7 @@
     <string name="emulator_install_store">Abrir tienda</string>
     <string name="emulator_install_no_store">No hay ninguna tienda compatible ni navegador.</string>
     <string name="emulator_install_direct">Descargar APK oficial</string>
-    <string name="emulator_install_permission">Permite a GOSTEX instalar aplicaciones, vuelve y selecciona el juego de nuevo.</string>
+    <string name="emulator_install_permission">Permite a GOSTEX instalar aplicaciones y vuelve para continuar.</string>
     <string name="emulator_install_downloading">Descargando el emulador oficial…</string>
     <string name="emulator_install_failed">No se pudo descargar el emulador. Comprueba la compatibilidad y la conexión.</string>
     <string name="emulator_install_incompatible">Esta versión del emulador no es compatible con el Android o procesador del dispositivo.</string>

@@ -47,15 +47,17 @@ internal fun MainActivity.offerMissingEmulator(spec: PlatformSpec): Boolean {
     return true
 }
 
-private fun MainActivity.downloadOfficialEmulator(pkg: String) {
+internal fun MainActivity.downloadOfficialEmulator(pkg: String) {
+    if (!OfficialEmulatorApk.supports(pkg)) return
     if (emulatorInstallJob != null) {
         notice = getString(R.string.emulator_install_downloading)
         return
     }
     if (!packageManager.canRequestPackageInstalls()) {
         notice = getString(R.string.emulator_install_permission)
-        runCatching { startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName"))) }
-            .onFailure { notice = getString(R.string.emulator_install_failed) }
+        pendingEmulatorPermission = pkg
+        runCatching { emulatorPermissionLauncher.launch(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName"))) }
+            .onFailure { pendingEmulatorPermission = null; notice = getString(R.string.emulator_install_failed) }
         return
     }
     val progress = getString(R.string.emulator_install_downloading)

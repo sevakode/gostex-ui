@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="emulator_install_title">Нужен эмулятор</string>
-    <string name="emulator_install_message">%1$s не установлен. Откройте его страницу в Google Play, установите приложение, затем вернитесь и запустите игру снова.</string>
-    <string name="emulator_install_store">Открыть Google Play</string>
-    <string name="emulator_install_no_store">На устройстве нет Google Play и браузера.</string>
+    <string name="emulator_install_message">%1$s не установлен. Откройте его страницу в магазине, установите приложение, затем вернитесь и запустите игру снова.</string>
+    <string name="emulator_install_store">Открыть магазин</string>
+    <string name="emulator_install_no_store">На устройстве нет подходящего магазина или браузера.</string>
 </resources>

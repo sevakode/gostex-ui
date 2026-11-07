@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="emulator_install_title">Se necesita un emulador</string>
-    <string name="emulator_install_message">%1$s no está instalado. Abre su página de Google Play, instálalo y vuelve a iniciar el juego.</string>
-    <string name="emulator_install_store">Abrir Google Play</string>
-    <string name="emulator_install_no_store">Este dispositivo no tiene Google Play ni navegador.</string>
+    <string name="emulator_install_message">%1$s no está instalado. Abre su página en la tienda, instálalo y vuelve a iniciar el juego.</string>
+    <string name="emulator_install_store">Abrir tienda</string>
+    <string name="emulator_install_no_store">No hay ninguna tienda compatible ni navegador.</string>
 </resources>

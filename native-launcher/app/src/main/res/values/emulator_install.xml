@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="emulator_install_title">Emulator needed</string>
-    <string name="emulator_install_message">%1$s is not installed. Open its Google Play listing, install it, then return and start the game again.</string>
-    <string name="emulator_install_store">Open Google Play</string>
-    <string name="emulator_install_no_store">Google Play and a browser are unavailable on this device.</string>
+    <string name="emulator_install_message">%1$s is not installed. Open its store listing, install it, then return and start the game again.</string>
+    <string name="emulator_install_store">Open app store</string>
+    <string name="emulator_install_no_store">No compatible app store or browser is available.</string>
 </resources>

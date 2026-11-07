@@ -310,7 +310,7 @@ class MovieLibraryActivity : ComponentActivity() {
         }
     }
 
-    private fun play(source: MovieSource, episode: MovieEpisode? = null) {
+    private fun play(source: MovieSource, episode: MovieEpisode? = null, choosePlayer: Boolean = false) {
         if (busy && sourceLookupJob?.isActive != true) return
         if (sourceLookupJob?.isActive == true) stopSourceLookup()
         missingTorrentHash = null
@@ -318,19 +318,19 @@ class MovieLibraryActivity : ComponentActivity() {
         val uri = Uri.parse(source.uri)
         val isTorrent = uri.scheme.equals("torrserver", true) || uri.scheme.equals("magnet", true) || uri.scheme.equals("content", true) ||
             ((uri.scheme.equals("http", true) || uri.scheme.equals("https", true)) && uri.path?.endsWith(".torrent", ignoreCase = true) == true)
-        if (isTorrent) { prepareTorrent(uri, episode); return }
+        if (isTorrent) { prepareTorrent(uri, episode, choosePlayer); return }
         val intent = if (uri.scheme.equals("acestream", true)) Intent(Intent.ACTION_VIEW, uri)
             else Intent(Intent.ACTION_VIEW).setDataAndType(uri, "video/*")
-        startMovieIntent(intent, episode)
+        startMovieIntent(intent, episode, choosePlayer)
     }
 
-    private fun startMovieIntent(intent: Intent, episode: MovieEpisode? = null) {
+    private fun startMovieIntent(intent: Intent, episode: MovieEpisode? = null, choosePlayer: Boolean = false) {
         runCatching {
             val id = selected?.id ?: error("Missing media")
             val resolved = packageManager.resolveActivity(intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo
             val handlers = packageManager.queryIntentActivities(intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
             val direct = resolved != null && handlers.any { it.activityInfo.packageName == resolved.packageName && it.activityInfo.name == resolved.name }
-            if (direct) {
+            if (direct && !choosePlayer) {
                 startActivity(intent)
                 MoviePlaybackReceipt.mark(this, id, episode?.id)
             } else {
@@ -346,7 +346,7 @@ class MovieLibraryActivity : ComponentActivity() {
         }.onFailure { toast(R.string.movies_player_missing) }
     }
 
-    private fun prepareTorrent(uri: Uri, episode: MovieEpisode?) {
+    private fun prepareTorrent(uri: Uri, episode: MovieEpisode?, choosePlayer: Boolean) {
         if (busy) return
         val generation = ++requestGeneration
         busy = true; progressMessage = getString(R.string.movies_torrent_preparing); error = ""
@@ -372,7 +372,7 @@ class MovieLibraryActivity : ComponentActivity() {
                     val file = videos[index]
                     val intent = Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse(TorrPlayback.url(entry.hash, file.id)), "video/*")
                     val identified = episode?.takeIf { episodeFileMatchesHistory(paths, it.season, it.episode, index) }
-                    startMovieIntent(intent, identified)
+                    startMovieIntent(intent, identified, choosePlayer)
                 }
                 if (videos.size == 1) open(0)
                 else {
@@ -422,7 +422,7 @@ class MovieLibraryActivity : ComponentActivity() {
         }
     }
 
-    private fun chooseStream(stream: MovieStreamOption) {
+    private fun chooseStream(stream: MovieStreamOption, choosePlayer: Boolean = false) {
         if (busy && sourceLookupJob?.isActive != true) return
         if (stream.external) {
             if (sourceLookupJob?.isActive == true) stopSourceLookup()
@@ -433,9 +433,9 @@ class MovieLibraryActivity : ComponentActivity() {
         val movie = saveSelected() ?: return
         val label = listOf(stream.name, stream.description).filter { it.isNotBlank() }.joinToString(" · ").take(256)
         val source = MovieSource(label, stream.uri, stream.fileIndex, stream.sizeBytes)
-        if (movie.mediaType == "series") { play(source, sourceEpisode); return }
+        if (movie.mediaType == "series") { play(source, sourceEpisode, choosePlayer); return }
         val updated = movie.copy(sources = movie.sources.filterNot { it.uri == source.uri && it.fileIndex == source.fileIndex } + source)
-        if (runCatching { MovieLibraryStore.save(this, updated) }.getOrDefault(false)) { refresh(); play(source) }
+        if (runCatching { MovieLibraryStore.save(this, updated) }.getOrDefault(false)) { refresh(); play(source, choosePlayer = choosePlayer) }
         else toast(R.string.movies_source_failed)
     }
 
@@ -515,7 +515,12 @@ class MovieLibraryActivity : ComponentActivity() {
                                 items(savedSources, key = { "saved:${it.uri}:${it.fileIndex}" }) { source ->
                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                         SettingRow(source.label.ifBlank { tr(R.string.movies_play) }, tr(R.string.movies_play), modifier = Modifier.weight(1f), onClick = { play(source) })
-                                        SettingRow(tr(R.string.movies_remove_source), modifier = Modifier.widthIn(max = 180.dp), onClick = { confirmRemoveSource(movie.id, source) })
+                                        SettingRow(tr(R.string.movies_source_options), modifier = Modifier.widthIn(max = 180.dp), onClick = {
+                                            AlertDialog.Builder(this@MovieLibraryActivity).setTitle(R.string.movies_source_options)
+                                                .setItems(arrayOf(getString(R.string.movies_choose_player), getString(R.string.movies_remove_source))) { _, index ->
+                                                    if (index == 0) play(source, choosePlayer = true) else confirmRemoveSource(movie.id, source)
+                                                }.setNegativeButton(R.string.movies_cancel, null).show()
+                                        })
                                     }
                                     val estimate = source.sizeBytes?.let { size -> movie.durationSeconds?.let { MoviePlaybackEstimator.estimate(size, it, null) } }
                                     if (estimate != null) Text(tr(R.string.movies_estimate_average, String.format(java.util.Locale.ROOT, "%.1f", estimate.averageBitsPerSecond / 1_000_000)), color = Color.LightGray)
@@ -527,7 +532,10 @@ class MovieLibraryActivity : ComponentActivity() {
                             if (searchedSources && !busy && sources.isEmpty() && error.isBlank()) item { Text(tr(R.string.movies_search_empty), color = Color.LightGray) }
                             itemsIndexed(sources, key = { index, _ -> "found:$index" }) { _, stream ->
                                 val hint = if (stream.external) listOf(tr(R.string.movies_external_open), stream.description).filter { it.isNotBlank() }.joinToString(" · ") else stream.description
-                                SettingRow(stream.name.ifBlank { tr(if (stream.external) R.string.movies_external_open else R.string.movies_play) }, hint, onClick = { chooseStream(stream) })
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    SettingRow(stream.name.ifBlank { tr(if (stream.external) R.string.movies_external_open else R.string.movies_play) }, hint, modifier = Modifier.weight(1f), onClick = { chooseStream(stream) })
+                                    if (!stream.external) SettingRow(tr(R.string.movies_choose_player), modifier = Modifier.widthIn(max = 180.dp), onClick = { chooseStream(stream, choosePlayer = true) })
+                                }
                                 val estimate = stream.sizeBytes?.let { size -> movie.durationSeconds?.let { MoviePlaybackEstimator.estimate(size, it, null) } }
                                 if (estimate != null) Text(tr(R.string.movies_estimate_average, String.format(java.util.Locale.ROOT, "%.1f", estimate.averageBitsPerSecond / 1_000_000)), color = Color.LightGray)
                             }

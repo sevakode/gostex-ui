@@ -15,6 +15,8 @@
     <string name="movies_no_results">No hay resultados.</string>
     <string name="movies_no_sources">No hay fuentes. Añade un complemento o un enlace propio.</string>
     <string name="movies_play">Reproducir</string>
+    <string name="movies_source_options">Opciones</string>
+    <string name="movies_choose_player">Elegir reproductor</string>
     <string name="movies_cancel">Cancelar</string>
     <string name="movies_add">Añadir</string>
     <string name="movies_addon_hint">Introduce la URL HTTPS del manifest del complemento.</string>

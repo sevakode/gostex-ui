@@ -15,6 +15,8 @@
     <string name="movies_no_results">No results.</string>
     <string name="movies_no_sources">No sources. Add an add-on or your own link.</string>
     <string name="movies_play">Play</string>
+    <string name="movies_source_options">Options</string>
+    <string name="movies_choose_player">Choose player</string>
     <string name="movies_cancel">Cancel</string>
     <string name="movies_add">Add</string>
     <string name="movies_addon_hint">Enter the HTTPS manifest URL of the add-on.</string>

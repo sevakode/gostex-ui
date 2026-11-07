@@ -15,6 +15,8 @@
     <string name="movies_no_results">Ничего не найдено.</string>
     <string name="movies_no_sources">Источники не найдены. Добавь дополнение или свою ссылку.</string>
     <string name="movies_play">Смотреть</string>
+    <string name="movies_source_options">Действия</string>
+    <string name="movies_choose_player">Выбрать плеер</string>
     <string name="movies_cancel">Отмена</string>
     <string name="movies_add">Добавить</string>
     <string name="movies_addon_hint">Введи HTTPS-ссылку на manifest дополнения.</string>

@@ -147,6 +147,54 @@ class MainActivity : ComponentActivity() {
             .onFailure { torrDownloadMessage = getString(R.string.torr_download_failed) }
     }
     internal fun startTorrDownload(id: String) = startTorrDownloads(listOf(id))
+    private var torrGameImporting = false
+    internal fun addDownloadedGame(job: TorrDownloadJob) {
+        if (PortableMaintenance.running || torrGameImporting || job.state != "done") return
+        val systems = PlatformRegistry.all.filter { it.accepts(job.finalName) }
+        if (systems.isEmpty()) { torrDownloadMessage = getString(R.string.torr_game_unsupported); return }
+        val emulator = LibraryPreferences.read(this).ndsEmulator
+        val labels = systems.map { "${getString(it.titleRes)} · ${PlatformRegistry.resolve(it.id, emulator)?.emulator ?: it.emulator}" }.toTypedArray()
+        android.app.AlertDialog.Builder(this).setTitle(R.string.choose_system).setItems(labels) { _, index ->
+            val platform = systems[index].id
+            val extension = job.finalName.substringAfterLast('.', "").lowercase(java.util.Locale.ROOT)
+            if (extension in setOf("cue", "gdi", "m3u")) {
+                android.app.AlertDialog.Builder(this).setTitle(R.string.import_game_folder)
+                    .setMessage(R.string.import_file_companions_hint)
+                    .setPositiveButton(R.string.import_game_folder) { _, _ ->
+                        val initial = runCatching { DocumentsContract.buildDocumentUriUsingTree(Uri.parse(job.tree), job.parentId.ifBlank { DocumentsContract.getTreeDocumentId(Uri.parse(job.tree)) }) }.getOrNull()
+                        chooseLibraryFolder(platform, LibrarySource.FILES, initial)
+                    }.setNegativeButton(R.string.cancel, null).show()
+            } else {
+                torrGameImporting = true
+                torrDownloadMessage = getString(R.string.torr_game_checking)
+                importScope.launch {
+                    try {
+                        val root = withContext(Dispatchers.IO) {
+                            check(TorrDownloadStore.jobs.value.any { it.id == job.id && it.state == "done" && it.document == job.document && it.tree == job.tree })
+                            val tree = Uri.parse(job.tree)
+                            val document = Uri.parse(job.document)
+                            check(document.authority == tree.authority && contentResolver.persistedUriPermissions.any { it.uri == tree && it.isReadPermission })
+                            val parentId = job.parentId.ifBlank { DocumentsContract.getTreeDocumentId(tree) }
+                            check(portableSafDirectChild(contentResolver, tree, parentId, DocumentsContract.getDocumentId(document)))
+                            val valid = contentResolver.query(document, arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME, DocumentsContract.Document.COLUMN_SIZE), null, null, null)?.use { cursor ->
+                                cursor.moveToFirst() && cursor.getString(0) == job.finalName && !cursor.isNull(1) && cursor.getLong(1) == job.total && !cursor.moveToNext()
+                            } ?: false
+                            check(valid)
+                            val candidate = LibraryImport.Root(platform, document.toString(), LibrarySource.SINGLE_FILE)
+                            check(LibraryImport.scan(this@MainActivity, candidate, bundled, showHints = false).isNotEmpty())
+                            candidate
+                        }
+                        check(!PortableMaintenance.running && TorrDownloadStore.jobs.value.any { it.id == job.id && it.state == "done" && it.document == job.document })
+                        LibraryImport.addRoot(this@MainActivity, root)
+                        refreshLibrary()
+                        torrDownloadMessage = getString(R.string.torr_game_added)
+                    } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                    catch (_: Exception) { torrDownloadMessage = getString(R.string.torr_game_failed) }
+                    finally { torrGameImporting = false }
+                }
+            }
+        }.setNegativeButton(R.string.cancel, null).show()
+    }
     internal fun startTorrDownloads(ids: List<String>) {
         val prefs = getSharedPreferences("orbit", MODE_PRIVATE)
         if (android.os.Build.VERSION.SDK_INT >= 33 &&
@@ -837,7 +885,7 @@ class MainActivity : ComponentActivity() {
         importSource = LibrarySource.SINGLE_FILE
         launchDocumentPicker(Intent.ACTION_OPEN_DOCUMENT, "*/*") { gameFilePicker.launch(arrayOf("*/*")) }
     }
-    private fun chooseLibraryFolder(platform: String, source: LibrarySource) {
+    private fun chooseLibraryFolder(platform: String, source: LibrarySource, preferred: Uri? = null) {
         importPlatform = platform
         importSource = source
         val existing = (rootsOrNotify() ?: return).lastOrNull { it.platform == platform && it.source == source }?.uri
@@ -845,7 +893,7 @@ class MainActivity : ComponentActivity() {
             DocumentsContract.buildTreeDocumentUri("com.android.externalstorage.documents", it)
         }
         launchDocumentPicker(Intent.ACTION_OPEN_DOCUMENT_TREE) {
-            folderPicker.launch(initial?.let { DocumentsContract.buildDocumentUriUsingTree(it, DocumentsContract.getTreeDocumentId(it)) })
+            folderPicker.launch(preferred ?: initial?.let { DocumentsContract.buildDocumentUriUsingTree(it, DocumentsContract.getTreeDocumentId(it)) })
         }
     }
     private fun rootsOrNotify(): List<LibraryImport.Root>? = try { LibraryImport.roots(this) }

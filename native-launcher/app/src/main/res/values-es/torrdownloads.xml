@@ -35,6 +35,11 @@
     <string name="torr_download_running">Descargando</string>
     <string name="torr_download_paused">En pausa</string>
     <string name="torr_download_done">Completada</string>
+    <string name="torr_game_add">Añadir juego a la biblioteca</string>
+    <string name="torr_game_checking">Comprobando el juego descargado…</string>
+    <string name="torr_game_added">Fuente del juego añadida. La biblioteca se actualizará.</string>
+    <string name="torr_game_failed">No se pudo añadir el archivo. Comprueba que la unidad y el archivo están disponibles e inténtalo de nuevo.</string>
+    <string name="torr_game_unsupported">Este archivo no es una imagen de juego compatible.</string>
     <string name="torr_download_error">Error: pulsa para reintentar</string>
     <string name="torr_download_finalizing">Finalizando</string>
     <string name="torr_download_pause">Pausar</string>

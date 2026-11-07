@@ -377,6 +377,8 @@ import kotlinx.coroutines.withContext
                 Box(Modifier.fillMaxWidth(percent / 100f).height(3.dp).background(Color(0xFFCCFF00)))
             }
         }
+        if (job.state == "done" && PlatformRegistry.all.any { it.accepts(job.finalName) })
+            SettingRow(tr(R.string.torr_game_add), onClick = { activity.addDownloadedGame(job) })
         if (job.state == "done") SettingRow(tr(R.string.torr_download_remove), tr(R.string.torr_download_keep_file), onClick = {
             removeJobRecord(job.id)
         })

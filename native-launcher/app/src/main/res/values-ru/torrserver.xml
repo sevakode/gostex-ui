@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="torr_status_title">Состояние TorrServer</string>
+    <string name="torr_status_hint">Нажмите для проверки локального сервера</string>
+    <string name="torr_status_checking">Проверка…</string>
+    <string name="torr_status_online">%1$s · раздач: %2$d · %3$d КиБ/с</string>
+    <string name="torr_status_auth">Сервер требует входа</string>
+    <string name="torr_status_unavailable">Локальный сервер недоступен или ответ некорректен</string>
+    <string name="torr_status_cache_memory">Кеш: память</string>
+    <string name="torr_status_cache_disk">Кеш: диск</string>
+    <string name="torr_status_cache_size">Задано %1$d МиБ</string>
+</resources>

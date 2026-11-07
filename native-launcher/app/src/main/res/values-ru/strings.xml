@@ -226,4 +226,10 @@
     <string name="battery_visibility">Показывать заряд батареи</string>
     <string name="battery_level">Заряд батареи: %1$d%%</string>
     <string name="battery_charging">Заряд батареи: %1$d%%, зарядка</string>
+    <string name="screensaver_shortcut_title">Кнопка Netflix: заставка</string>
+    <string name="screensaver_shortcut_activation_needed">Требуется включение</string>
+    <string name="screensaver_shortcut_activate">Включить ярлык в спецвозможностях</string>
+    <string name="screensaver_shortcut_hint">Использует кнопку Netflix на пульте NVIDIA SHIELD. Включите ярлык GOSTEX в спецвозможностях Android: он получает нажатия, но не записывает и не передаёт их. Продолжение воспроизведения зависит от приложения. Для возврата нажмите «Назад».</string>
+    <string name="screensaver_shortcut_service">Ярлык заставки GOSTEX</string>
+    <string name="screensaver_shortcut_description">Позволяет открывать заставку GOSTEX кнопкой Netflix на пульте NVIDIA SHIELD. При включении служба получает нажатия клавиш, но не записывает и не передаёт их.</string>
 </resources>

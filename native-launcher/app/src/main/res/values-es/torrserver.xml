@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="torr_status_title">Estado de TorrServer</string>
+    <string name="torr_status_hint">Pulsa para comprobar el servidor local</string>
+    <string name="torr_status_checking">Comprobando…</string>
+    <string name="torr_status_online">%1$s · torrents: %2$d · %3$d KiB/s</string>
+    <string name="torr_status_auth">El servidor requiere autenticación</string>
+    <string name="torr_status_unavailable">Servidor local no disponible o respuesta incorrecta</string>
+    <string name="torr_status_cache_memory">Caché: memoria</string>
+    <string name="torr_status_cache_disk">Caché: disco</string>
+    <string name="torr_status_cache_size">%1$d MiB configurados</string>
+</resources>

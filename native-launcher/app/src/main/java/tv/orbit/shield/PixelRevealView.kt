@@ -16,10 +16,11 @@ internal class PixelArtView(context: Context) : View(context) {
     private val rows = 90
     private val effectSequence = ArtEffectSequence(kotlin.random.Random.nextLong())
     private val prefs = context.getSharedPreferences("orbit", Context.MODE_PRIVATE)
+    private val programCursor = ArtProgramCursor(prefs)
     private var options = ArtPreferences.read(context)
     private var sceneOptions = options
     private var catalog: List<ArtEntry>? = null
-    private var scene = 0L
+    private var scene = programCursor.nextScene()
     private var seed = ArtSchedule.ensure(context)
     private var artwork: Artwork? = null
     private var artworkPending = false
@@ -91,7 +92,7 @@ internal class PixelArtView(context: Context) : View(context) {
         if (updated.copy(captionMode = previous.captionMode) != previous) {
             generation++; loading?.cancel(); loading = null
             artworkPending = true
-            scene = 0
+            scene = programCursor.nextScene()
             if (updated.revealStyle != RevealStyle.STILL) artwork = null
             elapsedMs = 0.0
             if (running) loadArtwork()
@@ -178,6 +179,7 @@ internal class PixelArtView(context: Context) : View(context) {
             }
             if (!running || request != generation) return@launch
             artwork = prepared
+            programCursor.shown(requestedScene)
             artworkPending = false
             captionTitle = prepared.entry.title(context)
             captionReference = "${context.getString(prepared.entry.theme.titleRes)} · ${prepared.entry.reference(context)}"

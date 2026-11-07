@@ -224,4 +224,10 @@
     <string name="battery_visibility">Mostrar batería</string>
     <string name="battery_level">Batería: %1$d%%</string>
     <string name="battery_charging">Batería: %1$d%%, cargando</string>
+    <string name="screensaver_shortcut_title">Botón Netflix: salvapantallas</string>
+    <string name="screensaver_shortcut_activation_needed">Se requiere activación</string>
+    <string name="screensaver_shortcut_activate">Activar acceso en Accesibilidad</string>
+    <string name="screensaver_shortcut_hint">Usa el botón Netflix del mando NVIDIA SHIELD. Activa el acceso de GOSTEX en Accesibilidad de Android: recibe pulsaciones, pero no las registra ni transmite. La reproducción depende de la aplicación. Pulsa Atrás para volver.</string>
+    <string name="screensaver_shortcut_service">Acceso al salvapantallas GOSTEX</string>
+    <string name="screensaver_shortcut_description">Permite abrir el salvapantallas de GOSTEX con el botón Netflix del mando NVIDIA SHIELD. Cuando está activo, el servicio recibe pulsaciones, pero no las registra ni transmite.</string>
 </resources>

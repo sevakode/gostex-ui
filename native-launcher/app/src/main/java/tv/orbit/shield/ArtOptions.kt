@@ -3,6 +3,10 @@ package tv.orbit.shield
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.content.ComponentName
+import android.database.ContentObserver
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -104,18 +108,58 @@ internal object ArtPreferences {
     val context = LocalContext.current
     val prefs = remember(context) { context.getSharedPreferences("orbit", Context.MODE_PRIVATE) }
     var options by remember(context) { mutableStateOf(ArtPreferences.read(context)) }
+    var shortcut by remember(context) { mutableStateOf(ScreensaverShortcutPreferences.enabled(context)) }
+    fun serviceEnabled(): Boolean {
+        val target = ComponentName(context, ScreensaverShortcutService::class.java)
+        return Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
+            .orEmpty().split(':').mapNotNull { ComponentName.unflattenFromString(it) }.contains(target)
+    }
+    fun openAccessibilitySettings() {
+        val specific = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+        val handler = context.packageManager.resolveActivity(specific, 0)?.activityInfo?.packageName
+        // SHIELD exposes a no-op framework stub for the specific action.
+        val target = if (handler == null || handler == "com.google.android.tv.frameworkpackagestubs") {
+            Intent(Settings.ACTION_SETTINGS)
+        } else specific
+        runCatching { context.startActivity(target) }
+            .onFailure { runCatching { context.startActivity(Intent(Settings.ACTION_SETTINGS)) } }
+    }
+    var shortcutServiceEnabled by remember(context) { mutableStateOf(serviceEnabled()) }
     DisposableEffect(context, prefs) {
         val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, name ->
             if (name == null || name.startsWith(ArtPreferences.KEY_PREFIX)) options = ArtPreferences.read(context)
+            if (name == null || name == ScreensaverShortcutPreferences.KEY) shortcut = ScreensaverShortcutPreferences.enabled(context)
         }
+        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) { shortcutServiceEnabled = serviceEnabled() }
+        }
+        context.contentResolver.registerContentObserver(Settings.Secure.getUriFor(Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES), false, observer)
         prefs.registerOnSharedPreferenceChangeListener(listener)
         options = ArtPreferences.read(context)
-        onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+        shortcut = ScreensaverShortcutPreferences.enabled(context)
+        shortcutServiceEnabled = serviceEnabled()
+        onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener); context.contentResolver.unregisterContentObserver(observer) }
     }
     Text(tr(R.string.art_hint), color = Color(0xFFADADB0), fontSize = 13.sp, lineHeight = 19.sp)
     SettingRow(tr(R.string.art_preview), modifier = Modifier.focusRequester(initialFocus), onClick = {
         context.startActivity(Intent(context, PixelArtPreviewActivity::class.java))
     })
+    SettingRow(tr(R.string.screensaver_shortcut_title), tr(when {
+        !shortcut -> R.string.disabled
+        shortcutServiceEnabled -> R.string.enabled
+        else -> R.string.screensaver_shortcut_activation_needed
+    }), onClick = {
+        if (shortcut) {
+            ScreensaverShortcutPreferences.set(context, false)
+        } else {
+            ScreensaverShortcutPreferences.set(context, true)
+            openAccessibilitySettings()
+        }
+    })
+    if (shortcut && !shortcutServiceEnabled) SettingRow(tr(R.string.screensaver_shortcut_activate), onClick = {
+        openAccessibilitySettings()
+    })
+    Text(tr(R.string.screensaver_shortcut_hint), color = Color(0xFFADADB0), fontSize = 12.sp, lineHeight = 17.sp)
     SettingRow(tr(R.string.art_captions), tr(options.captionMode.titleRes), onClick = {
         ArtPreferences.setCaptionMode(context, CaptionMode.entries[(options.captionMode.ordinal + 1) % CaptionMode.entries.size])
     })

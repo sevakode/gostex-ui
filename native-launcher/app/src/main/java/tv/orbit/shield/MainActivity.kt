@@ -124,6 +124,111 @@ class MainActivity : ComponentActivity() {
     }
     private var pending: Pair<Game, Int>? = null
     internal val notices = LauncherNoticeState()
+    internal var torrCatalogRevision by mutableIntStateOf(0)
+        private set
+    internal fun torrCatalogChanged() { torrCatalogRevision++ }
+    internal var torrDownloadFolder by mutableStateOf("")
+        private set
+    internal var torrDownloadMessage by mutableStateOf("")
+    private var torrPreparing = false
+    internal fun openTorrServer() {
+        val intent = packageManager.getLeanbackLaunchIntentForPackage("ru.yourok.torrserve")
+            ?: packageManager.getLaunchIntentForPackage("ru.yourok.torrserve")
+        if (intent == null || runCatching { startActivity(intent) }.isFailure) torrDownloadMessage = getString(R.string.torr_download_unavailable)
+    }
+    private var pendingTorrNotificationStart: List<String>? = null
+    private val torrNotificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+        val ids = pendingTorrNotificationStart
+        pendingTorrNotificationStart = null
+        if (ids != null) runCatching { TorrDownloadActions.startMany(this, ids) }
+            .onFailure { torrDownloadMessage = getString(R.string.torr_download_failed) }
+    }
+    internal fun startTorrDownload(id: String) = startTorrDownloads(listOf(id))
+    internal fun startTorrDownloads(ids: List<String>) {
+        val prefs = getSharedPreferences("orbit", MODE_PRIVATE)
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED &&
+            !prefs.getBoolean("downloads.notificationPrompted", false)) {
+            pendingTorrNotificationStart = ids
+            prefs.edit().putBoolean("downloads.notificationPrompted", true).apply()
+            torrNotificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        } else TorrDownloadActions.startMany(this, ids)
+    }
+    private var pendingTorrDownload: Pair<TorrCatalogEntry, List<TorrCatalogFile>>? = null
+    private val torrFilePicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null && !PortableMaintenance.running) importScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    contentResolver.openInputStream(uri)?.use { TorrServerCatalog.upload(it) }
+                        ?: throw java.io.IOException("Cannot open torrent")
+                }
+                torrCatalogRevision++
+                torrDownloadMessage = getString(R.string.torr_download_torrent_added)
+            } catch (_: Exception) { torrDownloadMessage = getString(R.string.torr_download_failed) }
+        }
+    }
+    private val torrFolderPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        val request = pendingTorrDownload
+        pendingTorrDownload = null
+        if (uri != null && !PortableMaintenance.running) {
+            try {
+                contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                if (!getSharedPreferences("orbit", MODE_PRIVATE).edit().putString("downloads.folder", uri.toString()).commit()) throw java.io.IOException("Cannot save folder")
+                torrDownloadFolder = uri.toString()
+                if (request != null) enqueueTorrDownload(uri, request.first, request.second)
+            } catch (_: Exception) { torrDownloadMessage = getString(R.string.torr_download_failed) }
+        }
+    }
+    private fun enqueueTorrDownload(uri: Uri, entry: TorrCatalogEntry, files: List<TorrCatalogFile>) {
+        if (torrPreparing) return
+        torrPreparing = true
+        torrDownloadMessage = getString(R.string.torr_download_preparing)
+        importScope.launch {
+            try {
+                val jobs = withContext(Dispatchers.IO) { TorrDownloadDocuments.enqueueAll(this@MainActivity, uri, entry, files) }
+                startTorrDownloads(jobs.map { it.id })
+                torrDownloadMessage = getString(R.string.torr_download_added)
+            } catch (error: TorrDownloadPartialBatch) {
+                torrDownloadMessage = getString(R.string.torr_download_partial_batch, error.prepared)
+            } catch (_: TorrDownloadDestinationExists) {
+                torrDownloadMessage = getString(R.string.torr_download_exists)
+            } catch (_: Exception) { torrDownloadMessage = getString(R.string.torr_download_failed) }
+            finally { torrPreparing = false }
+        }
+    }
+    internal fun chooseTorrFolder() {
+        pendingTorrDownload = null
+        torrDownloadMessage = ""
+        if (!launchDocumentPicker(Intent.ACTION_OPEN_DOCUMENT_TREE) { torrFolderPicker.launch(torrFolderInitialUri()) }) torrDownloadMessage = getString(R.string.document_picker_unavailable)
+    }
+    private fun torrFolderInitialUri(): Uri? {
+        val previous = runCatching {
+            val tree = Uri.parse(torrDownloadFolder)
+            require(tree.scheme == "content")
+            DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
+        }.getOrNull()
+        // An initial location is only a hint to Android's picker, not a storage grant or a destination.
+        // It avoids starting at a volume root that recent Android versions cannot grant.
+        return previous ?: DocumentsContract.buildDocumentUri(
+            "com.android.externalstorage.documents", "primary:Documents"
+        )
+    }
+    internal fun chooseTorrFile() {
+        torrDownloadMessage = ""
+        if (!launchDocumentPicker(Intent.ACTION_OPEN_DOCUMENT, "*/*") { torrFilePicker.launch(arrayOf("application/x-bittorrent", "application/octet-stream", "*/*")) }) torrDownloadMessage = getString(R.string.document_picker_unavailable)
+    }
+    internal fun chooseTorrDestination(entry: TorrCatalogEntry, files: List<TorrCatalogFile>) {
+        if (torrPreparing) return
+        torrDownloadMessage = ""
+        val existing = runCatching { Uri.parse(torrDownloadFolder) }.getOrNull()
+        val granted = existing != null && contentResolver.persistedUriPermissions.any { it.uri == existing && it.isReadPermission && it.isWritePermission }
+        if (granted) { enqueueTorrDownload(existing!!, entry, files); return }
+        pendingTorrDownload = entry to files
+        if (!launchDocumentPicker(Intent.ACTION_OPEN_DOCUMENT_TREE) { torrFolderPicker.launch(torrFolderInitialUri()) }) {
+            pendingTorrDownload = null
+            torrDownloadMessage = getString(R.string.document_picker_unavailable)
+        }
+    }
     var notice: String
         get() = notices.current?.message.orEmpty()
         set(value) { notices.show(value) }
@@ -831,6 +936,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (PortableRestoreStartup.ready && !PortableMaintenance.running) {
+            torrDownloadFolder = getSharedPreferences("orbit", MODE_PRIVATE).getString("downloads.folder", "").orEmpty()
+        }
         installMaintenanceInputGuard()
         if (!PortableRestoreStartup.ready) {
             val screen = android.widget.LinearLayout(this).apply {
@@ -1567,7 +1675,7 @@ private fun settingsParent(section: String): String = when {
     section.startsWith("clock/") -> clockParent(section)
     section in setOf("appearance", "art", "grafana") -> "appearanceGroup"
     section == "portablePreview" -> "portableCopy"
-    section == "covers" || section == "nowPlaying" || section == "portableCopy" -> "mediaGroup"
+    section == "covers" || section == "nowPlaying" || section == "portableCopy" || section == "downloads" -> "mediaGroup"
     else -> "root"
 }
 
@@ -1578,6 +1686,7 @@ private fun settingsTitle(section: String): Int = when {
         "portableCopy" -> R.string.portable_copy_title
         "covers" -> R.string.covers_title
         "nowPlaying" -> R.string.media_player
+        "downloads" -> R.string.torr_download_channel
         "appearanceGroup" -> R.string.settings_appearance_group
         "mediaGroup" -> R.string.settings_media_group
         "controller" -> R.string.settings_controls_group
@@ -1597,7 +1706,7 @@ private fun settingsTitle(section: String): Int = when {
     var savedSection by rememberSaveable { mutableStateOf(initialSection) }
     val section = when {
         savedSection == "videoOptions" -> "homeOptions"
-        savedSection.startsWith("clock/") || savedSection in setOf("root", "appearanceGroup", "mediaGroup", "controller", "localeGroup", "systemGroup", "language", "art", "grafana", "homeOptions", "appearance", "clock", "covers", "nowPlaying", "updates", "portableCopy", "portablePreview") -> savedSection
+        savedSection.startsWith("clock/") || savedSection in setOf("root", "appearanceGroup", "mediaGroup", "controller", "localeGroup", "systemGroup", "language", "art", "grafana", "homeOptions", "appearance", "clock", "covers", "nowPlaying", "updates", "portableCopy", "portablePreview", "downloads") -> savedSection
         else -> "root"
     }
     // The route we leave identifies the exact parent row to restore on Back.
@@ -1653,9 +1762,9 @@ private fun settingsTitle(section: String): Int = when {
         "root" -> listOf("homeOptions", "appearanceGroup", "mediaGroup", "controller", "localeGroup", "systemGroup", "updates")
         "appearanceGroup" -> listOf("appearance", "art", "grafana")
         "mediaGroup" -> (if (activity.legacyRecoveryPending) listOf("legacyRecovery") else emptyList()) +
-            listOf("addGames", "folders", "portableCopy", "covers", "nowPlaying", "ndsEmulator", "androidGames", "libraryTab", "appsTab")
+            listOf("addGames", "folders", "portableCopy", "covers", "nowPlaying", "downloads", "movies", "ndsEmulator", "androidGames", "libraryTab", "appsTab")
         "localeGroup" -> listOf("language", "clock")
-        "systemGroup" -> listOf("batteryStatus", "networkStatus", "network", "shield", "remote")
+        "systemGroup" -> listOf("batteryStatus", "networkStatus", "network", "torrServer", "shield", "remote")
         "portableCopy" -> listOf("copyAction", "portablePreview")
         else -> emptyList()
     }
@@ -1703,6 +1812,8 @@ private fun settingsTitle(section: String): Int = when {
                 SettingRow(tr(R.string.portable_copy_title), tr(R.string.portable_copy_summary), rowFocus("portableCopy"), onClick = { onSection("portableCopy") })
                 SettingRow(tr(R.string.covers_title), tr(R.string.covers_summary), rowFocus("covers"), onClick = { onSection("covers") })
                 SettingRow(tr(R.string.media_player), tr(R.string.media_settings_summary), rowFocus("nowPlaying"), onClick = { onSection("nowPlaying") })
+                SettingRow(tr(R.string.torr_download_channel), modifier = rowFocus("downloads"), onClick = { onSection("downloads") })
+                SettingRow(tr(R.string.movies_title), modifier = rowFocus("movies"), onClick = { activity.startActivity(Intent(activity, MovieLibraryActivity::class.java)) })
                 NintendoDsEmulatorSetting(rowFocus("ndsEmulator"))
                 AndroidGamesVisibilitySetting(rowFocus("androidGames"))
                 LibraryVisibilitySetting(rowFocus("libraryTab"))
@@ -1716,6 +1827,7 @@ private fun settingsTitle(section: String): Int = when {
                 val networkVisible = rememberNetworkVisible()
                 SettingRow(tr(R.string.network_status_visibility), tr(if (networkVisible) R.string.enabled else R.string.disabled), rowFocus("networkStatus"), onClick = { NetworkPreferences.visible(activity, !networkVisible) })
                 SettingRow(tr(R.string.network_settings), modifier = rowFocus("network"), onClick = { activity.openNetworkSettings() })
+                TorrServerStatusSetting(rowFocus("torrServer"))
                 SettingRow(tr(R.string.shield_settings), modifier = rowFocus("shield"), onClick = { activity.openSettings() })
                 SettingRow(tr(R.string.remote_autostart), tr(if (remoteAuto) R.string.enabled else R.string.disabled), rowFocus("remote"), onClick = {
                     remoteAuto = !remoteAuto
@@ -1724,6 +1836,8 @@ private fun settingsTitle(section: String): Int = when {
                 })
             } else if (section == "updates") {
                 UpdateSettings(activity, initialFocus)
+            } else if (section == "downloads") {
+                TorrDownloadUi(activity, initialFocus)
             } else if (section == "nowPlaying") {
                 MediaPlayerSettings(activity, mediaPlayback, initialFocus)
             } else if (section == "portableCopy") {

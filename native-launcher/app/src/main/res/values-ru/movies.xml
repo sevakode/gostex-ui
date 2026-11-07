@@ -67,4 +67,6 @@
     <string name="movies_partial_sources">Некоторые дополнения не ответили. Список может быть неполным.</string>
     <string name="movies_remove_addon">Удалить дополнение</string>
     <string name="movies_remove_addon_confirm">Удалить «%1$s»? Сохранённые фильмы и ссылки останутся.</string>
+    <string name="movies_external_open">Открыть ссылку сервиса</string>
+    <string name="movies_external_unavailable">Нет приложения для открытия ссылки сервиса.</string>
 </resources>

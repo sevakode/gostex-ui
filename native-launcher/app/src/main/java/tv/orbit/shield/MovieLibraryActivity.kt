@@ -379,6 +379,12 @@ class MovieLibraryActivity : ComponentActivity() {
     }
 
     private fun chooseStream(stream: MovieStreamOption) {
+        if (stream.external) {
+            if (sourceLookupJob?.isActive == true) stopSourceLookup()
+            runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(stream.uri)).addCategory(Intent.CATEGORY_BROWSABLE)) }
+                .onFailure { toast(R.string.movies_external_unavailable) }
+            return
+        }
         val movie = saveSelected() ?: return
         val label = listOf(stream.name, stream.description).filter { it.isNotBlank() }.joinToString(" · ").take(256)
         val source = MovieSource(label, stream.uri, stream.fileIndex, stream.sizeBytes)
@@ -467,7 +473,8 @@ class MovieLibraryActivity : ComponentActivity() {
                             sourceEpisode?.let { episode -> item { Text(getString(R.string.movies_episode_selected, episode.season, episodeLabel(episode)), color = Color.LightGray) } }
                             if (searchedSources && !busy && sources.isEmpty() && error.isBlank()) item { Text(tr(R.string.movies_search_empty), color = Color.LightGray) }
                             items(sources) { stream ->
-                                SettingRow(stream.name.ifBlank { tr(R.string.movies_play) }, stream.description, onClick = { chooseStream(stream) })
+                                val hint = if (stream.external) listOf(tr(R.string.movies_external_open), stream.description).filter { it.isNotBlank() }.joinToString(" · ") else stream.description
+                                SettingRow(stream.name.ifBlank { tr(if (stream.external) R.string.movies_external_open else R.string.movies_play) }, hint, onClick = { chooseStream(stream) })
                                 val estimate = stream.sizeBytes?.let { size -> movie.durationSeconds?.let { MoviePlaybackEstimator.estimate(size, it, null) } }
                                 if (estimate != null) Text(tr(R.string.movies_estimate_average, String.format(java.util.Locale.ROOT, "%.1f", estimate.averageBitsPerSecond / 1_000_000)), color = Color.LightGray)
                             }

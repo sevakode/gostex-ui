@@ -6,7 +6,7 @@ import java.net.URL
 import java.net.URLEncoder
 
 internal data class MovieAddon(val manifestUrl: String, val name: String)
-internal data class MovieStreamOption(val name: String, val description: String, val uri: String, val fileIndex: Int?, val sizeBytes: Long?)
+internal data class MovieStreamOption(val name: String, val description: String, val uri: String, val fileIndex: Int?, val sizeBytes: Long?, val external: Boolean = false)
 
 /** Opt-in add-ons are queried only for a film explicitly selected by the user. */
 internal object MovieAddonClient {
@@ -72,7 +72,7 @@ internal object MovieAddonClient {
                 val entry = entries.optJSONObject(index) ?: continue
                 val direct = entry.optString("url").takeIf { MovieLibraryStore.validSource(it) }
                 val hash = entry.optString("infoHash").takeIf { it.matches(Regex("(?i)[0-9a-f]{40}")) }
-                val uri = direct ?: hash?.let {
+                val torrent = if (direct != null) null else hash?.let {
                     val trackers = entry.optJSONArray("sources")
                     buildString {
                         append("magnet:?xt=urn:btih:").append(it)
@@ -83,11 +83,17 @@ internal object MovieAddonClient {
                             }
                         }
                     }
-                } ?: continue
+                }
+                val external = if (direct != null || torrent != null) null else entry.optString("externalUrl").takeIf { candidate ->
+                    MovieLibraryStore.validSource(candidate) && runCatching {
+                        java.net.URI(candidate).scheme?.lowercase(java.util.Locale.ROOT) in setOf("http", "https")
+                    }.getOrDefault(false)
+                }
+                val uri = direct ?: torrent ?: external ?: continue
                 val fileIndex = if (entry.has("fileIdx") && !entry.isNull("fileIdx"))
                     entry.optInt("fileIdx", -1).takeIf { it >= 0 } else null
                 val size = entry.optJSONObject("behaviorHints")?.optLong("videoSize", -1)?.takeIf { it > 0 }
-                add(MovieStreamOption(entry.optString("name").take(256), entry.optString("description").ifBlank { entry.optString("title") }.take(1024), uri, fileIndex, size))
+                add(MovieStreamOption(entry.optString("name").take(256), entry.optString("description").ifBlank { entry.optString("title") }.take(1024), uri, fileIndex, size, direct == null && torrent == null))
             }
         }
     }

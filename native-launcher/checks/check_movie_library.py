@@ -116,7 +116,18 @@ fun main() {
     val streams = MovieAddonClient.parseStreams(response)
     check(streams.size == 2 && streams[0].fileIndex == 3 && streams[0].uri == "magnet:?xt=urn:btih:$hash")
     check(streams[1].uri == "https://example.com/movie.mp4")
-    println("PASS: movie data round-trip, damaged-state protection, safe source validation and add-on selection")
+    val externalResponse = JSONObject().put("streams", org.json.JSONArray()
+        .put(JSONObject().put("name", "Provider").put("externalUrl", "https://example.com/watch?id=1"))
+        .put(JSONObject().put("url", "https://example.com/video.mp4").put("externalUrl", "https://example.com/watch"))
+        .put(JSONObject().put("infoHash", hash).put("externalUrl", "https://example.com/watch"))
+        .put(JSONObject().put("externalUrl", "javascript:alert(1)"))
+        .put(JSONObject().put("externalUrl", "stremio:///board"))
+        .put(JSONObject().put("externalUrl", "https://user:pass@example.com/watch")))
+    val links = MovieAddonClient.parseStreams(externalResponse)
+    check(links.size == 3 && links[0].external && links[0].uri == "https://example.com/watch?id=1")
+    check(!links[1].external && links[1].uri.endsWith("video.mp4"))
+    check(!links[2].external && links[2].uri.startsWith("magnet:"))
+    println("PASS: media storage, add-ons, episodes, streams and validated external service links")
 }
 '''
 with tempfile.TemporaryDirectory(prefix='gostex-movies-') as td:

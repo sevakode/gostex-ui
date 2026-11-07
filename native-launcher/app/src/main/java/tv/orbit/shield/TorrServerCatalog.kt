@@ -68,7 +68,9 @@ internal object TorrServerCatalog {
             connection.useCaches = false
             if (connection.responseCode != 200) throw IOException("Cannot obtain torrent metadata")
             if (connection.contentLengthLong > MAX_RESPONSE) throw IOException("Server response too large")
-            return parseEntry(JSONObject(connection.inputStream.use { String(readLimited(it, MAX_RESPONSE), Charsets.UTF_8) }))
+            return parseEntry(JSONObject(connection.inputStream.use { String(readLimited(it, MAX_RESPONSE), Charsets.UTF_8) })).also {
+                if (!it.hash.equals(hash, ignoreCase = true)) throw IOException("Unexpected torrent identity")
+            }
         } catch (_: SocketTimeoutException) {
             throw TorrMetadataTimeout()
         } finally {

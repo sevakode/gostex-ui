@@ -27,7 +27,7 @@ class Handler(BaseHTTPRequestHandler):
             try: self.wfile.write(b'{}')
             except (BrokenPipeError, ConnectionResetError): pass
             return
-        assert self.path == '/stream?link=' + 'a'*40 + '&stat=1'
+        assert self.path in ('/stream?link=' + 'a'*40 + '&stat=1', '/stream?link=' + 'A'*40 + '&stat=1', '/stream?link=' + 'f'*40 + '&stat=1')
         payload = json.dumps(ENTRY).encode()
         self.send_response(200); self.send_header('Content-Length', str(len(payload))); self.end_headers(); self.wfile.write(payload)
     def do_POST(self):
@@ -94,6 +94,8 @@ fun main(args: Array<String>) {
     check(runCatching { TorrServerCatalog.restoreByHash("2".repeat(40),port) }.exceptionOrNull() is java.io.IOException)
     check(runCatching { TorrServerCatalog.restoreByHash("invalid",port) }.isFailure)
     check(TorrServerCatalog.loadFiles(hash,port) == entry)
+    check(TorrServerCatalog.loadFiles(hash.uppercase(),port) == entry)
+    check(runCatching { TorrServerCatalog.loadFiles("f".repeat(40),port) }.exceptionOrNull() is java.io.IOException)
     check(runCatching { TorrServerCatalog.loadFiles("b".repeat(40),port,100) }.exceptionOrNull() is TorrMetadataTimeout)
     check(TorrServerCatalog.addMagnet("magnet:?xt=urn:btih:$hash",port) == entry)
     check(TorrServerCatalog.addTorrentUrl("https://example.com/file.torrent",port) == entry)

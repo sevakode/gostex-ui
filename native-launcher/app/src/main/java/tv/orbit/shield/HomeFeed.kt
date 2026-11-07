@@ -22,6 +22,7 @@ internal sealed interface HomeTileItem {
     val key: String
     data class GameItem(val game: Game) : HomeTileItem { override val key = homeGameKey(game.id) }
     data class AppItem(val app: TvApp) : HomeTileItem { override val key = homeAppKey(app.packageName) }
+    data class MovieItem(val movie: SavedMovie) : HomeTileItem { override val key = homeMovieKey(movie.id) }
 }
 
 internal data class HomeShelfContent(val section: HomeSection, val items: List<HomeTileItem>) {
@@ -31,18 +32,24 @@ internal data class HomeShelfContent(val section: HomeSection, val items: List<H
 
 internal fun homeShelfContents(
     options: HomeSectionsOptions, games: List<Game>, apps: List<TvApp>, played: Map<String, Long>,
-    includeAndroidGames: Boolean = true
+    includeAndroidGames: Boolean = true, movies: List<SavedMovie> = emptyList(), moviePlayed: Map<String, Long> = emptyMap()
 ): List<HomeShelfContent> {
     val gameItems = games.distinctBy(Game::id).map(HomeTileItem::GameItem)
     val appItems = apps.distinctBy(TvApp::packageName).map(HomeTileItem::AppItem)
-    val available = (gameItems + appItems).associateBy { it.key }
+    val movieItems = movies.distinctBy(SavedMovie::id).map(HomeTileItem::MovieItem)
+    val available = (gameItems + appItems + movieItems).associateBy { it.key }
     fun resolve(keys: List<String>) = keys.distinct().mapNotNull(available::get)
     return options.sections.filter { it.visible }.map { section ->
         val items = when (section.kind) {
             HomeSectionKind.CUSTOM -> resolve(section.items)
             HomeSectionKind.FAVORITES -> resolve(options.favorites)
-            HomeSectionKind.RECENT -> gameItems.filter { (played[it.game.id] ?: 0L) > 0L }
-                .sortedWith(compareByDescending<HomeTileItem.GameItem> { played[it.game.id] ?: 0L }.thenBy { it.game.id })
+            HomeSectionKind.RECENT -> (gameItems.filter { (played[it.game.id] ?: 0L) > 0L } +
+                movieItems.filter { (moviePlayed[it.movie.id] ?: 0L) > 0L })
+                .sortedWith(compareByDescending<HomeTileItem> { item -> when (item) {
+                    is HomeTileItem.GameItem -> played[item.game.id] ?: 0L
+                    is HomeTileItem.MovieItem -> moviePlayed[item.movie.id] ?: 0L
+                    is HomeTileItem.AppItem -> 0L
+                } }.thenBy { it.key })
             HomeSectionKind.GAMES -> gameItems + if (includeAndroidGames) appItems.filter { it.app.isGame } else emptyList()
             HomeSectionKind.APPS -> appItems
         }
@@ -86,6 +93,9 @@ internal data class HomeFeedRequest(val sequence: Long, val step: Int, val ancho
     onGameMenu: (Game, FocusRequester) -> Unit,
     onAppOpen: (TvApp) -> Unit,
     onAppMenu: (TvApp, FocusRequester) -> Unit,
+    onMovieOpen: (SavedMovie) -> Unit,
+    onMovieMenu: (SavedMovie, FocusRequester) -> Unit,
+    onMovieCover: suspend (SavedMovie) -> Unit,
     onEmptySettings: () -> Unit
 ) {
     val currentRows by rememberUpdatedState(rows)
@@ -159,7 +169,11 @@ internal data class HomeFeedRequest(val sequence: Long, val step: Int, val ancho
                     LazyRow(state = state.scroll(row.shelf),
                         contentPadding = PaddingValues(horizontal = TileLayout.screenInset + TileLayout.focusInset, vertical = 9.dp),
                         horizontalArrangement = Arrangement.spacedBy(TileLayout.gap)) {
-                        items(row.items, key = { it.key }, contentType = { if (it is HomeTileItem.GameItem) "game" else "app" }) { item ->
+                        items(row.items, key = { it.key }, contentType = { when (it) {
+                            is HomeTileItem.GameItem -> "game"
+                            is HomeTileItem.AppItem -> "app"
+                            is HomeTileItem.MovieItem -> "movie"
+                        } }) { item ->
                             val focus = state.focus(row.shelf, item.key)
                             val onFocus = {
                                 if (inputEnabled) {
@@ -179,6 +193,13 @@ internal data class HomeFeedRequest(val sequence: Long, val step: Int, val ancho
                                     modifier = Modifier.width(tileWidth).focusRequester(focus), favorite = item.key in favorites,
                                     onFocus = onFocus, onClick = { onFocus(); onAppOpen(item.app) },
                                     onLongClick = { onFocus(); onAppMenu(item.app, focus) })
+                                is HomeTileItem.MovieItem -> {
+                                    val autoCover = rememberMediaAutoCover()
+                                    LaunchedEffect(item.movie.id, item.movie.poster, autoCover) { if (autoCover) onMovieCover(item.movie) }
+                                    MediaTile(item.movie, modifier = Modifier.width(tileWidth).focusRequester(focus), favorite = item.key in favorites,
+                                        onFocus = onFocus, onClick = { onFocus(); onMovieOpen(item.movie) },
+                                        onLongClick = { onFocus(); onMovieMenu(item.movie, focus) })
+                                }
                             }
                         }
                     }

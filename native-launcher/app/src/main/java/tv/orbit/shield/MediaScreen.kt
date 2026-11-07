@@ -84,7 +84,7 @@ internal fun openMediaLibrary(context: Context, id: String? = null) {
 
 @Composable internal fun MediaTile(
     movie: SavedMovie, modifier: Modifier = Modifier, onClick: () -> Unit,
-    onLongClick: (() -> Unit)? = null, onFocus: () -> Unit = {}
+    onLongClick: (() -> Unit)? = null, onFocus: () -> Unit = {}, favorite: Boolean = false
 ) {
     var focused by remember { mutableStateOf(false) }
     val key = "movie:${movie.id}"
@@ -99,8 +99,11 @@ internal fun openMediaLibrary(context: Context, id: String? = null) {
             border = ClickableSurfaceDefaults.border(border = Border(BorderStroke(1.dp, Color(0xFF424244))), focusedBorder = Border(BorderStroke(2.dp, Color(0xFFCCFF00))))
         ) {
             val cover = LocalManagedCovers.current[key]
-            CoverArtwork(cover?.manual?.takeIf { it.isNotEmpty() } ?: cover?.original.orEmpty(),
-                Modifier.fillMaxSize(), key, movie.title)
+            Box(Modifier.fillMaxSize()) {
+                CoverArtwork(cover?.manual?.takeIf { it.isNotEmpty() } ?: cover?.original.orEmpty(),
+                    Modifier.fillMaxSize(), key, movie.title)
+                if (favorite) FavoriteBadge(Modifier.align(Alignment.TopEnd).padding(7.dp))
+            }
         }
         Spacer(Modifier.height(TileLayout.titleGap))
         Text(movie.title, color = if (focused) Color(0xFFCCFF00) else Color.White,
@@ -109,7 +112,7 @@ internal fun openMediaLibrary(context: Context, id: String? = null) {
 }
 
 @Composable internal fun MediaScreen(activity: MainActivity, movies: List<SavedMovie>, ready: Boolean, failed: Boolean,
-    inputEnabled: Boolean, modifier: Modifier = Modifier) {
+    inputEnabled: Boolean, favorites: Set<String>, onMenu: (SavedMovie, FocusRequester) -> Unit, modifier: Modifier = Modifier) {
     val addFocus = remember { FocusRequester() }
     val firstFocus = remember { FocusRequester() }
     val autoCover = rememberMediaAutoCover()
@@ -137,8 +140,10 @@ internal fun openMediaLibrary(context: Context, id: String? = null) {
                 horizontalArrangement = Arrangement.spacedBy(TileLayout.gap), verticalArrangement = Arrangement.spacedBy(TileLayout.gap)) {
                 items(movies, key = { it.id }) { movie ->
                     LaunchedEffect(movie.id, movie.poster, autoCover) { if (autoCover) activity.fetchMediaCover(movie) }
-                    MediaTile(movie, modifier = Modifier.fillMaxWidth().then(if (movie.id == (lastId ?: movies.first().id)) Modifier.focusRequester(firstFocus) else Modifier),
-                        onFocus = { lastId = movie.id }, onClick = { openMediaLibrary(activity, movie.id) })
+                    val cardFocus = remember(movie.id) { FocusRequester() }
+                    MediaTile(movie, modifier = Modifier.fillMaxWidth().then(if (movie.id == (lastId ?: movies.first().id)) Modifier.focusRequester(firstFocus) else Modifier).focusRequester(cardFocus),
+                        onFocus = { lastId = movie.id }, onClick = { openMediaLibrary(activity, movie.id) },
+                        onLongClick = { onMenu(movie, cardFocus) }, favorite = homeMovieKey(movie.id) in favorites)
                 }
             }
         }

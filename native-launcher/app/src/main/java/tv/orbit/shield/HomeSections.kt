@@ -31,6 +31,7 @@ internal data class HomeSectionsOptions(
 
 internal fun homeGameKey(id: String): String = "game:$id"
 internal fun homeAppKey(packageName: String): String = "app:$packageName"
+internal fun homeMovieKey(id: String): String = "movie:$id"
 
 /** One document owns section order, membership, visibility and shared favorites after migration. */
 internal object SectionPreferences {
@@ -58,6 +59,7 @@ internal object SectionPreferences {
         val payload = when {
             value.startsWith("game:") -> value.removePrefix("game:")
             value.startsWith("app:") -> value.removePrefix("app:")
+            value.startsWith("movie:") -> value.removePrefix("movie:")
             else -> return false
         }
         return payload.isNotBlank() && payload == payload.trim()

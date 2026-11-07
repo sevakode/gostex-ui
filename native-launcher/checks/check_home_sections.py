@@ -338,6 +338,17 @@ fun main() {
     check(limitPrefs.values == limitBefore && SectionPreferences.read(limitContext).sections.size == 64)
     pass("A bounded section count rejects overflow without truncating or losing prior user sections")
 
+    val mediaPrefs = TypedPreferences(mutableMapOf(KEY to """{"version":1,"sections":[],"favorites":[]}"""))
+    val mediaContext = TestContext(mediaPrefs)
+    val mediaId = checkNotNull(SectionPreferences.create(mediaContext, "My media"))
+    check(SectionPreferences.setMembership(mediaContext, homeMovieKey("tt123"), setOf(mediaId)))
+    check(SectionPreferences.toggleFavorite(mediaContext, homeMovieKey("tt123")))
+    val mediaReload = SectionPreferences.read(TestContext(mediaPrefs))
+    check(mediaReload.sections.single().items == listOf("movie:tt123"))
+    check(mediaReload.favorites == listOf("movie:tt123"))
+    check(!SectionPreferences.setMembership(mediaContext, "movie:", setOf(mediaId)))
+    pass("Media membership and favorites survive document reload while malformed keys are rejected")
+
     check(listOf(null, KEY).all(SectionPreferences::changes))
     check(listOf("favorites", "home.shelves.visible", "video.visible", "language", "home.selectedGame").none(SectionPreferences::changes))
     pass("Reactive invalidation watches only the canonical key/clear, ignoring obsolete and unrelated sources")
@@ -391,7 +402,7 @@ with tempfile.TemporaryDirectory(prefix="gostex-home-sections-") as folder:
         run = subprocess.run([str(JAVA), "-cp", f"{classes}:{classpath}", "tv.orbit.shield.SectionChecksKt"], capture_output=True, text=True)
         report["run"] = {"returncode": run.returncode, "stdout": run.stdout, "stderr": run.stderr}
         report["checks"] = [line.removeprefix("PASS|") for line in run.stdout.splitlines() if line.startswith("PASS|")]
-        report["passed"] = run.returncode == 0 and len(report["checks"]) == 18 and report["observerStructure"]
+        report["passed"] = run.returncode == 0 and len(report["checks"]) == 19 and report["observerStructure"]
 
 output = ROOT / ".reports/home-sections-checks.json"
 output.parent.mkdir(exist_ok=True)

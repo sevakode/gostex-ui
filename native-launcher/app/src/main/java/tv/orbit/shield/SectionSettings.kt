@@ -16,6 +16,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
@@ -27,6 +28,8 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable internal fun sectionTitle(section: HomeSection): String =
     sectionTitle(LocalResources.current, section)
@@ -111,11 +114,13 @@ internal class SectionDialogs(
 
 private data class SectionContentChoice(val key: String, val title: String)
 
-private fun contentChoices(resources: Resources, apps: List<TvApp>, games: List<Game>): List<SectionContentChoice> =
+private fun contentChoices(resources: Resources, apps: List<TvApp>, games: List<Game>, movies: List<SavedMovie>): List<SectionContentChoice> =
     apps.sortedWith(compareBy<TvApp> { it.name.lowercase(Locale.ROOT) }.thenBy { it.packageName }).map {
         SectionContentChoice(homeAppKey(it.packageName), resources.getString(R.string.sections_app_label, it.name))
     } + games.filterNot { it.demo }.sortedWith(compareBy<Game> { it.title.lowercase(Locale.ROOT) }.thenBy { it.id }).map {
         SectionContentChoice(homeGameKey(it.id), resources.getString(R.string.sections_game_label, it.title))
+    } + movies.sortedWith(compareBy<SavedMovie> { it.title.lowercase(Locale.ROOT) }.thenBy { it.id }).map {
+        SectionContentChoice(homeMovieKey(it.id), resources.getString(R.string.sections_media_label, it.title))
     }
 
 @Composable internal fun SectionSettings(initialFocus: FocusRequester, apps: List<TvApp>, games: List<Game>) {
@@ -134,7 +139,10 @@ private fun contentChoices(resources: Resources, apps: List<TvApp>, games: List<
             runCatching { returnFocus.requestFocus() }
         }
     }
-    val choices = remember(resources, apps, games) { contentChoices(resources, apps, games) }
+    val movies by produceState<List<SavedMovie>>(emptyList(), context) {
+        value = withContext(Dispatchers.IO) { runCatching { MovieLibraryStore.read(context) }.getOrDefault(emptyList()) }
+    }
+    val choices = remember(resources, apps, games, movies) { contentChoices(resources, apps, games, movies) }
     val contentTitles = remember(choices) { choices.associate { it.key to it.title } }
 
     fun selectContents(section: HomeSection) {
@@ -248,7 +256,7 @@ private fun contentChoices(resources: Resources, apps: List<TvApp>, games: List<
     SettingRow(tr(R.string.home_order), tr(homeOptions.order.titleRes), onClick = {
         HomePreferences.setOrder(context, HomeOrder.entries[(homeOptions.order.ordinal + 1) % HomeOrder.entries.size])
     })
-    if (orderFavorites) FavoriteOrderDialog(apps = apps, games = games, onDismiss = {
+    if (orderFavorites) FavoriteOrderDialog(apps = apps, games = games, movies = movies, onDismiss = {
         orderFavorites = false
         focusRevision++
     })

@@ -28,6 +28,7 @@ sections = {
     "home_section_models": extract("HomeSections.kt", "internal enum class HomeSectionKind", "/** One document owns"),
     "shelf_composition": extract("HomeFeed.kt", "internal sealed interface HomeTileItem", "internal data class HomeFeedRequest"),
     "game_model": extract("MainActivity.kt", "data class Game(", "private data class PortablePreviewDecisionSession"),
+    "movie_model": extract("MovieLibraryStore.kt", "internal data class MovieSource", "/** User collection"),
     "app_model": extract("AppArtwork.kt", "data class TvApp(", "/** Call off the UI thread."),
 }
 production = "\n".join(sections.values())
@@ -74,6 +75,17 @@ fun main() {
     check(rows.all { it.keys.isNotEmpty() })
     check(rows.row("video").section === video)
     pass("A populated home follows the saved section order and retains its custom section model")
+
+    val film = SavedMovie("tt123", "A movie", "2024", null)
+    val mediaSection = HomeSection("media-custom", HomeSectionKind.CUSTOM, "Media", listOf(homeMovieKey(film.id)))
+    val mediaOptions = HomeSectionsOptions(listOf(mediaSection) + builtins(), listOf(homeMovieKey(film.id)))
+    val mediaRows = homeShelfContents(mediaOptions, games, apps, played, movies = listOf(film, film), moviePlayed = mapOf(film.id to 1000L))
+    check(mediaRows.row("media-custom").keys == listOf(homeMovieKey(film.id)))
+    check(mediaRows.row("favorites").keys == listOf(homeMovieKey(film.id)))
+    check(mediaRows.row("recent").keys.first() == homeMovieKey(film.id))
+    check(mediaRows.row("recent").keys.count { it == homeMovieKey(film.id) } == 1)
+    check(homeShelfContents(mediaOptions, games, apps, played, movies = listOf(film)).none { it.shelf == "recent" && homeMovieKey(film.id) in it.keys })
+    pass("Movie tiles preserve identity in custom shelves, favorites and mixed recents")
 
     val nativeGame = TvApp("Native game", "example.native.game", isGame = true)
     val withNative = homeShelfContents(options, games, apps + nativeGame, played)
@@ -220,7 +232,7 @@ report = {
     "timestampUtc": datetime.now(timezone.utc).isoformat(),
     "scope": __doc__,
     "sourceSha256": {str((SOURCES / name).relative_to(ROOT)): hashlib.sha256((SOURCES / name).read_bytes()).hexdigest()
-                     for name in ["HomeFeed.kt", "HomeSections.kt", "MainActivity.kt", "AppArtwork.kt"]},
+                     for name in ["HomeFeed.kt", "HomeSections.kt", "MainActivity.kt", "AppArtwork.kt", "MovieLibraryStore.kt"]},
     "extractedSha256": {name: hashlib.sha256(value.encode()).hexdigest() for name, value in sections.items()},
     "notCovered": ["Compose layout, focus restoration and directional/shoulder input", "Android preference persistence and app discovery"],
     "passed": False,
@@ -239,7 +251,7 @@ with tempfile.TemporaryDirectory(prefix="gostex-home-feed-") as directory:
         run = subprocess.run([str(JAVA), "-cp", f"{output_classes}:{classpath}", "tv.orbit.shield.ChecksKt"], capture_output=True, text=True)
         report["run"] = {"returncode": run.returncode, "stdout": run.stdout, "stderr": run.stderr}
         report["checks"] = [line.removeprefix("PASS|") for line in run.stdout.splitlines() if line.startswith("PASS|")]
-        report["passed"] = run.returncode == 0 and len(report["checks"]) == 15
+        report["passed"] = run.returncode == 0 and len(report["checks"]) == 16
 
 output = ROOT / ".reports/sections21/feed-checks.json"
 output.parent.mkdir(parents=True, exist_ok=True)

@@ -1271,6 +1271,10 @@ class MainActivity : ComponentActivity() {
         tileReturnAnchor = feedState.anchor()
         tileReturnFocus = focus; tileMenu = TileMenuTarget.AppItem(app)
     }
+    fun movieMenu(movie: SavedMovie, focus: FocusRequester) {
+        tileReturnAnchor = feedState.anchor()
+        tileReturnFocus = focus; tileMenu = TileMenuTarget.MovieItem(movie)
+    }
     LaunchedEffect(tileRestore) {
         if (tileRestore > 0 && detail == null && tileMenu == null && membershipItem == null && favoriteOrderItem == null) {
             withFrameNanos { }
@@ -1296,11 +1300,14 @@ class MainActivity : ComponentActivity() {
     val played = remember(games, activity.resumeVersion) {
         games.associate { it.id to runCatching { prefs.getLong("played:${it.id}", 0L) }.getOrDefault(0L) }
     }
+    val moviePlayed = remember(movies, activity.resumeVersion) {
+        movies.associate { it.id to runCatching { prefs.getLong("played:movie:${it.id}", 0L) }.getOrDefault(0L) }
+    }
     val homeGames = remember(games, favorites, played, homeOptions.order) {
         orderedHomeGames(games, favorites, played, homeOptions.order)
     }
-    val shelfContents = remember(sectionOptions, homeGames, apps, played, libraryOptions.androidGamesVisible) {
-        homeShelfContents(sectionOptions, homeGames, apps, played, libraryOptions.androidGamesVisible)
+    val shelfContents = remember(sectionOptions, homeGames, apps, played, movies, moviePlayed, libraryOptions.androidGamesVisible) {
+        homeShelfContents(sectionOptions, homeGames, apps, played, libraryOptions.androidGamesVisible, movies, moviePlayed)
     }
     val chosen = games.firstOrNull { it.id == chosenId } ?: homeGames.firstOrNull()
     val locale = LocalConfiguration.current.locales[0].toLanguageTag()
@@ -1482,10 +1489,13 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.weight(1f), onGameFocus = ::selectGame,
                         onGameOpen = ::openGame, onGameMenu = ::gameMenu,
                         onAppOpen = activity::openApp, onAppMenu = ::appMenu,
+                        onMovieOpen = { openMediaLibrary(activity, it.id) }, onMovieMenu = ::movieMenu,
+                        onMovieCover = activity::fetchMediaCover,
                         onEmptySettings = { settingsInitialSection = "homeOptions"; settingsReturnFocus = null; settingsOpen = true })
                 } else if (tab == "movies") {
                     MediaScreen(activity, movies, movieResult != null, movieResult?.isFailure == true,
-                        inputEnabled = !settingsOpen && !mediaOpen, modifier = Modifier.weight(1f))
+                        inputEnabled = !settingsOpen && !mediaOpen && tileMenu == null && membershipItem == null && favoriteOrderItem == null,
+                        favorites = favoriteRefs, onMenu = ::movieMenu, modifier = Modifier.weight(1f))
                 } else if (tab == "downloads") {
                     val downloadsFocus = remember { FocusRequester() }
                     BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
@@ -1587,7 +1597,7 @@ class MainActivity : ComponentActivity() {
                 }
                 Row(Modifier.fillMaxWidth().padding(horizontal = 36.dp, vertical = 8.dp)) {
                     Box(Modifier.weight(1f).horizontalScroll(rememberScrollState())) {
-                        ControlHints(R.string.control_select, R.string.back, showHomeNavigation = tab == "home", showHoldMenu = tab != "movies")
+                        ControlHints(R.string.control_select, R.string.back, showHomeNavigation = tab == "home", showHoldMenu = true)
                     }
                     Spacer(Modifier.width(8.dp)); Text("GOSTEX", color = Lime, fontSize = 10.sp, fontFamily = FontFamily.Monospace, letterSpacing = 1.sp, maxLines = 1)
                 }
@@ -1617,9 +1627,11 @@ class MainActivity : ComponentActivity() {
     tileMenu?.let { target ->
         val menuGame = (target as? TileMenuTarget.GameItem)?.game
         val menuApp = (target as? TileMenuTarget.AppItem)?.app
+        val menuMovie = (target as? TileMenuTarget.MovieItem)?.movie
         val itemKey = when (target) {
             is TileMenuTarget.GameItem -> homeGameKey(target.game.id)
             is TileMenuTarget.AppItem -> homeAppKey(target.app.packageName)
+            is TileMenuTarget.MovieItem -> homeMovieKey(target.movie.id)
         }
         val currentSection = sectionOptions.sections.firstOrNull {
             tab == "home" && it.id == tileReturnAnchor?.shelf && it.kind == HomeSectionKind.CUSTOM
@@ -1628,9 +1640,9 @@ class MainActivity : ComponentActivity() {
             currentSectionTitle = currentSection?.let { sectionTitle(it) },
             onPlay = { dismissTileMenu(); menuGame?.let { activity.launchGame(it, 0) } },
             onDetails = { tileMenu = null; detail = menuGame; variant = 0 },
-            onCover = { dismissTileMenu(); menuGame?.let { activity.editGameCover(it.id) } },
+            onCover = { dismissTileMenu(); menuGame?.let { activity.editGameCover(it.id) }; menuMovie?.let { activity.chooseCover(homeMovieKey(it.id)) } },
             onToggleFavorite = { SectionPreferences.toggleFavorite(activity, itemKey); dismissTileMenu() },
-            onOpenApp = { dismissTileMenu(); menuApp?.let(activity::openApp) },
+            onOpenApp = { dismissTileMenu(); menuApp?.let(activity::openApp); menuMovie?.let { openMediaLibrary(activity, it.id) } },
             onSections = { tileMenu = null; membershipItem = itemKey },
             onFavoriteOrder = { tileMenu = null; favoriteOrderItem = itemKey },
             onPrioritize = { currentSection?.let { SectionPreferences.prioritize(activity, it.id, itemKey) }; dismissTileMenu() },
@@ -1647,7 +1659,7 @@ class MainActivity : ComponentActivity() {
         SectionMembershipDialog(itemKey, onDismiss = { membershipItem = null; tileRestore++ })
     }
     favoriteOrderItem?.let { itemKey ->
-        FavoriteOrderDialog(itemKey, apps, games, onDismiss = { favoriteOrderItem = null; tileRestore++ })
+        FavoriteOrderDialog(itemKey, apps, games, movies, onDismiss = { favoriteOrderItem = null; tileRestore++ })
     }
     if (settingsOpen) SettingsDrawer(activity, apps, games, mediaPlayback, settingsInitialSection, onClose = { settingsOpen = false })
     if (mediaOpen) MediaPlayerPopover(activity, mediaPlayback, onDismiss = { mediaOpen = false })

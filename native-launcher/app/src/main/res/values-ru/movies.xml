@@ -44,4 +44,6 @@
     <string name="media_manage">Управление медиа</string>
     <string name="media_library_empty">Пока нет фильмов. Выбери «Управление медиа», чтобы добавить фильм.</string>
     <string name="media_auto_cover">Автоматически загружать обложки медиа</string>
+    <string name="media_options">Параметры медиа</string>
+    <string name="sections_media_label">Медиа · %1$s</string>
 </resources>

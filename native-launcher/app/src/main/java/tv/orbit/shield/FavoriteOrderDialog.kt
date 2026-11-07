@@ -16,15 +16,17 @@ import androidx.compose.ui.platform.LocalResources
     initialItemKey: String? = null,
     apps: List<TvApp>,
     games: List<Game>,
+    movies: List<SavedMovie> = emptyList(),
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
     val resources = LocalResources.current
     val dismiss by rememberUpdatedState(onDismiss)
-    val names = remember(resources, apps, games) {
+    val names = remember(resources, apps, games, movies) {
         buildMap {
             apps.forEach { put(homeAppKey(it.packageName), resources.getString(R.string.sections_app_label, it.name)) }
             games.forEach { put(homeGameKey(it.id), resources.getString(R.string.sections_game_label, it.title)) }
+            movies.forEach { put(homeMovieKey(it.id), resources.getString(R.string.sections_media_label, it.title)) }
         }
     }
     DisposableEffect(context, resources, names, initialItemKey) {

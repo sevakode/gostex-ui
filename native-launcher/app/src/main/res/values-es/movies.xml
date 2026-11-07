@@ -44,4 +44,6 @@
     <string name="media_manage">Gestionar medios</string>
     <string name="media_library_empty">Aún no hay películas. Selecciona «Gestionar medios» para añadir una.</string>
     <string name="media_auto_cover">Cargar automáticamente las portadas de medios</string>
+    <string name="media_options">Opciones de medios</string>
+    <string name="sections_media_label">Medios · %1$s</string>
 </resources>

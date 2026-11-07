@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="home_shelf_video">Видео</string>
-    <string name="home_shelf_recent">Недавние игры</string>
+    <string name="home_shelf_recent">Недавние</string>
     <string name="home_shelf_favorites">Избранное</string>
     <string name="home_shelf_games">Игры</string>
     <string name="home_shelf_apps">Приложения</string>

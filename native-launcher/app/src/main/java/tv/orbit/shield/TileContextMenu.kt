@@ -40,6 +40,7 @@ import androidx.tv.material3.Text
 internal sealed interface TileMenuTarget {
     data class GameItem(val game: Game) : TileMenuTarget
     data class AppItem(val app: TvApp) : TileMenuTarget
+    data class MovieItem(val movie: SavedMovie) : TileMenuTarget
 }
 
 /**
@@ -65,6 +66,7 @@ internal fun TileContextMenu(
     val title = when (target) {
         is TileMenuTarget.GameItem -> target.game.title
         is TileMenuTarget.AppItem -> target.app.name
+        is TileMenuTarget.MovieItem -> target.movie.title
     }
     Dialog(
         onDismissRequest = onDismiss,
@@ -86,7 +88,7 @@ internal fun TileContextMenu(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    tr(if (target is TileMenuTarget.GameItem) R.string.tile_game_options else R.string.tile_app_options),
+                    tr(when (target) { is TileMenuTarget.GameItem -> R.string.tile_game_options; is TileMenuTarget.AppItem -> R.string.tile_app_options; is TileMenuTarget.MovieItem -> R.string.media_options }),
                     color = Color(0xFFCCFF00), fontSize = 11.sp, fontWeight = FontWeight.Bold
                 )
                 Text(title, color = Color(0xFFF5F5F5), fontSize = 23.sp, fontWeight = FontWeight.Black,
@@ -102,6 +104,11 @@ internal fun TileContextMenu(
                     is TileMenuTarget.AppItem -> {
                         SettingRow(tr(R.string.tile_open), modifier = Modifier.focusRequester(firstFocus),
                             trailing = "▶", onClick = onOpenApp)
+                    }
+                    is TileMenuTarget.MovieItem -> {
+                        SettingRow(tr(R.string.tile_open), modifier = Modifier.focusRequester(firstFocus),
+                            trailing = "▶", onClick = onOpenApp)
+                        SettingRow(tr(R.string.cover_manage), onClick = onCover)
                     }
                 }
                 SettingRow(tr(if (isFavorite) R.string.tile_favorite_remove else R.string.tile_favorite_add),

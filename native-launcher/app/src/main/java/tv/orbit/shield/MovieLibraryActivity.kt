@@ -177,7 +177,14 @@ class MovieLibraryActivity : ComponentActivity() {
         if (isTorrent) { prepareTorrent(uri); return }
         val intent = if (uri.scheme.equals("acestream", true)) Intent(Intent.ACTION_VIEW, uri)
             else Intent(Intent.ACTION_VIEW).setDataAndType(uri, "video/*")
-        runCatching { startActivity(intent) }.onFailure { toast(R.string.movies_player_missing) }
+        startMovieIntent(intent)
+    }
+
+    private fun startMovieIntent(intent: Intent) {
+        runCatching {
+            startActivity(intent)
+            selected?.id?.let { id -> getSharedPreferences("orbit", MODE_PRIVATE).edit().putLong("played:movie:$id", System.currentTimeMillis()).apply() }
+        }.onFailure { toast(R.string.movies_player_missing) }
     }
 
     private fun prepareTorrent(uri: Uri) {
@@ -202,7 +209,7 @@ class MovieLibraryActivity : ComponentActivity() {
                 if (videos.isEmpty()) { toast(R.string.movies_no_video); return@launch }
                 fun open(file: TorrCatalogFile) {
                     val intent = Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse(TorrPlayback.url(entry.hash, file.id)), "video/*")
-                    runCatching { startActivity(intent) }.onFailure { toast(R.string.movies_player_missing) }
+                    startMovieIntent(intent)
                 }
                 if (videos.size == 1) open(videos.single())
                 else AlertDialog.Builder(this@MovieLibraryActivity).setTitle(R.string.movies_choose_video)

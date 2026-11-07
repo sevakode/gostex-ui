@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="home_shelf_video">Vídeo</string>
-    <string name="home_shelf_recent">Jugados recientemente</string>
+    <string name="home_shelf_recent">Recientes</string>
     <string name="home_shelf_favorites">Favoritos</string>
     <string name="home_shelf_games">Juegos</string>
     <string name="home_shelf_apps">Aplicaciones</string>

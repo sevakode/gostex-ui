@@ -44,4 +44,6 @@
     <string name="media_manage">Manage media</string>
     <string name="media_library_empty">No films yet. Choose “Manage media” to add one.</string>
     <string name="media_auto_cover">Automatically load media covers</string>
+    <string name="media_options">Media options</string>
+    <string name="sections_media_label">Media · %1$s</string>
 </resources>

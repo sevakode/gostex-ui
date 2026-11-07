@@ -45,6 +45,7 @@ class MovieLibraryActivity : ComponentActivity() {
     private var searched by mutableStateOf(false)
     private var searchedSources by mutableStateOf(false)
     private var sourceEpisode by mutableStateOf<MovieEpisode?>(null)
+    private var missingTorrentHash by mutableStateOf<String?>(null)
     private var readFailed = false
     private var requestGeneration = 0L
     private var sourceLookupJob: Job? = null
@@ -154,7 +155,7 @@ class MovieLibraryActivity : ComponentActivity() {
     private fun openMovie(item: MovieCatalogItem) {
         stopSourceLookup()
         val generation = ++requestGeneration
-        page = "detail"; selected = item; sources = emptyList(); error = ""; searchedSources = false; sourceEpisode = null
+        page = "detail"; selected = item; sources = emptyList(); error = ""; searchedSources = false; sourceEpisode = null; missingTorrentHash = null
         lifecycleScope.launch {
             val details = withContext(Dispatchers.IO) { runCatching { MovieCatalogClient.details(item.id, type = item.mediaType) } }
             if (generation == requestGeneration && selected?.id == item.id && details.isSuccess) selected = details.getOrThrow()
@@ -285,6 +286,7 @@ class MovieLibraryActivity : ComponentActivity() {
     private fun findSources(episode: MovieEpisode? = null) {
         val movie = selected ?: return
         stopSourceLookup()
+        missingTorrentHash = null
         val active = addons.filter { it.enabled }
         if (active.isEmpty()) { error = getString(R.string.movies_no_active_addons); return }
         val generation = ++requestGeneration
@@ -309,7 +311,9 @@ class MovieLibraryActivity : ComponentActivity() {
     }
 
     private fun play(source: MovieSource, episode: MovieEpisode? = null) {
+        if (busy && sourceLookupJob?.isActive != true) return
         if (sourceLookupJob?.isActive == true) stopSourceLookup()
+        missingTorrentHash = null
         if (!MovieLibraryStore.validSource(source.uri)) { toast(R.string.movies_source_failed); return }
         val uri = Uri.parse(source.uri)
         val isTorrent = uri.scheme.equals("torrserver", true) || uri.scheme.equals("magnet", true) || uri.scheme.equals("content", true) ||
@@ -385,6 +389,7 @@ class MovieLibraryActivity : ComponentActivity() {
             } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
             catch (failure: Exception) {
                 if (generation == requestGeneration && !isFinishing && !isDestroyed) {
+                    missingTorrentHash = if (failure is TorrEntryMissing && uri.scheme.equals("torrserver", true)) uri.host else null
                     busy = false; error = getString(when (failure) {
                         is TorrMetadataTimeout -> R.string.movies_torrent_timeout
                         is TorrEntryMissing -> R.string.movies_torrent_missing
@@ -395,7 +400,30 @@ class MovieLibraryActivity : ComponentActivity() {
         }
     }
 
+    private fun restoreMissingTorrent(hash: String) {
+        if (busy || hash != missingTorrentHash) return
+        val movieId = selected?.id ?: return
+        val generation = ++requestGeneration
+        busy = true; progressMessage = getString(R.string.movies_restore_working); error = ""
+        lifecycleScope.launch {
+            try {
+                withContext(Dispatchers.IO) { TorrServerCatalog.restoreByHash(hash) }
+                if (generation != requestGeneration || selected?.id != movieId || isFinishing || isDestroyed) return@launch
+                missingTorrentHash = null
+                sourceRemovalVersion++
+                toast(R.string.movies_restore_sent)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) {
+                if (generation == requestGeneration && selected?.id == movieId && !isFinishing && !isDestroyed)
+                    error = getString(R.string.movies_torrent_error)
+            } finally {
+                if (generation == requestGeneration) busy = false
+            }
+        }
+    }
+
     private fun chooseStream(stream: MovieStreamOption) {
+        if (busy && sourceLookupJob?.isActive != true) return
         if (stream.external) {
             if (sourceLookupJob?.isActive == true) stopSourceLookup()
             runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(stream.uri)).addCategory(Intent.CATEGORY_BROWSABLE)) }
@@ -466,6 +494,9 @@ class MovieLibraryActivity : ComponentActivity() {
                             val stored = saved.firstOrNull { it.id == movie.id }
                             item { Text(movie.title, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold) }
                             item { Text(listOf(movie.year, movie.description).filter { it.isNotBlank() }.joinToString(" · "), color = Color.LightGray, fontSize = 14.sp) }
+                            missingTorrentHash?.let { hash -> item(key = "restore-torrent") {
+                                SettingRow(tr(R.string.movies_restore_torrent), tr(R.string.movies_restore_hint), onClick = { restoreMissingTorrent(hash) })
+                            } }
                             if (pendingTorrentHash != null) item { SettingRow(tr(R.string.movies_attach_torrent), pendingTorrentTitle, onClick = { attachPendingTorrent() }) }
                             item { SettingRow(tr(if (stored == null) R.string.movies_save else R.string.movies_remove), onClick = {
                                 if (stored == null) saveSelected() else if (!readFailed && runCatching { MovieLibraryStore.remove(this@MovieLibraryActivity, stored.id) }.getOrDefault(false)) refresh()

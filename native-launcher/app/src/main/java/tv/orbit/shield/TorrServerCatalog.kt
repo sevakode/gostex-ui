@@ -82,6 +82,17 @@ internal object TorrServerCatalog {
         return addLink(magnet, port)
     }
 
+    /** Called only after explicit user action; hash alone does not preserve private trackers. */
+    fun restoreByHash(hash: String, port: Int = 8090): TorrCatalogEntry {
+        require(HASH.matches(hash))
+        val normalized = hash.lowercase(java.util.Locale.ROOT)
+        val existing = try { get(normalized, port) } catch (_: TorrEntryMissing) { null }
+        if (existing != null) return existing
+        val added = addMagnet("magnet:?xt=urn:btih:$normalized", port)
+        if (!added.hash.equals(normalized, ignoreCase = true)) throw IOException("Unexpected restored torrent identity")
+        return added
+    }
+
     fun addTorrentUrl(value: String, port: Int = 8090): TorrCatalogEntry {
         require(value.length in 1..8192 && !value.contains('\r') && !value.contains('\n'))
         val uri = java.net.URI(value)

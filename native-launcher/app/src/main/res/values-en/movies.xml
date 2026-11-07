@@ -71,5 +71,9 @@
     <string name="movies_external_unavailable">No app can open this service link.</string>
     <string name="movies_suggested_file">Possible match: %1$s</string>
     <string name="movies_last_episode">Find sources for last identified episode</string>
-    <string name="movies_torrent_missing">This torrent is no longer in TorrServer. Add the same torrent or magnet in Downloads to restore the link.</string>
+    <string name="movies_torrent_missing">This torrent is no longer in TorrServer. Try restoring it below or add the original torrent in Downloads.</string>
+    <string name="movies_restore_torrent">Restore torrent</string>
+    <string name="movies_restore_hint">Use its hash to try a magnet. Private trackers may require the original torrent file.</string>
+    <string name="movies_restore_working">Checking TorrServer…</string>
+    <string name="movies_restore_sent">Request accepted. If peers are unavailable, add the original torrent with its trackers.</string>
 </resources>

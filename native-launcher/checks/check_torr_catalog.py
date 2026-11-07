@@ -34,10 +34,11 @@ class Handler(BaseHTTPRequestHandler):
         body = self.rfile.read(int(self.headers['Content-Length']))
         if self.path == '/torrents':
             request = json.loads(body)
+            self.server.events.append(request)
             assert request['action'] in ('list', 'get', 'add', 'rem')
             if request['action'] == 'add': assert request['save_to_db'] and (request['link'].startswith('magnet:?') or request['link'] == 'https://example.com/file.torrent')
             if request['action'] == 'rem': assert request == {'action': 'rem', 'hash': 'a'*40}
-            if request['action'] == 'get' and request.get('hash') in ('e'*40, '1'*40):
+            if request['action'] == 'get' and request.get('hash') in ('e'*40, '1'*40, '3'*40):
                 self.server.fail_next_list = request['hash'] == '1'*40
                 self.send_response(404); self.end_headers(); return
             if request['action'] == 'list' and getattr(self.server, 'fail_next_list', False):
@@ -46,6 +47,8 @@ class Handler(BaseHTTPRequestHandler):
             if request['action'] == 'get' and request.get('hash') == '2'*40:
                 self.send_response(500); self.end_headers(); return
             result = ENTRY
+            if request['action'] == 'add' and request.get('link') == 'magnet:?xt=urn:btih:' + 'e'*40:
+                result = {'hash':'e'*40, 'title':'restored'}
             if request['action'] == 'get' and request.get('hash') == 'b'*40:
                 result = {'hash':'b'*40,'title':'unknown'}
             if request['action'] == 'get' and request.get('hash') == 'c'*40:
@@ -84,6 +87,12 @@ fun main(args: Array<String>) {
     val serverFailure = runCatching { TorrServerCatalog.get("2".repeat(40),port) }.exceptionOrNull()
     check(serverFailure is java.io.IOException && serverFailure !is TorrEntryMissing)
     check(TorrServerCatalog.get(hash,port) == entry)
+    check(TorrServerCatalog.restoreByHash(hash,port) == entry)
+    check(TorrServerCatalog.restoreByHash("E".repeat(40),port).hash == "e".repeat(40))
+    check(runCatching { TorrServerCatalog.restoreByHash("3".repeat(40),port) }.exceptionOrNull() is java.io.IOException)
+    check(runCatching { TorrServerCatalog.restoreByHash("1".repeat(40),port) }.exceptionOrNull() is java.io.IOException)
+    check(runCatching { TorrServerCatalog.restoreByHash("2".repeat(40),port) }.exceptionOrNull() is java.io.IOException)
+    check(runCatching { TorrServerCatalog.restoreByHash("invalid",port) }.isFailure)
     check(TorrServerCatalog.loadFiles(hash,port) == entry)
     check(runCatching { TorrServerCatalog.loadFiles("b".repeat(40),port,100) }.exceptionOrNull() is TorrMetadataTimeout)
     check(TorrServerCatalog.addMagnet("magnet:?xt=urn:btih:$hash",port) == entry)
@@ -100,7 +109,7 @@ fun main(args: Array<String>) {
     println("PASS: catalog list, file metadata, magnet, torrent upload and input bounds")
 }
 '''
-server = ThreadingHTTPServer(('127.0.0.1', 0), Handler); thread = Thread(target=server.serve_forever,daemon=True); thread.start()
+server = ThreadingHTTPServer(('127.0.0.1', 0), Handler); server.events = []; thread = Thread(target=server.serve_forever,daemon=True); thread.start()
 try:
     with tempfile.TemporaryDirectory(prefix='gostex-catalog-test-') as td:
         folder=Path(td); (folder/'Checks.kt').write_text(checks); cp=f'{compiler[1]}:{json_jar}'
@@ -111,6 +120,10 @@ try:
         result=subprocess.run([str(JAVA),'-cp',f'{folder / "classes"}:{cp}','tv.orbit.shield.ChecksKt',str(server.server_port)],capture_output=True,text=True)
         print(result.stdout,end='')
         if result.returncode: raise SystemExit(result.stderr)
+        adds = [event['link'] for event in server.events if event.get('action') == 'add']
+        assert adds.count('magnet:?xt=urn:btih:' + 'e'*40) == 1
+        assert 'magnet:?xt=urn:btih:' + '1'*40 not in adds and 'magnet:?xt=urn:btih:' + '2'*40 not in adds
+        assert adds.count('magnet:?xt=urn:btih:' + 'a'*40) == 1  # explicit existing add, not restore
         if len(sys.argv) == 3 and sys.argv[1] == '--live-port':
             result=subprocess.run([str(JAVA),'-cp',f'{folder / "classes"}:{cp}','tv.orbit.shield.ChecksKt',sys.argv[2],'live'],capture_output=True,text=True)
             print(result.stdout,end='')

@@ -178,6 +178,7 @@ class MovieLibraryActivity : ComponentActivity() {
         stopSourceLookup()
         val generation = ++requestGeneration
         page = "detail"; selected = item; sources = emptyList(); error = ""; searchedSources = false; sourceEpisode = null; missingTorrentHash = null
+        if (!item.id.matches(Regex("tt[0-9]{1,16}"))) return
         lifecycleScope.launch {
             val details = withContext(Dispatchers.IO) { runCatching { MovieCatalogClient.details(item.id, type = item.mediaType) } }
             if (generation == requestGeneration && selected?.id == item.id && details.isSuccess) selected = details.getOrThrow()
@@ -210,6 +211,49 @@ class MovieLibraryActivity : ComponentActivity() {
             toast(R.string.movies_torrent_attached)
             finish()
         } else toast(R.string.movies_source_failed)
+    }
+
+    private fun createLocalTorrentCard() {
+        if (pendingTorrentHash == null || readFailed) return
+        val title = EditText(this).apply {
+            setSingleLine(true)
+            setHint(R.string.movies_local_title)
+            setText(TorrentArtworkPolicy.query(pendingTorrentTitle))
+            filters = arrayOf(android.text.InputFilter.LengthFilter(256))
+        }
+        val movieId = android.view.View.generateViewId()
+        val seriesId = android.view.View.generateViewId()
+        val types = android.widget.RadioGroup(this).apply {
+            orientation = android.widget.RadioGroup.HORIZONTAL
+            addView(android.widget.RadioButton(context).apply { id = movieId; setText(R.string.movies_type_movie) })
+            addView(android.widget.RadioButton(context).apply { id = seriesId; setText(R.string.movies_type_series) })
+            check(movieId)
+        }
+        val content = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            val pad = (24 * resources.displayMetrics.density).toInt()
+            setPadding(pad, 0, pad, 0)
+            addView(title); addView(types)
+        }
+        val dialog = AlertDialog.Builder(this).setTitle(R.string.movies_local_create).setView(content)
+            .setNegativeButton(R.string.movies_cancel, null).setPositiveButton(R.string.movies_add, null).create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val hash = pendingTorrentHash ?: return@setOnClickListener
+                val name = title.text.toString().trim()
+                if (name.isBlank() || readFailed) { toast(R.string.movies_local_title_required); return@setOnClickListener }
+                val label = TorrentArtworkPolicy.query(pendingTorrentTitle).ifBlank { getString(R.string.movies_torrent_source) }
+                val movie = SavedMovie("local:${java.util.UUID.randomUUID()}", name, "", null,
+                    listOf(MovieSource(label.take(256), "torrserver://$hash")), mediaType = if (types.checkedRadioButtonId == seriesId) "series" else "movie")
+                if (runCatching { MovieLibraryStore.save(this, movie) }.getOrDefault(false)) {
+                    pendingTorrentHash = null
+                    dialog.dismiss()
+                    toast(R.string.movies_torrent_attached)
+                    finish()
+                } else toast(R.string.movies_source_failed)
+            }
+        }
+        dialog.show()
     }
 
     private fun addLink() = input(R.string.movies_add_link, R.string.movies_link_hint) { value ->
@@ -552,6 +596,9 @@ class MovieLibraryActivity : ComponentActivity() {
             if (error.isNotBlank()) Text(error, color = Color(0xFFFFA69A), modifier = Modifier.padding(vertical = 8.dp))
             Spacer(Modifier.height(10.dp))
             LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.weight(1f)) {
+                if (pendingTorrentHash != null && page in setOf("saved", "results")) item(key = "create-local-torrent-card") {
+                    SettingRow(tr(R.string.movies_local_create), tr(R.string.movies_local_hint), onClick = { createLocalTorrentCard() })
+                }
                 when (page) {
                     "saved" -> {
                         if (saved.isEmpty()) item { Text(tr(R.string.movies_empty), color = Color.LightGray) }
@@ -601,8 +648,10 @@ class MovieLibraryActivity : ComponentActivity() {
                             }) }
                             item { SettingRow(tr(R.string.movies_add_link), onClick = { addLink() }) }
                             item { SettingRow(tr(R.string.movies_add_file), onClick = { addFile() }) }
-                            item { SettingRow(tr(if (movie.mediaType == "series") R.string.movies_find_episode_sources else R.string.movies_sources),
-                                onClick = { if (movie.mediaType == "series") chooseEpisode() else findSources() }) }
+                            if (movie.id.matches(Regex("tt[0-9]{1,16}"))) item {
+                                SettingRow(tr(if (movie.mediaType == "series") R.string.movies_find_episode_sources else R.string.movies_sources),
+                                    onClick = { if (movie.mediaType == "series") chooseEpisode() else findSources() })
+                            }
                             if (lastEpisode != null) item(key = "last-episode") {
                                 SettingRow(tr(R.string.movies_last_episode), getString(R.string.movies_episode_selected, lastEpisode.season, episodeLabel(lastEpisode)),
                                     onClick = { findSources(lastEpisode) })

@@ -106,7 +106,15 @@ internal object ReVancedInstaller {
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<Int?>(null) }
     DisposableEffect(owner) {
-        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_RESUME) revision++ }
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                revision++
+                if (message == R.string.revanced_confirm) {
+                    message = null
+                    File(activity.cacheDir, "revanced-install/revanced-manager.apk").delete()
+                }
+            }
+        }
         owner.lifecycle.addObserver(observer)
         onDispose { owner.lifecycle.removeObserver(observer) }
     }

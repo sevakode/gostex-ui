@@ -20,7 +20,17 @@ fun main() {
     check(suggestEpisodeFile(listOf("S00E01.mkv"), 0, 1) == 0)
     check(suggestEpisodeFile(listOf("S02E03.mkv"), -1, 3) == null)
     check(suggestEpisodeFile(emptyList(), 2, 3) == null)
-    println("PASS: unique episode hints, ambiguous and multi-episode fallback")
+    val season = listOf("Show.S02E03.mkv", "Show.S02E04.mkv")
+    check(episodeFileMatchesHistory(season, 2, 3, 0))
+    check(!episodeFileMatchesHistory(season, 2, 3, 1))
+    check(!episodeFileMatchesHistory(listOf("S02E03.mkv", "s2e3.mp4"), 2, 3, 0))
+    check(!episodeFileMatchesHistory(listOf("unknown-1.mkv", "unknown-2.mkv"), 2, 3, 0))
+    check(episodeFileMatchesHistory(listOf("unknown.mkv"), 2, 3, 0))
+    check(!episodeFileMatchesHistory(listOf("Show.S02E04.mkv"), 2, 3, 0))
+    check(!episodeFileMatchesHistory(listOf("Show.S02E03E04.mkv"), 2, 3, 0))
+    check(!episodeFileMatchesHistory(season, 2, 3, 2))
+    check(!episodeFileMatchesHistory(listOf("unknown.mkv"), -1, 3, 0))
+    println("PASS: unique hints and reliable episode history for selected files")
 }
 '''
 with tempfile.TemporaryDirectory(prefix='gostex-episode-hint-') as td:

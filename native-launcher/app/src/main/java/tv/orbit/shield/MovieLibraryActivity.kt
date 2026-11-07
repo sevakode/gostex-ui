@@ -363,18 +363,21 @@ class MovieLibraryActivity : ComponentActivity() {
                 busy = false; error = ""
                 if (entry.files.isEmpty()) { toast(R.string.movies_metadata_unavailable); return@launch }
                 if (videos.isEmpty()) { toast(R.string.movies_no_video); return@launch }
-                fun open(file: TorrCatalogFile) {
+                val paths = videos.map { it.path }
+                fun open(index: Int) {
+                    val file = videos[index]
                     val intent = Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse(TorrPlayback.url(entry.hash, file.id)), "video/*")
-                    startMovieIntent(intent, episode)
+                    val identified = episode?.takeIf { episodeFileMatchesHistory(paths, it.season, it.episode, index) }
+                    startMovieIntent(intent, identified)
                 }
-                if (videos.size == 1) open(videos.single())
+                if (videos.size == 1) open(0)
                 else {
-                    val suggested = episode?.let { suggestEpisodeFile(videos.map { file -> file.path }, it.season, it.episode) }
+                    val suggested = episode?.let { suggestEpisodeFile(paths, it.season, it.episode) }
                     val labels = mediaFileLabels(videos).mapIndexed { index, label ->
                         if (index == suggested) getString(R.string.movies_suggested_file, label) else label
                     }
                     val dialog = AlertDialog.Builder(this@MovieLibraryActivity).setTitle(R.string.movies_choose_video)
-                        .setItems(labels.toTypedArray()) { _, index -> open(videos[index]) }
+                        .setItems(labels.toTypedArray()) { _, index -> open(index) }
                         .setNegativeButton(R.string.movies_cancel, null).create()
                     dialog.show()
                     suggested?.let { dialog.listView?.apply { setSelection(it); requestFocus() } }

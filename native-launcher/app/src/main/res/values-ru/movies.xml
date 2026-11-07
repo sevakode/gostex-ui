@@ -70,5 +70,5 @@
     <string name="movies_external_open">Открыть ссылку сервиса</string>
     <string name="movies_external_unavailable">Нет приложения для открытия ссылки сервиса.</string>
     <string name="movies_suggested_file">Возможно, нужная серия: %1$s</string>
-    <string name="movies_last_episode">Найти источники последней открытой серии</string>
+    <string name="movies_last_episode">Найти источники последней известной серии</string>
 </resources>

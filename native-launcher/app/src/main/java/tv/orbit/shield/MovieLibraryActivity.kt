@@ -67,6 +67,7 @@ class MovieLibraryActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         if (!PortableRestoreStartup.ready || PortableMaintenance.running) { finish(); return }
         refresh()
+        pendingFileId = savedInstanceState?.getString(STATE_PENDING_FILE_ID)
         pendingTorrentHash = (savedInstanceState?.getString(EXTRA_TORRENT_HASH) ?: intent.getStringExtra(EXTRA_TORRENT_HASH))
             ?.takeIf { it.matches(Regex("(?i)[0-9a-f]{40}")) }?.lowercase(java.util.Locale.ROOT)
         pendingTorrentTitle = (savedInstanceState?.getString(EXTRA_TORRENT_TITLE) ?: intent.getStringExtra(EXTRA_TORRENT_TITLE)).orEmpty().take(256)
@@ -85,12 +86,14 @@ class MovieLibraryActivity : ComponentActivity() {
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString(STATE_PENDING_FILE_ID, pendingFileId)
         outState.putString(EXTRA_TORRENT_HASH, pendingTorrentHash)
         outState.putString(EXTRA_TORRENT_TITLE, pendingTorrentTitle)
         super.onSaveInstanceState(outState)
     }
 
     companion object {
+        private const val STATE_PENDING_FILE_ID = "pending_file_id"
         internal const val EXTRA_MOVIE_ID = "movie_id"
         internal const val EXTRA_PLAY_SINGLE = "play_single"
         internal const val EXTRA_TORRENT_HASH = "torrent_hash"

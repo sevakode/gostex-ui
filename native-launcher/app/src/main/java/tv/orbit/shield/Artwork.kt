@@ -59,8 +59,10 @@ private object ArtCache {
                 val options = BitmapFactory.Options().apply { inSampleSize = sample }
                 openCoverImage(context, path).use { BitmapFactory.decodeStream(it, null, options) }
             }.getOrNull()
+            currentCoroutineContext().ensureActive()
             // A failed asset stays a neutral placeholder; never reuse another game's art.
             val entry = CachedArtwork(path, source, source?.let(::makeAmbient))
+            currentCoroutineContext().ensureActive()
             entries.put(path, entry)
             entry
         }

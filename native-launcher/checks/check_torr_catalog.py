@@ -40,6 +40,12 @@ class Handler(BaseHTTPRequestHandler):
             request = json.loads(body)
             self.server.events.append(request)
             assert request['action'] in ('list', 'get', 'add', 'rem')
+            if request['action'] == 'get' and request.get('hash') == '4'*40:
+                time.sleep(0.6)
+                self.send_response(200); self.send_header('Content-Length', '2'); self.end_headers()
+                try: self.wfile.write(b'{}')
+                except (BrokenPipeError, ConnectionResetError): pass
+                return
             if request['action'] == 'add': assert request['save_to_db'] and (request['link'].startswith('magnet:?') or request['link'] == 'https://example.com/file.torrent')
             if request['action'] == 'rem': assert request == {'action': 'rem', 'hash': 'a'*40}
             if request['action'] == 'get' and request.get('hash') in ('e'*40, '1'*40, '3'*40):
@@ -95,6 +101,10 @@ fun main(args: Array<String>) {
     check(endpointFailure is java.io.IOException && endpointFailure !is TorrEntryMissing)
     val serverFailure = runCatching { TorrServerCatalog.get("2".repeat(40),port) }.exceptionOrNull()
     check(serverFailure is java.io.IOException && serverFailure !is TorrEntryMissing)
+    check(TorrServerCatalog.status(hash,port) == entry)
+    check(runCatching { TorrServerCatalog.status("4".repeat(40),port,100) }.exceptionOrNull() is java.net.SocketTimeoutException)
+    check(runCatching { TorrServerCatalog.status("f".repeat(40),port) }.isFailure)
+    check(runCatching { TorrServerCatalog.status("e".repeat(40),port) }.isFailure)
     check(TorrServerCatalog.get(hash,port) == entry)
     check(TorrServerCatalog.restoreByHash(hash,port) == entry)
     check(TorrServerCatalog.restoreByHash("E".repeat(40),port).hash == "e".repeat(40))
@@ -131,6 +141,8 @@ try:
         result=subprocess.run([str(JAVA),'-cp',f'{folder / "classes"}:{cp}','tv.orbit.shield.ChecksKt',str(server.server_port)],capture_output=True,text=True)
         print(result.stdout,end='')
         if result.returncode: raise SystemExit(result.stderr)
+        events = server.events
+        assert any(e == {'action':'get', 'hash':'e'*40} and events[i+1] == {'action':'get', 'hash':'a'*40} for i,e in enumerate(events[:-1]))  # status 404 has no list fallback
         adds = [event['link'] for event in server.events if event.get('action') == 'add']
         assert adds.count('magnet:?xt=urn:btih:' + 'e'*40) == 1
         assert 'magnet:?xt=urn:btih:' + '1'*40 not in adds and 'magnet:?xt=urn:btih:' + '2'*40 not in adds

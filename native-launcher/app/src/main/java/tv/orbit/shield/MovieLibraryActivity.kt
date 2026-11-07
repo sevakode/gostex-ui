@@ -437,7 +437,7 @@ class MovieLibraryActivity : ComponentActivity() {
         }
         monitor = lifecycleScope.launch {
             while (isActive && dialog.isShowing) {
-                val entry = runCatching { withContext(Dispatchers.IO) { TorrServerCatalog.get(hash) } }.getOrNull()
+                val entry = runCatching { withContext(Dispatchers.IO) { TorrServerCatalog.status(hash) } }.getOrNull()
                 if (isActive && dialog.isShowing) {
                     lastStatus = entry?.let { torrentStatusText(it, false) } ?: getString(R.string.movies_status_unavailable)
                     dialog.setMessage(listOf(lastStatus, preloadMessage).filter { it.isNotEmpty() }.joinToString("\n\n"))
@@ -488,7 +488,7 @@ class MovieLibraryActivity : ComponentActivity() {
             if (request?.isActive == true) return
             dialog.setMessage(getString(R.string.movies_status_loading))
             request = lifecycleScope.launch {
-                val result = runCatching { withContext(Dispatchers.IO) { TorrServerCatalog.get(hash) } }
+                val result = runCatching { withContext(Dispatchers.IO) { TorrServerCatalog.status(hash) } }
                 if (!isActive || !dialog.isShowing) return@launch
                 val entry = result.getOrNull()
                 if (entry == null) {

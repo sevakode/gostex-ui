@@ -51,6 +51,16 @@ internal object TorrServerCatalog {
         }
     }
 
+    /** Bounded read-only status snapshot; a missing entry is simply unavailable here. */
+    fun status(hash: String, port: Int = 8090, timeoutMs: Int = 4000): TorrCatalogEntry {
+        require(HASH.matches(hash) && timeoutMs in 1..10000)
+        val body = JSONObject().put("action", "get").put("hash", hash).toString().toByteArray()
+        val data = request(port, "/torrents", "application/json", body, timeoutMs)
+        return parseEntry(JSONObject(data)).also {
+            if (!it.hash.equals(hash, ignoreCase = true)) throw IOException("Unexpected torrent identity")
+        }
+    }
+
     /** Removes only the server entry; downloaded documents are never touched here. */
     fun remove(hash: String, port: Int = 8090) {
         require(HASH.matches(hash))
@@ -169,12 +179,12 @@ internal object TorrServerCatalog {
         return TorrCatalogEntry(hash, title, entries, rate, seeds, cached, preload, state)
     }
 
-    private fun request(port: Int, path: String, type: String, body: ByteArray): String {
+    private fun request(port: Int, path: String, type: String, body: ByteArray, timeoutMs: Int = 30000): String {
         require(port in 1..65535)
         val connection = URL("http://127.0.0.1:$port$path").openConnection(Proxy.NO_PROXY) as HttpURLConnection
         try {
-            connection.connectTimeout = 5000
-            connection.readTimeout = 30000
+            connection.connectTimeout = minOf(5000, timeoutMs)
+            connection.readTimeout = timeoutMs
             connection.instanceFollowRedirects = false
             connection.useCaches = false
             connection.requestMethod = "POST"

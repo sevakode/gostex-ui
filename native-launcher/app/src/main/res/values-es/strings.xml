@@ -54,6 +54,7 @@
     <string name="open_game">Abrir juego  →</string>
     <string name="too_deep">Demasiadas carpetas anidadas</string>
     <string name="folder_unavailable">Carpeta no disponible</string>
+    <string name="import_folder_incomplete">La carpeta aún se está cargando o ha informado de un error. Se conservan los juegos anteriores; vuelve a buscar más tarde.</string>
     <string name="too_many_files">Hay más de 10 000 archivos. Elige una carpeta más pequeña.</string>
     <string name="language_title">Idioma / Language / Язык</string>
     <string name="genre_platform">Plataformas</string>

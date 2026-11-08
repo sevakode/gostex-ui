@@ -40,6 +40,7 @@ data class Uri(val raw:String) {
 'Documents.kt': r'''package android.provider
 import android.net.Uri
 object DocumentsContract {
+ const val EXTRA_LOADING="loading";const val EXTRA_ERROR="error"
  object Document {const val COLUMN_DOCUMENT_ID="id";const val COLUMN_DISPLAY_NAME="name";const val COLUMN_MIME_TYPE="mime";const val COLUMN_SIZE="size";const val COLUMN_LAST_MODIFIED="modified";const val MIME_TYPE_DIR="directory"}
  fun encode(s:String)=java.net.URLEncoder.encode(s,"UTF-8")
  fun decode(s:String)=java.net.URLDecoder.decode(s,"UTF-8")
@@ -62,10 +63,12 @@ import android.net.Uri
 import android.provider.DocumentsContract as Docs
 data class Permission(val uri:Uri,val isReadPermission:Boolean=true)
 data class Row(val id:String,val name:String,val mime:String="file")
-class Cursor(val rows:List<Row>):java.io.Closeable {var at=-1;fun moveToNext()=++at<rows.size;fun moveToFirst():Boolean { at=0;return rows.isNotEmpty() };fun isNull(i:Int)=true;fun getLong(i:Int)=0L;fun getString(i:Int)=when(i){0->rows[at].id;1->rows[at].name;else->rows[at].mime};override fun close() {}}
+class Extras(val loading:Boolean=false,val error:String?=null) {fun getBoolean(key:String)=loading;fun getString(key:String)=error}
+class Cursor(val rows:List<Row>,val extras:Extras=Extras()):java.io.Closeable {var at=-1;fun moveToNext()=++at<rows.size;fun moveToFirst():Boolean { at=0;return rows.isNotEmpty() };fun isNull(i:Int)=true;fun getLong(i:Int)=0L;fun getString(i:Int)=when(i){0->rows[at].id;1->rows[at].name;else->rows[at].mime};override fun close() {}}
 class Resolver {
  val persistedUriPermissions=mutableListOf<Permission>()
  val children=mutableMapOf<String,List<Row>>();val files=mutableMapOf<String,java.io.File>()
+ val extras=mutableMapOf<String,Extras>()
  val queried=mutableListOf<String>();val opened=mutableListOf<String>()
  var fail:Exception?=null;var queryFail:Exception?=null;var beforeQuery:(()->Unit)?=null
  fun query(uri:Uri,cols:Array<String>,where:String?,args:Array<String>?,order:String?):Cursor? {
@@ -75,7 +78,7 @@ class Resolver {
    return Cursor(children.values.flatten().filter{it.id==id}.distinctBy{it.id})
   }
   val id=Docs.decode(uri.raw.substringAfter("/children/"));queried+=id
-  return children[id]?.let{Cursor(it)}
+  return children[id]?.let{Cursor(it,extras[id]?:Extras())}
  }
  fun openInputStream(uri:Uri)=files[Docs.getDocumentId(uri)]?.inputStream()
  fun openFileDescriptor(uri:Uri,mode:String):android.os.ParcelFileDescriptor? {
@@ -190,6 +193,15 @@ fun main(args:Array<String>)=runBlocking {
  pass("Failed DS scan cannot retain 3DS cards through a shared URI",libraryRootSnapshot(root.uri,null,listOf(oldDs,oldThreeDs),"Nintendo DS")==listOf(oldDs))
  pass("Successful empty scan clears only its own platform snapshot",libraryRootSnapshot(root.uri,emptyList(),listOf(oldDs,oldThreeDs),"Nintendo 3DS").isEmpty())
  pass("Legacy snapshot callers retain URI-only behavior",libraryRootSnapshot(root.uri,null,listOf(oldDs,oldThreeDs))==listOf(oldDs,oldThreeDs))
+ val incomplete=ctx("incomplete")
+ incomplete.contentResolver.children["primary:chosen"]=emptyList()
+ for ((name,extras) in listOf("loading" to Extras(loading=true), "error" to Extras(error="temporarily unavailable"))) {
+  incomplete.contentResolver.extras["primary:chosen"]=extras
+  val rejected=runCatching { LibraryImport.scan(incomplete,dsRoot,emptyList()) }.isFailure
+  pass("$name cursor keeps the previous library snapshot",rejected && libraryRootSnapshot(dsRoot.uri,null,listOf(oldDs),dsRoot.platform)==listOf(oldDs))
+ }
+ incomplete.contentResolver.extras.clear()
+ pass("Complete empty folder can still remove deleted games",LibraryImport.scan(incomplete,dsRoot,emptyList()).isEmpty())
  fun add(context:Context,path:String,file:File?=null) {
   val parts=path.split('/');var parent="primary:chosen"
   for((i,part) in parts.withIndex()) {

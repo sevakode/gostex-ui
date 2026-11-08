@@ -54,6 +54,7 @@
     <string name="open_game">Открыть игру  →</string>
     <string name="too_deep">Слишком много вложенных папок</string>
     <string name="folder_unavailable">Папка недоступна</string>
+    <string name="import_folder_incomplete">Папка ещё загружается или вернула ошибку. Прежний список игр сохранён; повторите сканирование позже.</string>
     <string name="too_many_files">В папке больше 10000 файлов. Выбери папку поменьше.</string>
     <string name="language_title">Язык / Language / Idioma</string>
     <string name="genre_platform">Платформер</string>

@@ -127,7 +127,15 @@ internal object LibraryImport {
             val children = Docs.buildChildDocumentsUriUsingTree(tree, id)
             val rows = context.contentResolver.query(children, arrayOf(Docs.Document.COLUMN_DOCUMENT_ID, Docs.Document.COLUMN_DISPLAY_NAME, Docs.Document.COLUMN_MIME_TYPE), null, null, null)
                 ?: error(context.getString(R.string.folder_unavailable))
-            rows.use { c -> while (c.moveToNext()) {
+            rows.use { c ->
+                fun requireComplete() {
+                    val extras = c.extras
+                    check(!extras.getBoolean(Docs.EXTRA_LOADING) && extras.getString(Docs.EXTRA_ERROR) == null) {
+                        context.getString(R.string.import_folder_incomplete)
+                    }
+                }
+                requireComplete()
+                while (c.moveToNext()) {
                 scanContext.ensureActive()
                 check(++visited <= 10000) { context.getString(R.string.too_many_files) }
                 val child = c.getString(0); val name = c.getString(1); val mime = c.getString(2)
@@ -143,7 +151,9 @@ internal object LibraryImport {
                 if (installed && !ThreeDsInstalledLayout.application(path)) continue
                 if (threeDs && name.endsWith(".cia", ignoreCase = true)) ciaPackages++
                 if (platform.launchKind == LaunchKind.DUCKSTATION || platform.accepts(name)) indexed += DiscImport.File(path, child)
-            } }
+                }
+                requireComplete()
+            }
         }
         walk(Docs.getTreeDocumentId(tree), "", 0)
         check(!installed || hasSdmc) { context.getString(R.string.three_ds_wrong_data_folder) }

@@ -54,6 +54,7 @@
     <string name="open_game">Open game  →</string>
     <string name="too_deep">Too many nested folders</string>
     <string name="folder_unavailable">Folder unavailable</string>
+    <string name="import_folder_incomplete">Folder is still loading or reported an error. Previous games are kept; scan again later.</string>
     <string name="too_many_files">Over 10,000 files. Choose a smaller folder.</string>
     <string name="language_title">Language / Idioma / Язык</string>
     <string name="genre_platform">Platformer</string>

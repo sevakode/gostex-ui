@@ -131,6 +131,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          test "$(gh release view --repo "$GH_REPO" --json tagName --jq .tagName)" = "$(cat "$RUNNER_TEMP/previous-release-tag")"
+          previous_tag=$(cat "$RUNNER_TEMP/previous-release-tag")
+          test "$(gh release view --repo "$GH_REPO" --json tagName --jq .tagName)" = "$previous_tag"
+          [[ "$previous_tag" =~ ^build-[0-9]+$ && "$GITHUB_RUN_NUMBER" =~ ^[0-9]+$ ]]
+          # Queue start order is not guaranteed. An older build remains available,
+          # but must never replace a newer update feed as the latest release.
+          latest=false
+          if (( 10#$GITHUB_RUN_NUMBER > 10#${previous_tag#build-} )); then latest=true; fi
           printf '%s\n' 'GOSTEX Android TV update. The previous Linux release assets are retained unchanged.' '' 'Android uses system installation confirmation.' > "$RUNNER_TEMP/release-body.md"
-          gh release create "build-$GITHUB_RUN_NUMBER" release-assets/* --target "$GITHUB_SHA" --title "GOSTEX 0.33.$GITHUB_RUN_NUMBER" --notes-file "$RUNNER_TEMP/release-body.md" --latest
+          gh release create "build-$GITHUB_RUN_NUMBER" release-assets/* --target "$GITHUB_SHA" --title "GOSTEX 0.33.$GITHUB_RUN_NUMBER" --notes-file "$RUNNER_TEMP/release-body.md" --latest="$latest"

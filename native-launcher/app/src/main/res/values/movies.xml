@@ -111,4 +111,6 @@
     <string name="movies_state_working">Active</string>
     <string name="movies_state_closed">Closed</string>
     <string name="movies_state_stored">Stored on server</string>
+    <string name="movies_auto_play">Automatically play after buffering</string>
+    <string name="movies_last_played_file">Last played: %1$s</string>
 </resources>

@@ -111,4 +111,6 @@
     <string name="movies_state_working">Активна</string>
     <string name="movies_state_closed">Закрыта</string>
     <string name="movies_state_stored">В списке сервера</string>
+    <string name="movies_auto_play">Запускать после подготовки</string>
+    <string name="movies_last_played_file">Последняя серия: %1$s</string>
 </resources>

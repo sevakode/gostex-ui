@@ -427,11 +427,11 @@ class MovieLibraryActivity : ComponentActivity() {
         startMovieIntent(intent, episode, choosePlayer)
     }
 
-    private fun startMovieIntent(intent: Intent, episode: MovieEpisode? = null, choosePlayer: Boolean = false) {
+    private fun startMovieIntent(intent: Intent, episode: MovieEpisode? = null, choosePlayer: Boolean = false, onStarted: () -> Unit = {}, onReturned: () -> Unit = {}) {
         val id = selected?.id ?: return
         videoPlayer.open(intent, force = choosePlayer,
-            onStarted = { MoviePlaybackReceipt.mark(this, id, episode?.id) },
-            onError = { toast(R.string.movies_player_missing) })
+            onStarted = { MoviePlaybackReceipt.mark(this, id, episode?.id); onStarted() },
+            onError = { toast(R.string.movies_player_missing) }, onReturned = onReturned)
     }
 
     private fun prepareTorrent(uri: Uri, episode: MovieEpisode?, choosePlayer: Boolean, filenameHint: String?) {
@@ -456,17 +456,36 @@ class MovieLibraryActivity : ComponentActivity() {
                 if (entry.files.isEmpty()) { toast(R.string.movies_metadata_unavailable); return@launch }
                 if (videos.isEmpty()) { toast(R.string.movies_no_video); return@launch }
                 val paths = videos.map { it.path }
+                val movieId = selected?.id
+                val seriesId = selected?.takeIf { it.mediaType == "series" }?.id
                 fun open(index: Int) {
                     val file = videos[index]
                     val intent = Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse(TorrPlayback.url(entry.hash, file.id)), "video/*")
                     val identified = episode?.takeIf { episodeFileMatchesHistory(paths, it.season, it.episode, index) }
-                    showTorrentBuffer(entry.hash, file.id) { startMovieIntent(intent, identified, choosePlayer) }
+                    fun launchPlayer() {
+                        startMovieIntent(intent, identified, choosePlayer,
+                            onStarted = {
+                                if (seriesId != null) TorrPlaybackPreferences.rememberFile(this@MovieLibraryActivity, seriesId, entry.hash, file.path)
+                            },
+                            onReturned = {
+                                if (movieId != null && selected?.id == movieId) {
+                                    showTorrentBuffer(entry.hash, file.id, startPreload = false, openPlayer = ::launchPlayer)
+                                }
+                            })
+                    }
+                    showTorrentBuffer(entry.hash, file.id, openPlayer = ::launchPlayer)
                 }
                 if (videos.size == 1) open(0)
                 else {
-                    val suggested = suggestFilename(paths, filenameHint) ?: episode?.let { suggestEpisodeFile(paths, it.season, it.episode) }
+                    val lastFile = if (episode == null && filenameHint.isNullOrBlank() && seriesId != null)
+                        TorrPlaybackPreferences.lastFileIndex(this@MovieLibraryActivity, seriesId, entry.hash, paths) else null
+                    val suggested = suggestFilename(paths, filenameHint) ?: episode?.let { suggestEpisodeFile(paths, it.season, it.episode) } ?: lastFile
                     val labels = mediaFileLabels(videos).mapIndexed { index, label ->
-                        if (index == suggested) getString(R.string.movies_suggested_file, label) else label
+                        when {
+                            index == lastFile -> getString(R.string.movies_last_played_file, label)
+                            index == suggested -> getString(R.string.movies_suggested_file, label)
+                            else -> label
+                        }
                     }
                     val dialog = AlertDialog.Builder(this@MovieLibraryActivity).setTitle(R.string.movies_choose_video)
                         .setItems(labels.toTypedArray()) { _, index -> open(index) }
@@ -488,7 +507,7 @@ class MovieLibraryActivity : ComponentActivity() {
         }
     }
 
-    private fun showTorrentBuffer(hash: String, fileId: Int, openPlayer: () -> Unit) {
+    private fun showTorrentBuffer(hash: String, fileId: Int, startPreload: Boolean = true, openPlayer: () -> Unit) {
         val movieId = selected?.id
         bufferDialog?.dismiss()
         var dialog: AlertDialog? = null
@@ -496,7 +515,7 @@ class MovieLibraryActivity : ComponentActivity() {
             lastPreparedMovie = movieId
             lastPreparedHash = hash
             openPlayer()
-        }, onDismiss = { if (bufferDialog === dialog) bufferDialog = null })
+        }, onDismiss = { if (bufferDialog === dialog) bufferDialog = null }, startPreload = startPreload)
         bufferDialog = dialog
     }
 

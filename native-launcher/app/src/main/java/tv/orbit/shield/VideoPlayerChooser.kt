@@ -24,6 +24,7 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
     private val prefs by lazy { activity.getSharedPreferences("orbit", Context.MODE_PRIVATE) }
     private val pendingKey = "video.pending." + activity.javaClass.simpleName
     private var request by mutableStateOf<Request?>(null)
+    private var onPlayerReturned: (() -> Unit)? = null
     private val result = activity.registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { response ->
         val expected = prefs.getString(pendingKey, null)
         prefs.edit().remove(pendingKey).apply()
@@ -37,11 +38,13 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
             else if (position >= 10_000 && (duration <= 0 || position < duration)) editor.putLong("video.position.$expected", position)
             editor.apply()
         }
+        val callback = onPlayerReturned.also { onPlayerReturned = null }
+        if (!activity.isFinishing && !activity.isDestroyed) callback?.invoke()
     }
     private data class Player(val component: ComponentName, val label: String)
-    private data class Request(val intent: Intent, val players: List<Player>, val onStarted: () -> Unit, val onError: () -> Unit)
+    private data class Request(val intent: Intent, val players: List<Player>, val onStarted: () -> Unit, val onError: () -> Unit, val onReturned: () -> Unit)
 
-    fun open(intent: Intent, force: Boolean = false, onStarted: () -> Unit = {}, onError: () -> Unit) {
+    fun open(intent: Intent, force: Boolean = false, onStarted: () -> Unit = {}, onError: () -> Unit, onReturned: () -> Unit = {}) {
         val players = activity.packageManager.queryIntentActivities(intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
             .mapNotNull { item ->
                 val info = item.activityInfo ?: return@mapNotNull null
@@ -49,7 +52,7 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
                 Player(ComponentName(info.packageName, info.name), item.loadLabel(activity.packageManager).toString())
             }.distinctBy { it.component }.sortedBy { it.label.lowercase() }
         if (players.isEmpty()) { onError(); return }
-        val next = Request(Intent(intent), players, onStarted, onError)
+        val next = Request(Intent(intent), players, onStarted, onError, onReturned)
         val preferred = prefs.getString("video.default_player", null)
         val selected = players.firstOrNull { it.component.flattenToString() == preferred }
         if (!force && selected != null) launch(next, selected, null) else request = next
@@ -64,12 +67,14 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
             prefs.edit().putString(pendingKey, key).apply()
         } else prefs.edit().remove(pendingKey).apply()
         try {
+            onPlayerReturned = req.onReturned
             result.launch(intent)
             if (rememberDefault == true) prefs.edit().putString("video.default_player", player.component.flattenToString()).apply()
             else if (rememberDefault == false && prefs.getString("video.default_player", null) == player.component.flattenToString())
                 prefs.edit().remove("video.default_player").apply()
             req.onStarted()
         } catch (_: Exception) {
+            onPlayerReturned = null
             prefs.edit().remove(pendingKey).apply()
             req.onError()
         }

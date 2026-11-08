@@ -4,6 +4,7 @@ import android.app.AlertDialog
 import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.Lifecycle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -13,7 +14,7 @@ import kotlinx.coroutines.withContext
 
 /** Shared preparation UI for the media library and direct torrent playback. */
 internal object TorrPreparationDialog {
-    fun show(activity: ComponentActivity, hash: String, fileId: Int, onOpen: () -> Unit, onDismiss: () -> Unit): AlertDialog {
+    fun show(activity: ComponentActivity, hash: String, fileId: Int, onOpen: () -> Unit, onDismiss: () -> Unit, startPreload: Boolean = true): AlertDialog {
         val dialog = AlertDialog.Builder(activity)
             .setTitle(R.string.movies_buffer_title)
             .setMessage(R.string.movies_buffer_starting)
@@ -26,7 +27,14 @@ internal object TorrPreparationDialog {
         var preloadMessage = ""
         dialog.setOnDismissListener { monitor?.cancel(); preload?.cancel(); onDismiss() }
         dialog.show()
-        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener { dialog.dismiss(); onOpen() }
+        var opened = false
+        fun openOnce() {
+            if (opened || !dialog.isShowing) return
+            opened = true
+            dialog.dismiss()
+            onOpen()
+        }
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener { openOnce() }
         monitor = activity.lifecycleScope.launch {
             while (isActive && dialog.isShowing) {
                 val entry = runCatching { withContext(Dispatchers.IO) { TorrServerCatalog.status(hash) } }.getOrNull()
@@ -37,10 +45,19 @@ internal object TorrPreparationDialog {
                 delay(2000)
             }
         }
-        preload = activity.lifecycleScope.launch {
+        if (startPreload) preload = activity.lifecycleScope.launch {
             val result = runCatching { withContext(Dispatchers.IO) { TorrServerCatalog.preload(hash, fileId) } }
             if (!isActive || !dialog.isShowing) return@launch
-            preloadMessage = activity.getString(if (result.isSuccess) R.string.movies_buffer_finished else R.string.movies_buffer_waiting)
+            val entry = result.getOrNull()
+            // TorrServer can return HTTP 200 after an aborted preload. Require its
+            // reported cache threshold as well; it does not guarantee future throughput.
+            val ready = torrentPreloadReady(entry?.serverState, entry?.cachedBytes, entry?.preloadBytes)
+            if (ready && TorrPlaybackPreferences.autoPlay(activity) &&
+                activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                openOnce()
+                return@launch
+            }
+            preloadMessage = activity.getString(if (ready) R.string.movies_buffer_finished else R.string.movies_buffer_waiting)
             dialog.setMessage(listOf(lastStatus, preloadMessage).filter { it.isNotEmpty() }.joinToString("\n\n"))
         }
         return dialog

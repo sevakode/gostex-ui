@@ -111,4 +111,6 @@
     <string name="movies_state_working">Activo</string>
     <string name="movies_state_closed">Cerrado</string>
     <string name="movies_state_stored">Guardado en el servidor</string>
+    <string name="movies_auto_play">Reproducir al terminar la preparación</string>
+    <string name="movies_last_played_file">Último episodio: %1$s</string>
 </resources>

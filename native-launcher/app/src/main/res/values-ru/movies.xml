@@ -114,6 +114,7 @@
     <string name="movies_auto_play">Запускать после подготовки</string>
     <string name="movies_last_played_file">Последняя серия: %1$s</string>
     <string name="movies_auto_next">Автоматически включать следующую серию в VLC</string>
+    <string name="movies_restart_near_end">Начинать почти досмотренное заново</string>
     <string name="movies_resume_retry_single">Не удалось восстановить позицию. Вернитесь назад и откройте серию снова.</string>
     <string name="movies_next_not_ordered">Автопереход недоступен для состава или порядка файлов этой раздачи.</string>
     <string name="movies_next_needs_media_access">Для автоперехода после продолжения разрешите GOSTEX доступ к уведомлениям.</string>

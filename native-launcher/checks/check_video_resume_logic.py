@@ -10,6 +10,8 @@ fun main() {
     val duration = 24 * 60_000L
     check(videoResumePosition(12 * 60_000L, duration) == 12 * 60_000L)
     check(videoResumePosition(23 * 60_000L + 2_000, duration) == 0L)
+    check(videoResumePosition(23 * 60_000L + 2_000, duration, false) == 23 * 60_000L + 2_000)
+    check(videoResumePosition(duration, duration, false) == 0L)
     check(videoResumePosition(23 * 60_000L + 2_000, 0) == 23 * 60_000L + 2_000)
     check(videoResumePosition(0, duration) == 0L)
     check(videoResumePosition(-1, duration) == 0L)

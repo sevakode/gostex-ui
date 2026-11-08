@@ -114,6 +114,7 @@
     <string name="movies_auto_play">Reproducir al terminar la preparación</string>
     <string name="movies_last_played_file">Último episodio: %1$s</string>
     <string name="movies_auto_next">Reproducir el siguiente episodio automáticamente en VLC</string>
+    <string name="movies_restart_near_end">Reiniciar vídeos casi terminados</string>
     <string name="movies_resume_retry_single">No se pudo recuperar la posición. Vuelve atrás y abre el episodio de nuevo.</string>
     <string name="movies_next_not_ordered">La reproducción automática no está disponible para los archivos o el orden de este torrent.</string>
     <string name="movies_next_needs_media_access">Para continuar automáticamente, permite a GOSTEX acceder a las notificaciones.</string>

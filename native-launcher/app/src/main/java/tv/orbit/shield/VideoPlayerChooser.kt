@@ -60,7 +60,7 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
             val duration = data.getLongExtra("extra_duration", 0L)
             val editor = prefs.edit()
             if (duration > 0) editor.putLong("video.duration.$playedKey", duration)
-            if (videoIsNearlyFinished(position, duration)) editor.remove("video.position.$playedKey")
+            if (videoIsNearlyFinished(position, duration, TorrPlaybackPreferences.restartNearEnd(activity))) editor.remove("video.position.$playedKey")
             else if (position >= 10_000 && (duration <= 0 || position < duration)) editor.putLong("video.position.$playedKey", position)
             editor.apply()
         }
@@ -95,7 +95,7 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
         val key = req.intent.dataString?.let(::digest)
         val savedPosition = key?.let { prefs.getLong("video.position.$it", 0L) } ?: 0L
         val knownDuration = key?.let { prefs.getLong("video.duration.$it", 0L) } ?: 0L
-        val position = videoResumePosition(savedPosition, knownDuration)
+        val position = videoResumePosition(savedPosition, knownDuration, TorrPlaybackPreferences.restartNearEnd(activity))
         val wasFinished = savedPosition > 0 && position == 0L
         if (wasFinished && key != null) prefs.edit().remove("video.position.$key").apply()
         // Without notification access we cannot reliably seek the first playlist
@@ -159,10 +159,11 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
                             (state.actions and PlaybackState.ACTION_SEEK_TO) != 0L
                     }
                 val duration = controller?.metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION) ?: 0L
-                if (controller != null && duration > 0 && runCatching { controller.transportControls.seekTo(videoResumePosition(position, duration)) }.isSuccess) {
+                val restartNearEnd = TorrPlaybackPreferences.restartNearEnd(activity)
+                if (controller != null && duration > 0 && runCatching { controller.transportControls.seekTo(videoResumePosition(position, duration, restartNearEnd)) }.isSuccess) {
                     val key = digest(TorrPlayback.url(playlist.hash, playlist.startId))
                     val editor = prefs.edit().putLong("video.duration.$key", duration)
-                    if (videoIsNearlyFinished(position, duration)) editor.remove("video.position.$key")
+                    if (videoIsNearlyFinished(position, duration, restartNearEnd)) editor.remove("video.position.$key")
                     editor.apply()
                     return@launch
                 }
@@ -196,7 +197,7 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
                 val duration = controller?.metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION) ?: 0L
                 if (controller != null && duration > 0) {
                     val editor = prefs.edit().putLong("video.duration.$key", duration)
-                    if (videoIsNearlyFinished(position, duration) && runCatching { controller.transportControls.seekTo(0L) }.isSuccess)
+                    if (videoIsNearlyFinished(position, duration, TorrPlaybackPreferences.restartNearEnd(activity)) && runCatching { controller.transportControls.seekTo(0L) }.isSuccess)
                         editor.remove("video.position.$key")
                     editor.apply()
                     return@launch

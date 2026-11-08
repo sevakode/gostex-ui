@@ -113,4 +113,8 @@
     <string name="movies_state_stored">Stored on server</string>
     <string name="movies_auto_play">Automatically play after buffering</string>
     <string name="movies_last_played_file">Last played: %1$s</string>
+    <string name="movies_auto_next">Play next episode automatically in VLC</string>
+    <string name="movies_resume_retry_single">Could not restore the position. Go back and open the episode again.</string>
+    <string name="movies_next_not_ordered">Autoplay is unavailable for this torrent’s file list or episode order.</string>
+    <string name="movies_next_needs_media_access">To autoplay after resuming, allow GOSTEX access to media notifications.</string>
 </resources>

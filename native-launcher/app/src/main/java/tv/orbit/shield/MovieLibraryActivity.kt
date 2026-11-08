@@ -427,11 +427,11 @@ class MovieLibraryActivity : ComponentActivity() {
         startMovieIntent(intent, episode, choosePlayer)
     }
 
-    private fun startMovieIntent(intent: Intent, episode: MovieEpisode? = null, choosePlayer: Boolean = false, onStarted: () -> Unit = {}, onReturned: () -> Unit = {}) {
+    private fun startMovieIntent(intent: Intent, episode: MovieEpisode? = null, choosePlayer: Boolean = false, onStarted: () -> Unit = {}, onReturned: () -> Unit = {}, playlist: VlcSeriesPlaylist? = null, playlistUnavailable: Boolean = false) {
         val id = selected?.id ?: return
         videoPlayer.open(intent, force = choosePlayer,
             onStarted = { MoviePlaybackReceipt.mark(this, id, episode?.id); onStarted() },
-            onError = { toast(R.string.movies_player_missing) }, onReturned = onReturned)
+            onError = { toast(R.string.movies_player_missing) }, onReturned = onReturned, playlist = playlist, playlistUnavailable = playlistUnavailable)
     }
 
     private fun prepareTorrent(uri: Uri, episode: MovieEpisode?, choosePlayer: Boolean, filenameHint: String?) {
@@ -459,21 +459,32 @@ class MovieLibraryActivity : ComponentActivity() {
                 val movieId = selected?.id
                 val seriesId = selected?.takeIf { it.mediaType == "series" }?.id
                 fun open(index: Int) {
-                    val file = videos[index]
-                    val intent = Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse(TorrPlayback.url(entry.hash, file.id)), "video/*")
-                    val identified = episode?.takeIf { episodeFileMatchesHistory(paths, it.season, it.episode, index) }
+                    var currentIndex = index
                     fun launchPlayer() {
+                        val file = videos[currentIndex]
+                        val intent = Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse(TorrPlayback.url(entry.hash, file.id)), "video/*")
+                        val identified = episode?.takeIf { episodeFileMatchesHistory(paths, it.season, it.episode, currentIndex) }
+                        // The server playlist includes every recognized file, not just video.
+                        // Only use it when it cannot accidentally play an extra file.
+                        val playlist = if (seriesId != null && videos.size > 1 && videos.size == entry.files.size && orderedEpisodeFiles(paths))
+                            VlcSeriesPlaylist(entry.hash, file.id, file.path.substringAfterLast('/'), videos.map { it.id }.toSet()) { id ->
+                                val playedIndex = videos.indexOfFirst { it.id == id }
+                                if (playedIndex >= 0) {
+                                    currentIndex = playedIndex
+                                    TorrPlaybackPreferences.rememberFile(this@MovieLibraryActivity, seriesId, entry.hash, videos[playedIndex].path)
+                                }
+                            } else null
                         startMovieIntent(intent, identified, choosePlayer,
                             onStarted = {
                                 if (seriesId != null) TorrPlaybackPreferences.rememberFile(this@MovieLibraryActivity, seriesId, entry.hash, file.path)
                             },
                             onReturned = {
                                 if (movieId != null && selected?.id == movieId) {
-                                    showTorrentBuffer(entry.hash, file.id, startPreload = false, openPlayer = ::launchPlayer)
+                                    showTorrentBuffer(entry.hash, videos[currentIndex].id, startPreload = false, openPlayer = ::launchPlayer)
                                 }
-                            })
+                            }, playlist = playlist, playlistUnavailable = seriesId != null && videos.size > 1 && playlist == null)
                     }
-                    showTorrentBuffer(entry.hash, file.id, openPlayer = ::launchPlayer)
+                    showTorrentBuffer(entry.hash, videos[currentIndex].id, openPlayer = ::launchPlayer)
                 }
                 if (videos.size == 1) open(0)
                 else {

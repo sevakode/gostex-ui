@@ -33,3 +33,24 @@ internal fun episodeFileMatchesHistory(paths: List<String>, season: Int, episode
     val marker = Regex("(?i)(?<![a-z0-9])(?:s[0-9]{1,4}e[0-9]{1,5}|[0-9]{1,4}x[0-9]{1,5})")
     return !marker.containsMatchIn(name)
 }
+
+/** Only hand an unattended queue to the player when the torrent's order is unambiguous. */
+internal fun orderedEpisodeFiles(paths: List<String>): Boolean {
+    if (paths.size < 2) return false
+    val marker = Regex("(?i)(?<![a-z0-9])(?:s([0-9]{1,4})e([0-9]{1,5})|([0-9]{1,4})x([0-9]{1,5}))(?![a-z0-9])")
+    val multiEpisode = Regex("(?i)(?:[ ._-]+e[0-9]+|[ ._-]+s[0-9]+e[0-9]+|\\s*-\\s*[0-9]+(?![a-z0-9]))")
+    val episodes = paths.map { path ->
+        val matches = marker.findAll(path.substringAfterLast('/')).take(2).toList()
+        if (matches.size != 1) return false
+        val m = matches.single()
+        val season = (m.groupValues[1].ifEmpty { m.groupValues[3] }).toIntOrNull() ?: return false
+        val episode = (m.groupValues[2].ifEmpty { m.groupValues[4] }).toIntOrNull() ?: return false
+        val tail = path.substringAfterLast('/').substring(m.range.last + 1)
+        if (multiEpisode.find(tail)?.range?.first == 0) return false
+        season to episode
+    }
+    return episodes.zipWithNext().all { (a, b) ->
+        (b.first == a.first && b.second == a.second + 1) ||
+            (b.first == a.first + 1 && b.second == 1)
+    }
+}

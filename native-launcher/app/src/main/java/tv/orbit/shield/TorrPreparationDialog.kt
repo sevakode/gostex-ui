@@ -37,7 +37,9 @@ internal object TorrPreparationDialog {
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener { openOnce() }
         monitor = activity.lifecycleScope.launch {
             while (isActive && dialog.isShowing) {
-                val entry = runCatching { withContext(Dispatchers.IO) { TorrServerCatalog.status(hash) } }.getOrNull()
+                // /stream?stat also renews the server's inactivity timer. Keep
+                // this torrent/cache alive only while this window is visible.
+                val entry = runCatching { withContext(Dispatchers.IO) { TorrServerCatalog.loadFiles(hash, readTimeoutMs = 4000) } }.getOrNull()
                 if (isActive && dialog.isShowing) {
                     lastStatus = entry?.let { torrentStatusText(activity, it, false) } ?: activity.getString(R.string.movies_status_unavailable)
                     dialog.setMessage(listOf(lastStatus, preloadMessage).filter { it.isNotEmpty() }.joinToString("\n\n"))
@@ -51,7 +53,8 @@ internal object TorrPreparationDialog {
             val entry = result.getOrNull()
             // TorrServer can return HTTP 200 after an aborted preload. Require its
             // reported cache threshold as well; it does not guarantee future throughput.
-            val ready = torrentPreloadReady(entry?.serverState, entry?.cachedBytes, entry?.preloadBytes)
+            val ready = torrentPreloadReady(entry?.serverState, entry?.cachedBytes, entry?.preloadBytes,
+                entry?.files?.singleOrNull { it.id == fileId }?.size)
             if (ready && TorrPlaybackPreferences.autoPlay(activity) &&
                 activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
                 openOnce()

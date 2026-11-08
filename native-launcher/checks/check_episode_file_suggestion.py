@@ -36,7 +36,13 @@ fun main() {
     check(!episodeFileMatchesHistory(listOf("Show.S02E03E04.mkv"), 2, 3, 0))
     check(!episodeFileMatchesHistory(season, 2, 3, 2))
     check(!episodeFileMatchesHistory(listOf("unknown.mkv"), -1, 3, 0))
-    println("PASS: unique hints and reliable episode history for selected files")
+    check(orderedEpisodeFiles(listOf("Show.S01E01.mkv", "Show.S01E02.mkv", "Show.S02E01.mkv")))
+    check(!orderedEpisodeFiles(listOf("Show.S01E02.mkv", "Show.S01E01.mkv")))
+    check(!orderedEpisodeFiles(listOf("Show.S01E01.mkv", "Show.S01E03.mkv")))
+    check(!orderedEpisodeFiles(listOf("Show.S01E01.mkv", "Show.S01E01-alt.mkv")))
+    check(!orderedEpisodeFiles(listOf("Show.S01E01E02.mkv", "Show.S01E03.mkv")))
+    check(!orderedEpisodeFiles(listOf("Show.S01E01.mkv", "extras.mkv")))
+    println("PASS: episode hints, history and safe autoplay order")
 }
 '''
 with tempfile.TemporaryDirectory(prefix='gostex-episode-hint-') as td:

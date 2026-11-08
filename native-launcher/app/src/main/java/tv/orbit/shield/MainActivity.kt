@@ -2134,6 +2134,7 @@ private fun settingsTitle(section: String): Int = when {
                 SettingRow(tr(R.string.movies_title), modifier = rowFocus("movies"), onClick = { activity.startActivity(Intent(activity, MovieLibraryActivity::class.java)) })
                 MediaAutoCoverSetting()
                 TorrAutoPlaySetting()
+                TorrAutoNextSetting()
             } else if (section == "libraryGroup") {
                 if (activity.legacyRecoveryPending) SettingRow(tr(R.string.legacy_recovery_title), tr(R.string.legacy_recovery_summary),
                     rowFocus("legacyRecovery"), onClick = { activity.retryLegacyRecovery() })

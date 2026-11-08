@@ -59,7 +59,8 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
             val position = data.getLongExtra("extra_position", 0L)
             val duration = data.getLongExtra("extra_duration", 0L)
             val editor = prefs.edit()
-            if (position >= 10_000 && duration > 0 && position >= duration - 10_000) editor.remove("video.position.$playedKey")
+            if (duration > 0) editor.putLong("video.duration.$playedKey", duration)
+            if (videoIsNearlyFinished(position, duration)) editor.remove("video.position.$playedKey")
             else if (position >= 10_000 && (duration <= 0 || position < duration)) editor.putLong("video.position.$playedKey", position)
             editor.apply()
         }
@@ -92,7 +93,11 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
             activity.packageManager.getActivityInfo(directVlc, 0).let { it.exported && it.enabled && it.applicationInfo.enabled }
         }.getOrDefault(false)
         val key = req.intent.dataString?.let(::digest)
-        val position = key?.let { prefs.getLong("video.position.$it", 0L) } ?: 0L
+        val savedPosition = key?.let { prefs.getLong("video.position.$it", 0L) } ?: 0L
+        val knownDuration = key?.let { prefs.getLong("video.duration.$it", 0L) } ?: 0L
+        val position = videoResumePosition(savedPosition, knownDuration)
+        val wasFinished = savedPosition > 0 && position == 0L
+        if (wasFinished && key != null) prefs.edit().remove("video.position.$key").apply()
         // Without notification access we cannot reliably seek the first playlist
         // item, so keep resume correct by playing that one file directly.
         val playlist = req.playlist?.takeIf {
@@ -113,7 +118,7 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
             intent.setDataAndType(Uri.parse(url), "application/x-mpegURL")
         }
         if (player.component.packageName == "org.videolan.vlc" && key != null) {
-            if (position > 0 && playlist == null) intent.putExtra("position", position)
+            if ((position > 0 || wasFinished) && playlist == null) intent.putExtra("position", position)
             prefs.edit().putString(pendingKey, key).apply()
         } else prefs.edit().remove(pendingKey).apply()
         try {
@@ -121,7 +126,10 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
             activePlaylist = playlist
             val launchTime = SystemClock.elapsedRealtime()
             result.launch(intent)
-            if (playlist != null && position > 0) resumePlaylist(playlist, position, launchTime)
+            if (playlist != null && savedPosition > 0 && MediaAccess.isGranted(activity))
+                resumePlaylist(playlist, savedPosition, launchTime)
+            else if (playlist == null && canOpenDirectly && savedPosition > 0 && knownDuration <= 0 && MediaAccess.isGranted(activity) && key != null)
+                guardLegacySingle(req.intent.data, key, savedPosition, launchTime)
             if (rememberDefault == true) prefs.edit().putString("video.default_player", player.component.flattenToString()).apply()
             else if (rememberDefault == false && prefs.getString("video.default_player", null) == player.component.flattenToString())
                 prefs.edit().remove("video.default_player").apply()
@@ -150,13 +158,51 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
                             state?.state == PlaybackState.STATE_PLAYING && state.lastPositionUpdateTime >= launchTime &&
                             (state.actions and PlaybackState.ACTION_SEEK_TO) != 0L
                     }
-                if (controller != null && runCatching { controller.transportControls.seekTo(position) }.isSuccess) {
+                val duration = controller?.metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION) ?: 0L
+                if (controller != null && duration > 0 && runCatching { controller.transportControls.seekTo(videoResumePosition(position, duration)) }.isSuccess) {
+                    val key = digest(TorrPlayback.url(playlist.hash, playlist.startId))
+                    val editor = prefs.edit().putLong("video.duration.$key", duration)
+                    if (videoIsNearlyFinished(position, duration)) editor.remove("video.position.$key")
+                    editor.apply()
                     return@launch
                 }
                 delay(300)
             }
             failedPlaylistResumes.add(digest(TorrPlayback.url(playlist.hash, playlist.startId)))
             android.widget.Toast.makeText(activity, R.string.movies_resume_retry_single, android.widget.Toast.LENGTH_LONG).show()
+        }
+    }
+
+    /** Old saves have no duration. Only correct a directly opened torrent when
+     * VLC reports the exact same stream and its duration is known. */
+    private fun guardLegacySingle(uri: Uri?, key: String, position: Long, launchTime: Long) {
+        val hash = uri?.getQueryParameter("link") ?: return
+        val index = uri.getQueryParameter("index") ?: return
+        resumeSeek?.cancel()
+        resumeSeek = activity.lifecycleScope.launch {
+            val manager = activity.getSystemService(MediaSessionManager::class.java)
+            repeat(50) {
+                val controller = runCatching { manager?.getActiveSessions(MediaAccess.component(activity)) }.getOrNull()
+                    ?.firstOrNull { session ->
+                        val state = session.playbackState
+                        val title = session.metadata?.getString(MediaMetadata.METADATA_KEY_TITLE)
+                        val sameStream = title?.let { runCatching {
+                            Uri.parse(it).let { stream -> stream.getQueryParameter("link").equals(hash, true) && stream.getQueryParameter("index") == index }
+                        }.getOrDefault(false) } ?: false
+                        session.packageName == "org.videolan.vlc" && state?.state == PlaybackState.STATE_PLAYING &&
+                            state.lastPositionUpdateTime >= launchTime && (state.actions and PlaybackState.ACTION_SEEK_TO) != 0L &&
+                            sameStream
+                    }
+                val duration = controller?.metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION) ?: 0L
+                if (controller != null && duration > 0) {
+                    val editor = prefs.edit().putLong("video.duration.$key", duration)
+                    if (videoIsNearlyFinished(position, duration) && runCatching { controller.transportControls.seekTo(0L) }.isSuccess)
+                        editor.remove("video.position.$key")
+                    editor.apply()
+                    return@launch
+                }
+                delay(300)
+            }
         }
     }
 

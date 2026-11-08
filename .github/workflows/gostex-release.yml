@@ -75,6 +75,7 @@ jobs:
             native-launcher/checks/check_media_file_labels.py \
             native-launcher/checks/check_episode_file_suggestion.py \
             native-launcher/checks/check_torr_playback_logic.py \
+            native-launcher/checks/check_video_resume_logic.py \
             native-launcher/checks/check_torr_playlist_safety.py \
             native-launcher/checks/check_episode_history.py \
             native-launcher/checks/check_movie_torrent_links.py \

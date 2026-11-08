@@ -452,21 +452,26 @@ class MovieLibraryActivity : ComponentActivity() {
                 }
                 if (generation != requestGeneration || isFinishing || isDestroyed) return@launch
                 val videos = entry.files.filter { TorrPlayback.isVideo(it.path) }
-                busy = false; error = ""
-                if (entry.files.isEmpty()) { toast(R.string.movies_metadata_unavailable); return@launch }
-                if (videos.isEmpty()) { toast(R.string.movies_no_video); return@launch }
+                if (entry.files.isEmpty()) { busy = false; toast(R.string.movies_metadata_unavailable); return@launch }
+                if (videos.isEmpty()) { busy = false; toast(R.string.movies_no_video); return@launch }
                 val paths = videos.map { it.path }
                 val movieId = selected?.id
                 val seriesId = selected?.takeIf { it.mediaType == "series" }?.id
+                val canQueue = if (seriesId != null && TorrPlaybackPreferences.autoNext(this@MovieLibraryActivity) && orderedEpisodeFiles(paths)) {
+                    try { withContext(Dispatchers.IO) { TorrServerCatalog.playlistMatchesVideos(entry, videos) } }
+                    catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                    catch (_: Exception) { false }
+                } else false
+                if (generation != requestGeneration || isFinishing || isDestroyed || selected?.id != movieId) return@launch
+                busy = false; error = ""
                 fun open(index: Int) {
                     var currentIndex = index
                     fun launchPlayer() {
                         val file = videos[currentIndex]
                         val intent = Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse(TorrPlayback.url(entry.hash, file.id)), "video/*")
                         val identified = episode?.takeIf { episodeFileMatchesHistory(paths, it.season, it.episode, currentIndex) }
-                        // The server playlist includes every recognized file, not just video.
-                        // Only use it when it cannot accidentally play an extra file.
-                        val playlist = if (seriesId != null && videos.size > 1 && videos.size == entry.files.size && orderedEpisodeFiles(paths))
+                        // The server playlist was checked against this torrent's video IDs.
+                        val playlist = if (seriesId != null && canQueue)
                             VlcSeriesPlaylist(entry.hash, file.id, file.path.substringAfterLast('/'), videos.map { it.id }.toSet()) { id ->
                                 val playedIndex = videos.indexOfFirst { it.id == id }
                                 if (playedIndex >= 0) {

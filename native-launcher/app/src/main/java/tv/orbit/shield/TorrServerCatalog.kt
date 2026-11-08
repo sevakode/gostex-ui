@@ -91,6 +91,24 @@ internal object TorrServerCatalog {
         }
     }
 
+    /** Inspect the server's playlist before handing it to an external player. */
+    fun playlistMatchesVideos(entry: TorrCatalogEntry, videos: List<TorrCatalogFile>, port: Int = 8090): Boolean {
+        require(HASH.matches(entry.hash) && port in 1..65535)
+        val connection = URL("http://127.0.0.1:$port/stream/gostex.m3u?link=${entry.hash}&m3u=1")
+            .openConnection(Proxy.NO_PROXY) as HttpURLConnection
+        try {
+            connection.connectTimeout = 4000
+            connection.readTimeout = 4000
+            connection.instanceFollowRedirects = false
+            connection.useCaches = false
+            if (connection.responseCode != 200 || connection.contentLengthLong > MAX_RESPONSE) return false
+            val body = connection.inputStream.use { String(readLimited(it, MAX_RESPONSE), Charsets.UTF_8) }
+            val sidecarExtensions = setOf("srt", "ass", "ssa", "vtt", "sub", "idx", "smi", "sup", "mka", "aac", "ac3", "eac3", "dts", "flac", "mp3", "ogg", "opus", "wav")
+            val sidecars = entry.files.filter { it.path.substringAfterLast('.', "").lowercase() in sidecarExtensions }.map { it.id }.toSet()
+            return isSafeTorrentPlaylist(body, entry.hash, videos.map { it.id }, entry.files.map { it.id }.toSet(), sidecars, port)
+        } finally { connection.disconnect() }
+    }
+
     /** Explicitly starts server preloading for the selected file; this call can wait for peers. */
     fun preload(hash: String, fileId: Int, port: Int = 8090): TorrCatalogEntry {
         require(HASH.matches(hash) && fileId > 0 && port in 1..65535)

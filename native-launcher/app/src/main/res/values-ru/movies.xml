@@ -24,6 +24,12 @@
     <string name="movies_play">Смотреть</string>
     <string name="movies_source_options">Действия</string>
     <string name="movies_choose_player">Выбрать плеер</string>
+    <string name="movies_open_in_ace">Открыть торрент в Ace · выбрать файл там</string>
+    <string name="movies_ace_make_default">Использовать Ace для этого фильма по умолчанию</string>
+    <string name="movies_ace_clear_default">Сбросить выбор Ace для этого фильма</string>
+    <string name="movies_ace_install_title">Установить Ace Stream?</string>
+    <string name="movies_ace_install_message">Ace Stream недоступен. Открыть Google Play для установки?</string>
+    <string name="movies_ace_install_button">Открыть Google Play</string>
     <string name="movies_cancel">Отмена</string>
     <string name="movies_add">Добавить</string>
     <string name="movies_addon_hint">Введи HTTPS-ссылку на manifest дополнения.</string>

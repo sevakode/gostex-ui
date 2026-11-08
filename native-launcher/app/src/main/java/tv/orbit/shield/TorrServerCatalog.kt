@@ -126,6 +126,40 @@ internal object TorrServerCatalog {
         } finally { connection.disconnect() }
     }
 
+    /** Check the selected file's edges, not just the torrent-wide cache count. */
+    fun canReadVideoEdges(hash: String, fileId: Int, fileSize: Long, port: Int = 8090): Boolean {
+        require(HASH.matches(hash) && fileId > 0 && fileSize > 0 && port in 1..65535)
+        val edge = minOf(fileSize, 65_536L)
+        fun readRange(start: Long, end: Long): Boolean {
+            val connection = URL("http://127.0.0.1:$port/stream?link=$hash&index=$fileId&play=1")
+                .openConnection(Proxy.NO_PROXY) as HttpURLConnection
+            try {
+                connection.connectTimeout = 4000
+                connection.readTimeout = 4000
+                connection.instanceFollowRedirects = false
+                connection.useCaches = false
+                connection.setRequestProperty("Range", "bytes=$start-$end")
+                if (connection.responseCode != 206 || connection.getHeaderField("Content-Range") != "bytes $start-$end/$fileSize") return false
+                val expected = end - start + 1
+                if (connection.contentLengthLong != expected) return false
+                val deadline = System.nanoTime() + 4_000_000_000L
+                connection.inputStream.use { input ->
+                    val buffer = ByteArray(4096)
+                    var remaining = expected
+                    while (remaining > 0 && System.nanoTime() < deadline) {
+                        val count = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
+                        if (count <= 0) return false
+                        remaining -= count
+                    }
+                    return remaining == 0L
+                }
+            } finally { connection.disconnect() }
+        }
+        return try {
+            readRange(0, edge - 1) && (fileSize <= edge || readRange(fileSize - edge, fileSize - 1))
+        } catch (_: IOException) { false }
+    }
+
     fun addMagnet(magnet: String, port: Int = 8090): TorrCatalogEntry {
         require(magnet.length <= 8192 && magnet.startsWith("magnet:?", ignoreCase = true))
         require(!magnet.contains('\r') && !magnet.contains('\n'))

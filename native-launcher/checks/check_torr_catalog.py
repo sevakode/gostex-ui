@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from urllib.parse import parse_qs, urlparse
 
 ROOT = Path(__file__).resolve().parents[2]
 CACHE = ROOT / '.tools/native/gradle-cache/caches/modules-2/files-2.1'
@@ -21,6 +22,20 @@ ENTRY = {'hash':'a'*40, 'title':'test', 'file_stats':[{'id':1,'path':'dir/game.b
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args): pass
     def do_GET(self):
+        parsed = urlparse(self.path)
+        query = parse_qs(parsed.query)
+        if parsed.path == '/stream' and query.get('play') == ['1']:
+            index = int(query['index'][0]); total = 10_000 if index == 11 else 200_000
+            assert query['link'] == ['a'*40]
+            start, end = map(int, self.headers['Range'].removeprefix('bytes=').split('-'))
+            self.server.ranges.append((index, start, end))
+            self.send_response(200 if index == 8 else 206)
+            self.send_header('Content-Range', f'bytes {start}-{end}/{total if index != 9 else total+1}')
+            self.send_header('Content-Length', str(end-start+1))
+            self.end_headers()
+            self.wfile.write(b'x' * (3 if index == 10 else end-start+1))
+            self.close_connection = True
+            return
         if self.path == '/stream?link=' + 'a'*40 + '&index=2&preload&stat':
             payload = json.dumps(ENTRY).encode()
             self.send_response(200); self.send_header('Content-Length', str(len(payload))); self.end_headers(); self.wfile.write(payload)
@@ -93,6 +108,12 @@ fun main(args: Array<String>) {
     val buffer = TorrServerCatalog.preload(hash,2,port)
     check(buffer.cachedBytes == 4194304L && buffer.preloadBytes == 33554432L && buffer.serverState == 2)
     check(runCatching { TorrServerCatalog.preload(hash,0,port) }.isFailure)
+    check(TorrServerCatalog.canReadVideoEdges(hash, 7, 200_000, port))
+    check(!TorrServerCatalog.canReadVideoEdges(hash, 8, 200_000, port))
+    check(!TorrServerCatalog.canReadVideoEdges(hash, 9, 200_000, port))
+    check(!TorrServerCatalog.canReadVideoEdges(hash, 10, 200_000, port))
+    check(TorrServerCatalog.canReadVideoEdges(hash, 11, 10_000, port))
+    check(runCatching { TorrServerCatalog.canReadVideoEdges(hash, 0, 1, port) }.isFailure)
     val unknown = TorrServerCatalog.get("b".repeat(40),port)
     check(unknown.downloadBytesPerSecond == null && unknown.connectedSeeders == null)
     check(unknown.cachedBytes == null && unknown.preloadBytes == null && unknown.serverState == null)
@@ -144,17 +165,19 @@ fun main(args: Array<String>) {
     println("PASS: catalog list, file metadata, magnet, torrent upload and input bounds")
 }
 '''
-server = ThreadingHTTPServer(('127.0.0.1', 0), Handler); server.events = []; server.uploads = []; thread = Thread(target=server.serve_forever,daemon=True); thread.start()
+server = ThreadingHTTPServer(('127.0.0.1', 0), Handler); server.events = []; server.uploads = []; server.ranges = []; thread = Thread(target=server.serve_forever,daemon=True); thread.start()
 try:
     with tempfile.TemporaryDirectory(prefix='gostex-catalog-test-') as td:
         folder=Path(td); (folder/'Checks.kt').write_text(checks); cp=f'{compiler[1]}:{json_jar}'
         source=ROOT/'native-launcher/app/src/main/java/tv/orbit/shield/TorrServerCatalog.kt'
         result=subprocess.run([str(JAVA),'-cp',':'.join(map(str,compiler)),'org.jetbrains.kotlin.cli.jvm.K2JVMCompiler',
-            '-no-stdlib','-no-reflect','-classpath',cp,'-d',str(folder/'classes'),str(source),str(source.parent/'TorrentFileIdentity.kt'),str(folder/'Checks.kt')],capture_output=True,text=True)
+            '-no-stdlib','-no-reflect','-classpath',cp,'-d',str(folder/'classes'),str(source),str(source.parent/'TorrentFileIdentity.kt'),str(source.parent/'TorrPlaylistSafety.kt'),str(folder/'Checks.kt')],capture_output=True,text=True)
         if result.returncode: raise SystemExit(result.stderr)
         result=subprocess.run([str(JAVA),'-cp',f'{folder / "classes"}:{cp}','tv.orbit.shield.ChecksKt',str(server.server_port)],capture_output=True,text=True)
         print(result.stdout,end='')
         if result.returncode: raise SystemExit(result.stderr)
+        assert (7, 0, 65535) in server.ranges and (7, 134464, 199999) in server.ranges
+        assert [r for r in server.ranges if r[0] == 11] == [(11, 0, 9999)]
         events = server.events
         assert len(server.uploads) == 2  # ordinary upload plus matching restore; mismatch did not reach server
         assert any(e == {'action':'get', 'hash':'e'*40} and events[i+1] == {'action':'get', 'hash':'a'*40} for i,e in enumerate(events[:-1]))  # status 404 has no list fallback

@@ -251,16 +251,18 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    internal fun prepareTorrPlayback(hash: String, fileId: Int) {
+    internal fun prepareTorrPlayback(hash: String, fileId: Int, startPreload: Boolean = true) {
         if (PortableMaintenance.running) return
         torrentPlaybackDialog?.dismiss()
         var dialog: android.app.AlertDialog? = null
         dialog = TorrPreparationDialog.show(this, hash, fileId, onOpen = {
             runCatching {
                 val url = Uri.parse(TorrPlayback.url(hash, fileId))
-                videoPlayer.open(Intent(Intent.ACTION_VIEW).setDataAndType(url, "video/*"), onError = { torrDownloadMessage = getString(R.string.torr_play_failed) })
+                videoPlayer.open(Intent(Intent.ACTION_VIEW).setDataAndType(url, "video/*"),
+                    onError = { torrDownloadMessage = getString(R.string.torr_play_failed) },
+                    onReturned = { if (!isFinishing && !isDestroyed && !PortableMaintenance.running) prepareTorrPlayback(hash, fileId, startPreload = false) })
             }.onFailure { torrDownloadMessage = getString(R.string.torr_play_failed) }
-        }, onDismiss = { if (torrentPlaybackDialog === dialog) torrentPlaybackDialog = null })
+        }, onDismiss = { if (torrentPlaybackDialog === dialog) torrentPlaybackDialog = null }, startPreload = startPreload)
         torrentPlaybackDialog = dialog
     }
 

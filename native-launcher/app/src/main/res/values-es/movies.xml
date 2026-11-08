@@ -24,6 +24,12 @@
     <string name="movies_play">Reproducir</string>
     <string name="movies_source_options">Opciones</string>
     <string name="movies_choose_player">Elegir reproductor</string>
+    <string name="movies_open_in_ace">Abrir torrent en Ace · elegir archivo allí</string>
+    <string name="movies_ace_make_default">Usar Ace por defecto para este título</string>
+    <string name="movies_ace_clear_default">Quitar Ace por defecto para este título</string>
+    <string name="movies_ace_install_title">¿Instalar Ace Stream?</string>
+    <string name="movies_ace_install_message">Ace Stream no está disponible. ¿Abrir Google Play para instalarlo?</string>
+    <string name="movies_ace_install_button">Abrir Google Play</string>
     <string name="movies_cancel">Cancelar</string>
     <string name="movies_add">Añadir</string>
     <string name="movies_addon_hint">Introduce la URL HTTPS del manifest del complemento.</string>

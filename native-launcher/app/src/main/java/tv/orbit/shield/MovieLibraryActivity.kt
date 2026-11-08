@@ -72,7 +72,7 @@ class MovieLibraryActivity : ComponentActivity() {
             val accepted = runCatching {
                 contentResolver.takePersistableUriPermission(uri, flags and Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 val movie = saved.first { it.id == id }
-                val source = MovieSource(uri.lastPathSegment?.takeLast(120) ?: "Torrent", uri.toString())
+                val source = MovieSource(uri.lastPathSegment?.substringAfterLast('/')?.takeLast(120) ?: "Torrent", uri.toString())
                 check(MovieLibraryStore.save(this, movie.copy(sources = movie.sources.filterNot { it.uri == source.uri } + source)))
                 refresh()
             }.isSuccess
@@ -100,7 +100,12 @@ class MovieLibraryActivity : ComponentActivity() {
         }
         setContent { MovieScreen(); videoPlayer.Render() }
         if (savedInstanceState == null && intent.getBooleanExtra(EXTRA_PLAY_SINGLE, false)) {
-            selected?.id?.let { id -> saved.firstOrNull { it.id == id }?.sources?.singleOrNull()?.let { play(it) } }
+            selected?.id?.let { id ->
+                val sources = saved.firstOrNull { it.id == id }?.sources.orEmpty()
+                val preferred = preferredAceSource(id)
+                val aceSource = sources.singleOrNull { it.uri == preferred && canDefaultToAce(it) }
+                if (aceSource != null) openTorrentInAce(aceSource) else sources.singleOrNull()?.let { play(it) }
+            }
         }
         if (savedInstanceState == null && pendingTorrentHash != null) {
             TorrentArtworkPolicy.query(pendingTorrentTitle).takeIf { it.length >= 3 }?.let(::searchFor)
@@ -319,6 +324,8 @@ class MovieLibraryActivity : ComponentActivity() {
             .setNegativeButton(R.string.movies_cancel, null)
             .setPositiveButton(R.string.movies_remove_source) { _, _ ->
                 if (!readFailed && runCatching { MovieLibraryStore.removeSource(this, movieId, source) }.getOrDefault(false)) {
+                    if (preferredAceSource(movieId) == source.uri)
+                        getSharedPreferences("orbit", MODE_PRIVATE).edit().remove(preferredAceKey(movieId)).apply()
                     refresh()
                     sourceRemovalVersion++
                 } else toast(R.string.movies_source_failed)
@@ -434,6 +441,55 @@ class MovieLibraryActivity : ComponentActivity() {
             onError = { toast(R.string.movies_player_missing) }, onReturned = onReturned, playlist = playlist, playlistUnavailable = playlistUnavailable)
     }
 
+    /** Open the retained document itself; Ace asks the user which file to play. */
+    private fun preferredAceKey(movieId: String): String {
+        val bytes = java.security.MessageDigest.getInstance("SHA-256").digest(movieId.toByteArray(Charsets.UTF_8))
+        return "movies.ace_source." + bytes.joinToString("") { "%02x".format(it) }
+    }
+
+    private fun preferredAceSource(movieId: String): String? =
+        getSharedPreferences("orbit", MODE_PRIVATE).getString(preferredAceKey(movieId), null)
+
+    private fun canDefaultToAce(source: MovieSource): Boolean =
+        Uri.parse(source.uri).scheme.equals("content", ignoreCase = true) &&
+            source.fileIndex == null && source.filenameHint == null
+
+    private fun openTorrentInAce(source: MovieSource) {
+        val uri = Uri.parse(source.uri)
+        if (!uri.scheme.equals("content", ignoreCase = true)) return
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/x-bittorrent")
+            clipData = android.content.ClipData.newRawUri("torrent", uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            putExtra("org.acestream.EXTRA_SELECTED_PLAYER", "{\"type\":3}")
+        }
+        // Ace Stream also shipped its Android player under the older media package.
+        for (packageName in listOf("org.acestream.node", "org.acestream.media")) {
+            intent.component = android.content.ComponentName(packageName, "org.acestream.engine.ContentStartActivity")
+            try {
+                startActivity(intent)
+                selected?.id?.let { MoviePlaybackReceipt.mark(this, it) }
+                return
+            } catch (_: android.content.ActivityNotFoundException) {
+                // Try the other official package before suggesting installation.
+            } catch (_: RuntimeException) {
+                toast(R.string.movies_player_missing)
+                return
+            }
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.movies_ace_install_title)
+            .setMessage(R.string.movies_ace_install_message)
+            .setNegativeButton(R.string.movies_cancel, null)
+            .setPositiveButton(R.string.movies_ace_install_button) { _, _ ->
+                val market = Uri.parse("market://details").buildUpon().appendQueryParameter("id", "org.acestream.node").build()
+                val web = Uri.parse("https://play.google.com/store/apps/details").buildUpon().appendQueryParameter("id", "org.acestream.node").build()
+                if (!runCatching { startActivity(Intent(Intent.ACTION_VIEW, market)) }.isSuccess &&
+                    !runCatching { startActivity(Intent(Intent.ACTION_VIEW, web)) }.isSuccess)
+                    toast(R.string.movies_player_missing)
+            }.show()
+    }
+
     private fun prepareTorrent(uri: Uri, episode: MovieEpisode?, choosePlayer: Boolean, filenameHint: String?) {
         if (busy) return
         val generation = ++requestGeneration
@@ -472,7 +528,7 @@ class MovieLibraryActivity : ComponentActivity() {
                         val identified = episode?.takeIf { episodeFileMatchesHistory(paths, it.season, it.episode, currentIndex) }
                         // The server playlist was checked against this torrent's video IDs.
                         val playlist = if (seriesId != null && canQueue)
-                            VlcSeriesPlaylist(entry.hash, file.id, file.path.substringAfterLast('/'), videos.map { it.id }.toSet()) { id ->
+                            VlcSeriesPlaylist(entry.hash, file.id, file.path.substringAfterLast('/'), videos.map { it.id }.toSet(), videos.map { it.path.substringAfterLast('/') }.toSet()) { id ->
                                 val playedIndex = videos.indexOfFirst { it.id == id }
                                 if (playedIndex >= 0) {
                                     currentIndex = playedIndex
@@ -697,11 +753,36 @@ class MovieLibraryActivity : ComponentActivity() {
                             stored?.sources?.let { savedSources ->
                                 items(savedSources, key = { "saved:${it.uri}:${it.fileIndex}" }) { source ->
                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        SettingRow(source.label.ifBlank { tr(R.string.movies_play) }, tr(R.string.movies_play), modifier = Modifier.weight(1f), onClick = { play(source) })
+                                        val sourceLabel = if (source.uri.startsWith("content:", ignoreCase = true) && source.label.startsWith("raw:/"))
+                                            source.label.substringAfterLast('/').ifBlank { source.label }
+                                        else source.label
+                                        SettingRow(sourceLabel.ifBlank { tr(R.string.movies_play) }, tr(R.string.movies_play), modifier = Modifier.weight(1f), onClick = {
+                                            if (canDefaultToAce(source) && preferredAceSource(movie.id) == source.uri) openTorrentInAce(source)
+                                            else play(source)
+                                        })
                                         SettingRow(tr(R.string.movies_source_options), modifier = Modifier.widthIn(max = 180.dp), onClick = {
+                                            val canOpenInAce = Uri.parse(source.uri).scheme.equals("content", ignoreCase = true)
+                                            val canPreferAce = canDefaultToAce(source)
+                                            val isPreferredAce = canPreferAce && preferredAceSource(movie.id) == source.uri
+                                            val options = buildList {
+                                                add(getString(R.string.movies_choose_player))
+                                                if (canOpenInAce) add(getString(R.string.movies_open_in_ace))
+                                                if (canPreferAce) add(getString(if (isPreferredAce) R.string.movies_ace_clear_default else R.string.movies_ace_make_default))
+                                                add(getString(R.string.movies_remove_source))
+                                            }
                                             AlertDialog.Builder(this@MovieLibraryActivity).setTitle(R.string.movies_source_options)
-                                                .setItems(arrayOf(getString(R.string.movies_choose_player), getString(R.string.movies_remove_source))) { _, index ->
-                                                    if (index == 0) play(source, choosePlayer = true) else confirmRemoveSource(movie.id, source)
+                                                .setItems(options.toTypedArray()) { _, index ->
+                                                    when {
+                                                        index == 0 -> play(source, choosePlayer = true)
+                                                        canOpenInAce && index == 1 -> openTorrentInAce(source)
+                                                        canPreferAce && index == 2 -> {
+                                                            val editor = getSharedPreferences("orbit", MODE_PRIVATE).edit()
+                                                            if (isPreferredAce) editor.remove(preferredAceKey(movie.id))
+                                                            else editor.putString(preferredAceKey(movie.id), source.uri)
+                                                            editor.apply()
+                                                        }
+                                                        else -> confirmRemoveSource(movie.id, source)
+                                                    }
                                                 }.setNegativeButton(R.string.movies_cancel, null).show()
                                         })
                                     }

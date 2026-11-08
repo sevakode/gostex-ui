@@ -18,6 +18,14 @@ fun main() {
     check(videoResumePosition(19_000, 20_000) == 0L)
     check(videoResumePosition(10_000, 2_000_000) == 10_000L)
     check(videoResumePosition(Long.MAX_VALUE, Long.MAX_VALUE) == 0L)
+    check(videoCheckpoint(-1, 100_000) == null)
+    check(videoCheckpoint(9_999, 100_000) == null)
+    check(videoCheckpoint(15_000, -1) == null)
+    check(videoCheckpoint(100_001, 100_000) == null)
+    check(videoCheckpoint(20_000, 0) == 20_000L)
+    check(videoCheckpoint(20_000, 100_000) == 20_000L)
+    check(videoCheckpoint(96_000, 100_000) == 0L)
+    check(videoCheckpoint(96_000, 100_000, false) == 96_000L)
     println("PASS: near-end restart and mid-video resume")
 }
 '''

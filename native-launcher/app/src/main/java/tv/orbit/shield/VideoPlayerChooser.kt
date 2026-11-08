@@ -12,6 +12,9 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -29,7 +32,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.tv.material3.Text
 import java.security.MessageDigest
 
-internal data class VlcSeriesPlaylist(val hash: String, val startId: Int, val startTitle: String, val ids: Set<Int>, val onFilePlayed: (Int) -> Unit)
+internal data class VlcSeriesPlaylist(val hash: String, val startId: Int, val startTitle: String, val ids: Set<Int>, val titles: Set<String>, val onFilePlayed: (Int) -> Unit)
 
 internal class VideoPlayerChooser(private val activity: ComponentActivity) {
     private val prefs by lazy { activity.getSharedPreferences("orbit", Context.MODE_PRIVATE) }
@@ -38,6 +41,7 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
     private var onPlayerReturned: (() -> Unit)? = null
     private var activePlaylist: VlcSeriesPlaylist? = null
     private var resumeSeek: Job? = null
+    private var pausedCache: Job? = null
     private val failedPlaylistResumes = mutableSetOf<String>()
     private val result = activity.registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { response ->
         val expected = prefs.getString(pendingKey, null)
@@ -45,6 +49,7 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
         val data = response.data
         val uri = data?.getStringExtra("extra_uri")
         resumeSeek?.cancel(); resumeSeek = null
+        pausedCache?.cancel(); pausedCache = null
         val playlist = activePlaylist.also { activePlaylist = null }
         val playedId = if (uri != null && playlist != null) runCatching {
             val value = Uri.parse(uri)
@@ -126,6 +131,9 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
             activePlaylist = playlist
             val launchTime = SystemClock.elapsedRealtime()
             result.launch(intent)
+            val stream = localTorrentStreamIdentity(req.intent.dataString)
+            if (canOpenDirectly && stream != null && MediaAccess.isGranted(activity))
+                keepPausedTorrent(stream, playlist, launchTime)
             if (playlist != null && savedPosition > 0 && MediaAccess.isGranted(activity))
                 resumePlaylist(playlist, savedPosition, launchTime)
             else if (playlist == null && canOpenDirectly && savedPosition > 0 && knownDuration <= 0 && MediaAccess.isGranted(activity) && key != null)
@@ -137,9 +145,59 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
         } catch (_: Exception) {
             onPlayerReturned = null
             resumeSeek?.cancel(); resumeSeek = null
+            pausedCache?.cancel(); pausedCache = null
             activePlaylist = null
             prefs.edit().remove(pendingKey).apply()
             req.onError()
+        }
+    }
+
+    /** Keep only the selected paused VLC stream alive, with a bounded idle budget. */
+    private fun keepPausedTorrent(stream: Pair<String, Int>, playlist: VlcSeriesPlaylist?, launchTime: Long) {
+        pausedCache?.cancel()
+        pausedCache = activity.lifecycleScope.launch {
+            val manager = activity.getSystemService(MediaSessionManager::class.java)
+            var pausedAt = 0L
+            while (isActive) {
+                val now = SystemClock.elapsedRealtime()
+                val controller = runCatching { manager?.getActiveSessions(MediaAccess.component(activity)) }.getOrNull()
+                    ?.firstOrNull { session ->
+                        val state = session.playbackState
+                        val title = session.metadata?.getString(MediaMetadata.METADATA_KEY_TITLE)
+                        val mediaUri = session.metadata?.getString(MediaMetadata.METADATA_KEY_MEDIA_URI)
+                        val sameStream = localTorrentStreamIdentity(mediaUri) == stream || vlcTorrentTitleIdentity(title) == stream
+                        val samePlaylist = playlist != null && torrentVideoTitleMatches(title, playlist.titles)
+                        session.packageName == "org.videolan.vlc" && state != null &&
+                            state.lastPositionUpdateTime >= launchTime && (sameStream || samePlaylist)
+                    }
+                // A playlist may already have advanced to another file. Only
+                // checkpoint a single stream when VLC identifies it exactly.
+                if (playlist == null && controller != null) {
+                    val state = controller.playbackState
+                    val title = controller.metadata?.getString(MediaMetadata.METADATA_KEY_TITLE)
+                    val mediaUri = controller.metadata?.getString(MediaMetadata.METADATA_KEY_MEDIA_URI)
+                    val exact = localTorrentStreamIdentity(mediaUri) == stream || vlcTorrentTitleIdentity(title) == stream
+                    if (exact && state != null && state.state in setOf(PlaybackState.STATE_PLAYING, PlaybackState.STATE_PAUSED)) {
+                        val duration = controller.metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION) ?: 0L
+                        val checkpoint = videoCheckpoint(state.position, duration, TorrPlaybackPreferences.restartNearEnd(activity))
+                        if (checkpoint != null) {
+                            val key = digest(TorrPlayback.url(stream.first, stream.second))
+                            val editor = prefs.edit()
+                            if (duration > 0L) editor.putLong("video.duration.$key", duration)
+                            if (checkpoint == 0L) editor.remove("video.position.$key")
+                            else editor.putLong("video.position.$key", checkpoint)
+                            editor.apply()
+                        }
+                    }
+                }
+                if (controller?.playbackState?.state == PlaybackState.STATE_PAUSED) {
+                    if (pausedAt == 0L) pausedAt = now
+                    if (now - pausedAt < 10 * 60_000L) {
+                        runCatching { withContext(Dispatchers.IO) { TorrServerCatalog.loadFiles(stream.first, readTimeoutMs = 4000) } }
+                    }
+                } else pausedAt = 0L
+                delay(15_000)
+            }
         }
     }
 
@@ -154,7 +212,7 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
                     ?.firstOrNull { session ->
                         val state = session.playbackState
                         session.packageName == "org.videolan.vlc" &&
-                            session.metadata?.getString(MediaMetadata.METADATA_KEY_TITLE) == playlist.startTitle &&
+                            torrentVideoTitleMatches(session.metadata?.getString(MediaMetadata.METADATA_KEY_TITLE), setOf(playlist.startTitle)) &&
                             state?.state == PlaybackState.STATE_PLAYING && state.lastPositionUpdateTime >= launchTime &&
                             (state.actions and PlaybackState.ACTION_SEEK_TO) != 0L
                     }

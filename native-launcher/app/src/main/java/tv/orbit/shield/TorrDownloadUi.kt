@@ -61,6 +61,8 @@ import kotlinx.coroutines.withContext
     var showMagnet by remember { mutableStateOf(false) }
     var reserveMiB by remember { mutableStateOf(TorrDownloadSpace.read(activity)) }
     var writeRateKiB by remember { mutableStateOf(TorrDownloadWriteRate.read(activity)) }
+    var prefetchCount by remember { mutableIntStateOf(TorrPrefetch.count(activity)) }
+    var prefetchQuota by remember { mutableIntStateOf(TorrPrefetch.quota(activity)) }
     var autoRetry by remember { mutableStateOf(TorrDownloadRetryOptions.read(activity)) }
     val autoCover = rememberTorrentAutoCover()
     val showMediaTorrents = rememberTorrMediaVisibility()
@@ -306,6 +308,25 @@ import kotlinx.coroutines.withContext
         runCatching { android.provider.DocumentsContract.getTreeDocumentId(android.net.Uri.parse(folder)).substringAfterLast('/') }.getOrDefault("")
     }
     SettingRow(tr(R.string.torr_download_choose_folder), folderLabel.ifBlank { tr(R.string.torr_download_folder_hint) }, onClick = activity::chooseTorrFolder)
+    SettingRow(tr(R.string.prefetch_setting), if (prefetchCount == 0) tr(R.string.disabled) else tr(R.string.prefetch_count, prefetchCount), onClick = {
+        val choices = TorrPrefetch.counts
+        val labels = choices.map { if (it == 0) activity.getString(R.string.disabled) else activity.getString(R.string.prefetch_count, it) }.toTypedArray()
+        android.app.AlertDialog.Builder(activity).setTitle(R.string.prefetch_setting).setSingleChoiceItems(labels, choices.indexOf(prefetchCount)) { dialog, index ->
+            runCatching { TorrPrefetch.setCount(activity, choices[index]) }.onSuccess { prefetchCount = choices[index] }
+                .onFailure { activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed) }
+            dialog.dismiss()
+        }.setNegativeButton(R.string.cancel, null).show()
+    })
+    SettingRow(tr(R.string.prefetch_quota), android.text.format.Formatter.formatShortFileSize(activity, prefetchQuota.toLong() * 1024 * 1024 * 1024), onClick = {
+        val choices = TorrPrefetch.quotas
+        val labels = choices.map { android.text.format.Formatter.formatShortFileSize(activity, it.toLong() * 1024 * 1024 * 1024) }.toTypedArray()
+        android.app.AlertDialog.Builder(activity).setTitle(R.string.prefetch_quota).setSingleChoiceItems(labels, choices.indexOf(prefetchQuota)) { dialog, index ->
+            runCatching { TorrPrefetch.setQuota(activity, choices[index]) }.onSuccess { prefetchQuota = choices[index] }
+                .onFailure { activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed) }
+            dialog.dismiss()
+        }.setNegativeButton(R.string.cancel, null).show()
+    })
+    Text(tr(R.string.prefetch_folder_hint), color = Color.LightGray, fontSize = 12.sp)
     val reserveLabel = if (reserveMiB == 0) tr(R.string.torr_download_reserve_off)
         else android.text.format.Formatter.formatShortFileSize(activity, reserveMiB.toLong() * 1024 * 1024)
     SettingRow(tr(R.string.torr_download_reserve), reserveLabel, onClick = {

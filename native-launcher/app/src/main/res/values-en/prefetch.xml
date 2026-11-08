@@ -1,0 +1,16 @@
+<resources>
+    <string name="prefetch_setting">Prefetch next episodes</string>
+    <string name="prefetch_count">%1$d queued episodes</string>
+    <string name="prefetch_quota">Prefetch storage limit</string>
+    <string name="prefetch_folder_hint">Uses the selected download folder. After each download, the next episode is queued until the limit is reached. Playback shares bandwidth.</string>
+    <string name="prefetch_badge">↓ %1$d saved</string>
+    <string name="prefetch_downloaded_label">%1$s · downloaded</string>
+    <string name="prefetch_saved_episodes">Downloaded episodes</string>
+    <string name="prefetch_in_progress">Episode downloads · select to pause or resume</string>
+    <string name="prefetch_delete_partial_confirm">Delete the partially downloaded file “%1$s”? The streaming source stays in your library.</string>
+    <string name="prefetch_ready">Downloaded · play</string>
+    <string name="prefetch_missing">The downloaded file is unavailable. Check the drive.</string>
+    <string name="prefetch_delete">Delete file</string>
+    <string name="prefetch_delete_confirm">Delete the downloaded file “%1$s”? The streaming source stays in your library.</string>
+    <string name="prefetch_delete_failed">Could not safely delete the downloaded file. Check the drive.</string>
+</resources>

@@ -88,6 +88,8 @@ internal fun openMediaLibrary(context: Context, id: String? = null, playIfSingle
     onLongClick: (() -> Unit)? = null, onFocus: () -> Unit = {}, favorite: Boolean = false, portrait: Boolean = false
 ) {
     var focused by remember { mutableStateOf(false) }
+    val downloads by TorrDownloadStore.jobs.collectAsState()
+    val downloaded = remember(downloads, movie.id) { downloads.count { it.prefetchMovieId == movie.id && it.state == "done" } }
     val key = "movie:${movie.id}"
     Column(modifier) {
         Surface(onClick = onClick, onLongClick = onLongClick,
@@ -107,6 +109,7 @@ internal fun openMediaLibrary(context: Context, id: String? = null, playIfSingle
                 CoverArtwork(cover?.manual?.takeIf { it.isNotEmpty() } ?: cover?.original?.ifEmpty { torrentArtwork } ?: torrentArtwork,
                     Modifier.fillMaxSize(), key, movie.title)
                 if (favorite) FavoriteBadge(Modifier.align(Alignment.TopEnd).padding(7.dp))
+                if (downloaded > 0) Text(tr(R.string.prefetch_badge, downloaded), modifier = Modifier.align(Alignment.BottomStart).padding(5.dp).background(Color(0xDD101010)).padding(horizontal = 6.dp, vertical = 3.dp), color = Color.White, fontSize = 11.sp, maxLines = 1)
             }
         }
         Spacer(Modifier.height(TileLayout.titleGap))

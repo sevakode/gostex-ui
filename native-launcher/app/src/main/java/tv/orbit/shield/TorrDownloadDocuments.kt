@@ -11,6 +11,27 @@ internal class TorrDownloadPartialBatch(val prepared: Int, cause: Exception) : I
 internal class TorrDownloadDestinationExists : IOException("Destination already exists")
 
 internal object TorrDownloadDocuments {
+    /** Delete only a completed file created by our prefetch job, after explicit confirmation. */
+    fun deletePrefetch(context: Context, id: String) {
+        val job = TorrDownloadStore.beginDeletePrefetch(context, id) ?: throw IOException("Download unavailable")
+        try {
+            val tree = Uri.parse(job.tree)
+            val document = Uri.parse(job.document)
+            if (tree.authority != document.authority) throw IOException("Unexpected provider")
+            val rootId = DocumentsContract.getTreeDocumentId(tree)
+            val parent = job.parentId.ifBlank { rootId }
+            if (job.grouped && android.os.Build.VERSION.SDK_INT >= 29 &&
+                !DocumentsContract.isChildDocument(context.contentResolver, DocumentsContract.buildDocumentUriUsingTree(tree, rootId), DocumentsContract.buildDocumentUriUsingTree(tree, parent))) throw IOException("Folder moved")
+            val documentId = DocumentsContract.getDocumentId(document)
+            if (!portableSafDirectChild(context.contentResolver, tree, parent, documentId)) throw IOException("File moved")
+            val columns = arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME, DocumentsContract.Document.COLUMN_SIZE)
+            val matches = context.contentResolver.query(document, columns, null, null, null)?.use { c ->
+                c.moveToFirst() && c.getString(0) == documentId && c.getString(1) == job.finalName && !c.isNull(2) && c.getLong(2) == job.total && !c.moveToNext()
+            } ?: false
+            if (!matches || !DocumentsContract.deleteDocument(context.contentResolver, document)) throw IOException("Cannot safely delete file")
+            TorrDownloadStore.finishDeletePrefetch(context, id)
+        } finally { TorrDownloadStore.endDiscard(id) }
+    }
     /** Explicitly discard only a verified temporary document, never a completed file. */
     fun discard(context: Context, id: String) {
         val job = TorrDownloadStore.beginDiscard(context, id) ?: throw IOException("Download is still active or unavailable")
@@ -73,7 +94,7 @@ internal object TorrDownloadDocuments {
     }
 
     /** Creates a new uniquely named partial document; never opens or replaces an existing file. */
-    @Synchronized fun enqueue(context: Context, tree: Uri, entry: TorrCatalogEntry, file: TorrCatalogFile): TorrDownloadJob {
+    @Synchronized fun enqueue(context: Context, tree: Uri, entry: TorrCatalogEntry, file: TorrCatalogFile, prefetchMovieId: String = ""): TorrDownloadJob {
         require(file in entry.files && file.size >= 0 && tree.scheme == "content")
         context.contentResolver.takePersistableUriPermission(tree, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
         TorrDownloadStore.recover(context)
@@ -111,7 +132,7 @@ internal object TorrDownloadDocuments {
             // Check early that the provider can safely seek before committing a job.
             TorrSafTarget.open(context.contentResolver, document).use { if (it.size() != 0L) throw IOException("New document is not empty") }
             val job = TorrDownloadJob(id, entry.hash, file.id, file.size, base, tree.toString(), document.toString(), finalName,
-                parentId = parentId, grouped = true)
+                parentId = parentId, grouped = true, prefetchMovieId = prefetchMovieId)
             TorrDownloadStore.add(context, job)
             return job
         } catch (error: Exception) {

@@ -124,7 +124,11 @@ internal class TorrDownloadService : Service() {
                         if (job.state != "finalizing") continue
                         phase = "finalize"
                         val result = finalizeDocument(job)
-                        TorrDownloadStore.update(this, job.id) { it.copy(document = result.toString(), state = "done", error = "") }
+                        val completed = TorrDownloadStore.update(this, job.id) { it.copy(document = result.toString(), state = "done", error = "") }
+                        if (completed.prefetchMovieId.isNotBlank() && !stopping.get()) {
+                            // A failed follow-up must not turn a completed download into an error.
+                            runCatching { TorrPrefetch.continueAfter(this, completed) }
+                        }
                     } catch (error: Exception) {
                         val reason = when (error) {
                             is TorrDownloadLowSpace -> "space"

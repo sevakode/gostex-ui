@@ -37,6 +37,7 @@ internal data class VlcSeriesPlaylist(val hash: String, val startId: Int, val st
 internal class VideoPlayerChooser(private val activity: ComponentActivity) {
     private val prefs by lazy { activity.getSharedPreferences("orbit", Context.MODE_PRIVATE) }
     private val pendingKey = "video.pending." + activity.javaClass.simpleName
+    private val pendingUriKey = "$pendingKey.uri"
     private var request by mutableStateOf<Request?>(null)
     private var onPlayerReturned: (() -> Unit)? = null
     private var activePlaylist: VlcSeriesPlaylist? = null
@@ -45,7 +46,8 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
     private val failedPlaylistResumes = mutableSetOf<String>()
     private val result = activity.registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { response ->
         val expected = prefs.getString(pendingKey, null)
-        prefs.edit().remove(pendingKey).apply()
+        val expectedUri = prefs.getString(pendingUriKey, null) ?: expected
+        prefs.edit().remove(pendingKey).remove(pendingUriKey).apply()
         val data = response.data
         val uri = data?.getStringExtra("extra_uri")
         resumeSeek?.cancel(); resumeSeek = null
@@ -59,7 +61,7 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
         }.getOrNull() else null
         if (playedId != null) playlist?.onFilePlayed?.invoke(playedId)
         val playedKey = if (playedId != null && playlist != null) digest(TorrPlayback.url(playlist.hash, playedId))
-            else if (uri != null && expected != null && digest(uri) == expected) expected else null
+            else if (uri != null && expected != null && digest(uri) == expectedUri) expected else null
         if (playedKey != null && data != null && data.hasExtra("extra_position")) {
             val position = data.getLongExtra("extra_position", 0L)
             val duration = data.getLongExtra("extra_duration", 0L)
@@ -73,9 +75,9 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
         if (!activity.isFinishing && !activity.isDestroyed) callback?.invoke()
     }
     private data class Player(val component: ComponentName, val label: String)
-    private data class Request(val intent: Intent, val players: List<Player>, val onStarted: () -> Unit, val onError: () -> Unit, val onReturned: () -> Unit, val playlist: VlcSeriesPlaylist?, val playlistUnavailable: Boolean)
+    private data class Request(val intent: Intent, val players: List<Player>, val onStarted: () -> Unit, val onError: () -> Unit, val onReturned: () -> Unit, val playlist: VlcSeriesPlaylist?, val playlistUnavailable: Boolean, val resumeIdentity: String?)
 
-    fun open(intent: Intent, force: Boolean = false, onStarted: () -> Unit = {}, onError: () -> Unit, onReturned: () -> Unit = {}, playlist: VlcSeriesPlaylist? = null, playlistUnavailable: Boolean = false) {
+    fun open(intent: Intent, force: Boolean = false, onStarted: () -> Unit = {}, onError: () -> Unit, onReturned: () -> Unit = {}, playlist: VlcSeriesPlaylist? = null, playlistUnavailable: Boolean = false, resumeIdentity: String? = null) {
         val players = activity.packageManager.queryIntentActivities(intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
             .mapNotNull { item ->
                 val info = item.activityInfo ?: return@mapNotNull null
@@ -83,7 +85,7 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
                 Player(ComponentName(info.packageName, info.name), item.loadLabel(activity.packageManager).toString())
             }.distinctBy { it.component }.sortedBy { it.label.lowercase() }
         if (players.isEmpty()) { onError(); return }
-        val next = Request(Intent(intent), players, onStarted, onError, onReturned, playlist, playlistUnavailable)
+        val next = Request(Intent(intent), players, onStarted, onError, onReturned, playlist, playlistUnavailable, resumeIdentity)
         val preferred = prefs.getString("video.default_player", null)
         val selected = players.firstOrNull { it.component.flattenToString() == preferred }
         if (!force && selected != null) launch(next, selected, null) else request = next
@@ -97,7 +99,8 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
         val canOpenDirectly = player.component.packageName == directVlc.packageName && isNetworkStream && runCatching {
             activity.packageManager.getActivityInfo(directVlc, 0).let { it.exported && it.enabled && it.applicationInfo.enabled }
         }.getOrDefault(false)
-        val key = req.intent.dataString?.let(::digest)
+        val uriKey = req.intent.dataString?.let(::digest)
+        val key = (req.resumeIdentity ?: req.intent.dataString)?.let(::digest)
         val savedPosition = key?.let { prefs.getLong("video.position.$it", 0L) } ?: 0L
         val knownDuration = key?.let { prefs.getLong("video.duration.$it", 0L) } ?: 0L
         val position = videoResumePosition(savedPosition, knownDuration, TorrPlaybackPreferences.restartNearEnd(activity))
@@ -124,8 +127,8 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
         }
         if (player.component.packageName == "org.videolan.vlc" && key != null) {
             if ((position > 0 || wasFinished) && playlist == null) intent.putExtra("position", position)
-            prefs.edit().putString(pendingKey, key).apply()
-        } else prefs.edit().remove(pendingKey).apply()
+            prefs.edit().putString(pendingKey, key).putString(pendingUriKey, uriKey).apply()
+        } else prefs.edit().remove(pendingKey).remove(pendingUriKey).apply()
         try {
             onPlayerReturned = req.onReturned
             activePlaylist = playlist
@@ -147,7 +150,7 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
             resumeSeek?.cancel(); resumeSeek = null
             pausedCache?.cancel(); pausedCache = null
             activePlaylist = null
-            prefs.edit().remove(pendingKey).apply()
+            prefs.edit().remove(pendingKey).remove(pendingUriKey).apply()
             req.onError()
         }
     }

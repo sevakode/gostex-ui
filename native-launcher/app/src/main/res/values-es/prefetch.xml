@@ -1,0 +1,16 @@
+<resources>
+    <string name="prefetch_setting">Descargar próximos episodios</string>
+    <string name="prefetch_count">Episodios en cola: %1$d</string>
+    <string name="prefetch_quota">Límite de espacio para episodios</string>
+    <string name="prefetch_folder_hint">Usa la carpeta de descargas seleccionada. Al terminar, se añade el siguiente episodio hasta alcanzar el límite. La descarga comparte ancho de banda con la reproducción.</string>
+    <string name="prefetch_badge">↓ Guardados: %1$d</string>
+    <string name="prefetch_downloaded_label">%1$s · descargado</string>
+    <string name="prefetch_saved_episodes">Episodios descargados</string>
+    <string name="prefetch_in_progress">Descargas de episodios · pulsa para pausar o continuar</string>
+    <string name="prefetch_delete_partial_confirm">¿Eliminar el archivo parcialmente descargado «%1$s»? La fuente seguirá en la biblioteca.</string>
+    <string name="prefetch_ready">Descargado · reproducir</string>
+    <string name="prefetch_missing">El archivo no está disponible. Comprueba la unidad.</string>
+    <string name="prefetch_delete">Eliminar archivo</string>
+    <string name="prefetch_delete_confirm">¿Eliminar el archivo descargado «%1$s»? La fuente seguirá en la biblioteca.</string>
+    <string name="prefetch_delete_failed">No se pudo eliminar el archivo de forma segura. Comprueba la unidad.</string>
+</resources>

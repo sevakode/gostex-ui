@@ -16,6 +16,7 @@ internal data class TorrDownloadJob(
     val finalName: String, val offset: Long = 0, val etag: String? = null,
     val state: String = "paused", val error: String = "",
     val parentId: String = "", val grouped: Boolean = false,
+    val prefetchMovieId: String = "",
 )
 
 /** Download records are durable operational state, not a second settings store. */
@@ -45,6 +46,20 @@ internal object TorrDownloadStore {
         if (id in activeJobs || id in discardingJobs) return null
         discardingJobs += id
         return job
+    }
+
+    @Synchronized fun beginDeletePrefetch(context: Context, id: String): TorrDownloadJob? {
+        init(context)
+        val job = mutable.value.firstOrNull { it.id == id && it.state == "done" && it.prefetchMovieId.isNotBlank() } ?: return null
+        if (id in activeJobs || id in discardingJobs) return null
+        discardingJobs += id
+        return job
+    }
+
+    @Synchronized fun finishDeletePrefetch(context: Context, id: String) {
+        init(context)
+        require(id in discardingJobs && mutable.value.any { it.id == id && it.state == "done" && it.prefetchMovieId.isNotBlank() })
+        persist(context, mutable.value.filterNot { it.id == id })
     }
 
     @Synchronized fun finishDiscard(context: Context, id: String) {
@@ -113,7 +128,7 @@ internal object TorrDownloadStore {
         val old = mutable.value.firstOrNull { it.id == id } ?: throw IOException("Download not found")
         val updated = transform(old)
         require(updated.id == old.id && updated.hash == old.hash && updated.index == old.index && updated.total == old.total &&
-            updated.tree == old.tree && updated.parentId == old.parentId && updated.grouped == old.grouped && updated.finalName == old.finalName)
+            updated.tree == old.tree && updated.parentId == old.parentId && updated.grouped == old.grouped && updated.finalName == old.finalName && updated.prefetchMovieId == old.prefetchMovieId)
         decode(encode(updated))
         persist(context, mutable.value.map { if (it.id == id) updated else it })
         return updated
@@ -153,14 +168,14 @@ internal object TorrDownloadStore {
         put("id", job.id); put("hash", job.hash); put("index", job.index); put("total", job.total)
         put("name", job.name); put("tree", job.tree); put("document", job.document); put("finalName", job.finalName)
         put("offset", job.offset); put("etag", job.etag ?: JSONObject.NULL); put("state", job.state); put("error", job.error)
-        put("parentId", job.parentId); put("grouped", job.grouped)
+        put("parentId", job.parentId); put("grouped", job.grouped); put("prefetchMovieId", job.prefetchMovieId)
     }
 
     private fun decode(obj: JSONObject): TorrDownloadJob {
         val job = TorrDownloadJob(obj.getString("id"), obj.getString("hash"), obj.getInt("index"), obj.getLong("total"),
             obj.getString("name"), obj.getString("tree"), obj.getString("document"), obj.getString("finalName"),
             obj.getLong("offset"), if (obj.isNull("etag")) null else obj.getString("etag"), obj.getString("state"), obj.optString("error", ""),
-            obj.optString("parentId", ""), obj.optBoolean("grouped", false))
+            obj.optString("parentId", ""), obj.optBoolean("grouped", false), obj.optString("prefetchMovieId", ""))
         UUID.fromString(job.id)
         TorrDownloadSource(job.hash, job.index, job.total)
         require(job.offset in 0..job.total && job.name.length in 1..512 && job.finalName.length in 1..255)
@@ -168,6 +183,7 @@ internal object TorrDownloadStore {
         require(job.state in setOf("queued", "running", "paused", "done", "error", "finalizing"))
         require(job.error.length <= 128 && (job.etag == null || job.etag.length <= 256))
         require(job.parentId.length <= 4096 && (!job.grouped || job.parentId.isNotBlank()))
+        require(job.prefetchMovieId.length <= 256 && job.prefetchMovieId.none { it.isISOControl() })
         return job
     }
 }

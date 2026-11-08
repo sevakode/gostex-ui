@@ -59,7 +59,14 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
     }
 
     private fun launch(req: Request, player: Player, rememberDefault: Boolean?) {
-        val intent = Intent(req.intent).setComponent(player.component)
+        // VLC's StartActivity can demand broad file access even for network
+        // streams. Its exported video activity can open a stream directly.
+        val directVlc = ComponentName("org.videolan.vlc", "org.videolan.vlc.gui.video.VideoPlayerActivity")
+        val isNetworkStream = req.intent.data?.scheme in setOf("http", "https")
+        val canOpenDirectly = player.component.packageName == directVlc.packageName && isNetworkStream && runCatching {
+            activity.packageManager.getActivityInfo(directVlc, 0).let { it.exported && it.enabled && it.applicationInfo.enabled }
+        }.getOrDefault(false)
+        val intent = Intent(req.intent).setComponent(if (canOpenDirectly) directVlc else player.component)
         val key = intent.dataString?.let(::digest)
         if (player.component.packageName == "org.videolan.vlc" && key != null) {
             val position = prefs.getLong("video.position.$key", 0L)

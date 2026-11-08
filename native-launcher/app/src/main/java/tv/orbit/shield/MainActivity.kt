@@ -623,6 +623,8 @@ class MainActivity : ComponentActivity() {
     var homeVersion by mutableIntStateOf(0)
     var library by mutableStateOf<List<Game>>(emptyList())
     var scanning by mutableStateOf(false)
+    internal var manualLibraryScanStatus by mutableStateOf("")
+        private set
     var legacyRecoveryPending by mutableStateOf(false)
         private set
     private var legacyRecoveryStateError = false
@@ -650,6 +652,7 @@ class MainActivity : ComponentActivity() {
         portableMaintenanceSeen = true
         libraryVisible = false
         refreshPending = false
+        manualRefreshPending = false
         coverSyncPending = false
         allowMeteredRecoveryOnce = false
         coversLoop?.cancel()
@@ -688,6 +691,7 @@ class MainActivity : ComponentActivity() {
     private var importSource = LibrarySource.FILES
     private var importHintRoot: LibraryImport.Root? = null
     private var refreshPending = false
+    private var manualRefreshPending = false
     private var libraryVisible = false
     private var importJob: Job? = null
     private var mediaReceiverRegistered = false
@@ -724,6 +728,7 @@ class MainActivity : ComponentActivity() {
         coversLoop?.cancel()
         coverSyncPending = false
         refreshPending = false
+        manualRefreshPending = false
         importJob?.cancel()
         super.onStop()
     }
@@ -994,22 +999,23 @@ class MainActivity : ComponentActivity() {
         }
     } catch (_: Exception) { LegacyNetworkState.OFFLINE }
 
-    fun retryLegacyRecovery() {
+    fun retryLegacyRecovery(manual: Boolean = false) {
+        if (manual) manualLibraryScanStatus = ""
         if (legacyRecoveryStateError) {
             try {
                 legacyRecoveryPending = LegacyRecoveryState.initialize(this, bundled)
                 legacyRecoveryStateError = false
-            } catch (_: Exception) { notice = getString(R.string.legacy_recovery_state_error); return }
+            } catch (_: Exception) { notice = getString(R.string.legacy_recovery_state_error); if (manual) manualLibraryScanStatus = getString(R.string.library_rescan_failed); return }
         }
-        if (!legacyRecoveryPending) { refreshLibrary(); return }
+        if (!legacyRecoveryPending) { refreshLibrary(manual); return }
         when (legacyNetwork()) {
-            LegacyNetworkState.OFFLINE -> notice = getString(R.string.legacy_recovery_offline)
-            LegacyNetworkState.UNMETERED -> refreshLibrary()
+            LegacyNetworkState.OFFLINE -> { notice = getString(R.string.legacy_recovery_offline); if (manual) manualLibraryScanStatus = getString(R.string.legacy_recovery_offline) }
+            LegacyNetworkState.UNMETERED -> refreshLibrary(manual)
             LegacyNetworkState.METERED -> android.app.AlertDialog.Builder(this)
                 .setTitle(R.string.legacy_recovery_title).setMessage(R.string.legacy_recovery_metered_confirm)
                 .setPositiveButton(R.string.legacy_recovery_continue) { _, _ ->
                     allowMeteredRecoveryOnce = true
-                    refreshLibrary()
+                    refreshLibrary(manual)
                 }.setNegativeButton(R.string.cancel, null).show()
         }
     }
@@ -1030,15 +1036,14 @@ class MainActivity : ComponentActivity() {
                 }.setNegativeButton(getString(R.string.cancel), null).show()
         }.setNegativeButton(getString(R.string.close), null).show()
     }
-    fun refreshLibrary() {
-        if (PortableMaintenance.running) return
-        if (!libraryVisible) { refreshPending = true; return }
-        if (scanning) { refreshPending = true; return }
-        if (legacyRecoveryStateError) { notice = getString(R.string.legacy_recovery_state_error); return }
+    fun refreshLibrary(manual: Boolean = false) {
+        if (PortableMaintenance.running) { if (manual) manualLibraryScanStatus = getString(R.string.library_rescan_failed); return }
+        if (!libraryVisible || scanning) { refreshPending = true; manualRefreshPending = manualRefreshPending || manual; return }
+        if (legacyRecoveryStateError) { notice = getString(R.string.legacy_recovery_state_error); if (manual) manualLibraryScanStatus = getString(R.string.library_rescan_failed); return }
         refreshPending = false
         val meteredApproved = allowMeteredRecoveryOnce
         allowMeteredRecoveryOnce = false
-        val roots = rootsOrNotify() ?: return
+        val roots = rootsOrNotify() ?: run { if (manual) manualLibraryScanStatus = getString(R.string.library_rescan_failed); return }
         val hintRoot = importHintRoot
         val recoveryRequired = legacyRecoveryPending
         val initialCatalog = bundled
@@ -1103,12 +1108,17 @@ class MainActivity : ComponentActivity() {
                 if (importHintRoot == hintRoot) importHintRoot = null
                 if (result.second.isNotEmpty()) notice = result.second.joinToString("; ")
                 else if (recoveryRequired) notice = getString(R.string.legacy_recovery_done)
+                if (manual) manualLibraryScanStatus = getString(if (result.second.isEmpty()) R.string.library_rescan_done else R.string.library_rescan_failed)
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
-            catch (e: LegacyRecoveryNotice) { notice = getString(e.messageId) }
-            catch (e: Exception) { notice = getString(R.string.refresh_error, e.localizedMessage.orEmpty()) }
+            catch (e: LegacyRecoveryNotice) { notice = getString(e.messageId); if (manual) manualLibraryScanStatus = getString(e.messageId) }
+            catch (e: Exception) { notice = getString(R.string.refresh_error, e.localizedMessage.orEmpty()); if (manual) manualLibraryScanStatus = getString(R.string.library_rescan_failed) }
             finally {
                 scanning = false
-                if (refreshPending && libraryVisible && !isDestroyed) { refreshPending = false; refreshLibrary() }
+                if (refreshPending && libraryVisible && !isDestroyed) {
+                    val nextManual = manualRefreshPending
+                    refreshPending = false; manualRefreshPending = false
+                    refreshLibrary(nextManual)
+                }
             }
         }
     }
@@ -2115,8 +2125,8 @@ private fun settingsTitle(section: String): Int = when {
                 if (activity.legacyRecoveryPending) SettingRow(tr(R.string.legacy_recovery_title), tr(R.string.legacy_recovery_summary),
                     rowFocus("legacyRecovery"), onClick = { activity.retryLegacyRecovery() })
                 SettingRow(tr(R.string.add_games), modifier = rowFocus("addGames"), onClick = { activity.chooseFolder("all") })
-                SettingRow(tr(R.string.library_rescan), tr(if (activity.scanning) R.string.scanning else R.string.library_rescan_hint),
-                    rowFocus("rescanGames"), onClick = { if (!activity.scanning) activity.retryLegacyRecovery() })
+                SettingRow(tr(R.string.library_rescan), if (activity.scanning) tr(R.string.scanning) else activity.manualLibraryScanStatus.ifEmpty { tr(R.string.library_rescan_hint) },
+                    rowFocus("rescanGames"), onClick = { if (!activity.scanning) activity.retryLegacyRecovery(manual = true) })
                 SettingRow(tr(R.string.folders), modifier = rowFocus("folders"), onClick = { activity.manageFolders() })
                 SettingRow(tr(R.string.portable_copy_title), tr(R.string.portable_copy_summary), rowFocus("portableCopy"), onClick = { onSection("portableCopy") })
                 SettingRow(tr(R.string.covers_title), tr(R.string.covers_summary), rowFocus("covers"), onClick = { onSection("covers") })

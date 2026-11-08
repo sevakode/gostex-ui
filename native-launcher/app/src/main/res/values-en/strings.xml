@@ -46,6 +46,8 @@
     <string name="scanning">Scanning…</string>
     <string name="library_rescan">Refresh game library</string>
     <string name="library_rescan_hint">Check the selected sources again</string>
+    <string name="library_rescan_done">Scan complete</string>
+    <string name="library_rescan_failed">Scan incomplete or has warnings</string>
     <string name="add_games">＋ Games</string>
     <string name="folders">Folders</string>
     <string name="empty_favorites">Favorite apps and games appear here. Hold a card to add it.</string>

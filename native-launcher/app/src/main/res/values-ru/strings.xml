@@ -46,6 +46,8 @@
     <string name="scanning">Поиск…</string>
     <string name="library_rescan">Обновить библиотеку игр</string>
     <string name="library_rescan_hint">Проверить выбранные источники ещё раз</string>
+    <string name="library_rescan_done">Поиск завершён</string>
+    <string name="library_rescan_failed">Поиск не завершён или есть предупреждения</string>
     <string name="add_games">＋ Игры</string>
     <string name="folders">Папки</string>
     <string name="empty_favorites">Здесь появятся избранные приложения и игры. Удерживай карточку, чтобы добавить её.</string>

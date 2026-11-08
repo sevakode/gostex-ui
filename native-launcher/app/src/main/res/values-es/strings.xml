@@ -46,6 +46,8 @@
     <string name="scanning">Buscando…</string>
     <string name="library_rescan">Actualizar biblioteca de juegos</string>
     <string name="library_rescan_hint">Revisar de nuevo las fuentes seleccionadas</string>
+    <string name="library_rescan_done">Búsqueda completada</string>
+    <string name="library_rescan_failed">Búsqueda incompleta o con advertencias</string>
     <string name="add_games">＋ Juegos</string>
     <string name="folders">Carpetas</string>
     <string name="empty_favorites">Aquí aparecen tus aplicaciones y juegos favoritos. Mantén pulsada una tarjeta para añadirla.</string>

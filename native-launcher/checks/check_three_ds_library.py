@@ -202,6 +202,12 @@ fun main(args:Array<String>)=runBlocking {
  }
  incomplete.contentResolver.extras.clear()
  pass("Complete empty folder can still remove deleted games",LibraryImport.scan(incomplete,dsRoot,emptyList()).isEmpty())
+ val sharedSnapshot=ctx("shared-snapshot")
+ sharedSnapshot.contentResolver.children["primary:chosen"]=emptyList()
+ File(sharedSnapshot.filesDir,"imported-games.json").writeText("invalid")
+ pass("A supplied snapshot avoids another disk read",LibraryImport.scan(sharedSnapshot,dsRoot,emptyList(),previousSnapshot=listOf(oldDs)).isEmpty())
+ pass("Standalone scans still reject an unreadable snapshot",runCatching { LibraryImport.scan(sharedSnapshot,dsRoot,emptyList()) }.isFailure)
+ pass("Portable roots also use the supplied snapshot",LibraryImport.scan(sharedSnapshot,dsRoot.copy(source=LibrarySource.PORTABLE_SNAPSHOT),emptyList(),previousSnapshot=listOf(oldDs))==listOf(oldDs))
  fun add(context:Context,path:String,file:File?=null) {
   val parts=path.split('/');var parent="primary:chosen"
   for((i,part) in parts.withIndex()) {

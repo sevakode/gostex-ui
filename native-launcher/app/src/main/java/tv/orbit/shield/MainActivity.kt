@@ -1053,7 +1053,7 @@ class MainActivity : ComponentActivity() {
                     val errors = ImportWarnings()
                     val activeRoots = if (recoveryRequired) LibraryImport.roots(this@MainActivity) else roots
                     val found = activeRoots.flatMap { root ->
-                        val scanned = try { LibraryImport.scan(this@MainActivity, root, catalog, showHints = root == hintRoot) { warning ->
+                        val scanned = try { LibraryImport.scan(this@MainActivity, root, catalog, showHints = root == hintRoot, previousSnapshot = previous) { warning ->
                             errors.add { "${PlatformRegistry.title(this@MainActivity, root.platform)}: $warning" }
                         } }
                         catch (e: kotlinx.coroutines.CancellationException) { throw e }

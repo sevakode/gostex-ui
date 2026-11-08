@@ -99,13 +99,15 @@ internal object LibraryImport {
             Game(o.getString("id"),o.getString("title"),o.getString("platform"),o.getString("emulator"),o.getString("component"),(0 until fs.length()).map { fs.getString(it) },o.optString("tree"),o.optString("cover"),o.optString("scene"),o.optString("genre"),o.optString("year"),o.optString("developer"),o.optString("players"),o.optBoolean("demo"),o.optString("description"))
         }
     }
-    suspend fun scan(context: Context, root: Root, bundled: List<Game>, showHints: Boolean = true, onWarning: (String) -> Unit = {}): List<Game> {
+    suspend fun scan(context: Context, root: Root, bundled: List<Game>, showHints: Boolean = true,
+                     previousSnapshot: List<Game>? = null, onWarning: (String) -> Unit = {}): List<Game> {
         val scanContext = currentCoroutineContext()
         scanContext.ensureActive()
+        val previous = previousSnapshot ?: read(context)
         if (root.source == LibrarySource.PORTABLE_SNAPSHOT)
-            return portableRootSnapshot(root.uri, root.platform, read(context))
+            return portableRootSnapshot(root.uri, root.platform, previous)
         val platform = PlatformRegistry.find(root.platform) ?: error(context.getString(R.string.platform_unknown))
-        if (root.source == LibrarySource.SINGLE_FILE) return scanSingle(context, root, bundled)
+        if (root.source == LibrarySource.SINGLE_FILE) return scanSingle(context, root, bundled, previous)
         val tree = Uri.parse(root.uri)
         val indexed = mutableListOf<DiscImport.File>()
         var visited = 0
@@ -115,7 +117,6 @@ internal object LibraryImport {
         var ciaPackages = 0
         val directories = mutableSetOf<String>()
         val known = catalogFiles(bundled, root.platform)
-        val previous = read(context)
         val previousByFile = previousIndex(context, previous, root)
         val previousFiles = previous.filter { it.platform == root.platform }
             .flatMap { it.files }.map(::libraryFileKey).toSet()
@@ -226,11 +227,10 @@ internal object LibraryImport {
     }
 
     /** A document grant authorizes precisely one file; never infer permission to siblings. */
-    private suspend fun scanSingle(context: Context, root: Root, bundled: List<Game>): List<Game> {
+    private suspend fun scanSingle(context: Context, root: Root, bundled: List<Game>, previous: List<Game>): List<Game> {
         val scanContext = currentCoroutineContext()
         scanContext.ensureActive()
         val platform = PlatformRegistry.find(root.platform) ?: error(context.getString(R.string.platform_unknown))
-        val previous = read(context)
         val uri = Uri.parse(root.uri)
         val cursor = context.contentResolver.query(uri, arrayOf(Docs.Document.COLUMN_DOCUMENT_ID, Docs.Document.COLUMN_DISPLAY_NAME, Docs.Document.COLUMN_MIME_TYPE), null, null, null)
             ?: error(context.getString(R.string.import_file_unavailable))

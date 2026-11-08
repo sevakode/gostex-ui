@@ -111,7 +111,8 @@ private object AppArtworkCache {
 
     fun get(key: String): Bitmap? = images.get(key)
 
-    fun load(context: Context, app: TvApp, key: String): Bitmap? {
+    suspend fun load(context: Context, app: TvApp, key: String): Bitmap? {
+        currentCoroutineContext().ensureActive()
         images.get(key)?.let { return it }
         return runCatching {
             val pm = context.packageManager
@@ -119,14 +120,21 @@ private object AppArtworkCache {
                 runCatching { pm.getActivityInfo(ComponentName(app.packageName, name), 0) }.getOrNull()
             }
             val application = activity?.applicationInfo ?: pm.getApplicationInfo(app.packageName, 0)
+            currentCoroutineContext().ensureActive()
             // Prefer the selected TV activity's banner. The app can also have a different phone icon.
             val banner = activity?.takeIf { it.banner != 0 }?.let {
                 runCatching { pm.getDrawable(app.packageName, it.banner, application) }.getOrNull()
             } ?: runCatching { application.loadBanner(pm) }.getOrNull()
             val drawable = banner ?: runCatching { activity?.loadIcon(pm) ?: application.loadIcon(pm) }
                 .getOrElse { pm.defaultActivityIcon }
-            renderAppArtwork(drawable, isBanner = banner != null).also { images.put(key, it) }
-        }.getOrNull()
+            currentCoroutineContext().ensureActive()
+            val rendered = renderAppArtwork(drawable, isBanner = banner != null)
+            currentCoroutineContext().ensureActive()
+            rendered.also { images.put(key, it) }
+        }.getOrElse { error ->
+            if (error is kotlinx.coroutines.CancellationException) throw error
+            null
+        }
     }
 }
 

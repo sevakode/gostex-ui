@@ -44,6 +44,8 @@
     <string name="remote_enabled">Remote se iniciará con Shield.</string>
     <string name="remote_disabled">Inicio automático desactivado. La sesión actual de Remote sigue activa.</string>
     <string name="scanning">Buscando…</string>
+    <string name="library_rescan">Actualizar biblioteca de juegos</string>
+    <string name="library_rescan_hint">Revisar de nuevo las fuentes seleccionadas</string>
     <string name="add_games">＋ Juegos</string>
     <string name="folders">Carpetas</string>
     <string name="empty_favorites">Aquí aparecen tus aplicaciones y juegos favoritos. Mantén pulsada una tarjeta para añadirla.</string>

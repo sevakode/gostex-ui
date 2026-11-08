@@ -2063,7 +2063,7 @@ private fun settingsTitle(section: String): Int = when {
         "appearanceGroup" -> listOf("appearance", "art", "grafana")
         "mediaGroup" -> listOf("libraryGroup", "nowPlaying", "downloads", "movies")
         "libraryGroup" -> (if (activity.legacyRecoveryPending) listOf("legacyRecovery") else emptyList()) +
-            listOf("addGames", "folders", "portableCopy", "covers", "ndsEmulator", "androidGames", "groupVersions", "libraryTab", "appsTab")
+            listOf("addGames", "rescanGames", "folders", "portableCopy", "covers", "ndsEmulator", "androidGames", "groupVersions", "libraryTab", "appsTab")
         "localeGroup" -> listOf("language", "clock")
         "systemGroup" -> listOf("batteryStatus", "network", "torrServer", "torrServeInstall", "revancedManager", "defaultHome", "shield", "remote")
         "portableCopy" -> listOf("copyAction", "portablePreview")
@@ -2115,6 +2115,8 @@ private fun settingsTitle(section: String): Int = when {
                 if (activity.legacyRecoveryPending) SettingRow(tr(R.string.legacy_recovery_title), tr(R.string.legacy_recovery_summary),
                     rowFocus("legacyRecovery"), onClick = { activity.retryLegacyRecovery() })
                 SettingRow(tr(R.string.add_games), modifier = rowFocus("addGames"), onClick = { activity.chooseFolder("all") })
+                SettingRow(tr(R.string.library_rescan), tr(if (activity.scanning) R.string.scanning else R.string.library_rescan_hint),
+                    rowFocus("rescanGames"), onClick = { if (!activity.scanning) activity.retryLegacyRecovery() })
                 SettingRow(tr(R.string.folders), modifier = rowFocus("folders"), onClick = { activity.manageFolders() })
                 SettingRow(tr(R.string.portable_copy_title), tr(R.string.portable_copy_summary), rowFocus("portableCopy"), onClick = { onSection("portableCopy") })
                 SettingRow(tr(R.string.covers_title), tr(R.string.covers_summary), rowFocus("covers"), onClick = { onSection("covers") })

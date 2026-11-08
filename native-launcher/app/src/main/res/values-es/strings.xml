@@ -240,4 +240,11 @@
     <string name="video_choose_player">Elegir reproductor</string>
     <string name="video_remember_player">Usar como predeterminado</string>
     <string name="video_current_default">Predeterminado actual</string>
+    <string name="just_player_title">Just Player</string>
+    <string name="just_player_installed">Instalado · abrir</string>
+    <string name="just_player_install_hint">Instalar reproductor de vídeo</string>
+    <string name="just_player_source_hint">Elige una fuente de instalación. Google Play gestiona las actualizaciones cuando está disponible.</string>
+    <string name="just_player_downloading">Descargando Just Player…</string>
+    <string name="just_player_failed">No se pudo instalar Just Player. Comprueba la compatibilidad y la conexión.</string>
+    <string name="just_player_incompatible">Esta versión de Just Player no es compatible con este Android o procesador.</string>
 </resources>

@@ -85,13 +85,13 @@ internal fun openMediaLibrary(context: Context, id: String? = null, playIfSingle
 
 @Composable internal fun MediaTile(
     movie: SavedMovie, modifier: Modifier = Modifier, onClick: () -> Unit,
-    onLongClick: (() -> Unit)? = null, onFocus: () -> Unit = {}, favorite: Boolean = false
+    onLongClick: (() -> Unit)? = null, onFocus: () -> Unit = {}, favorite: Boolean = false, portrait: Boolean = false
 ) {
     var focused by remember { mutableStateOf(false) }
     val key = "movie:${movie.id}"
     Column(modifier) {
         Surface(onClick = onClick, onLongClick = onLongClick,
-            modifier = Modifier.fillMaxWidth().aspectRatio(TileLayout.aspectRatio)
+            modifier = Modifier.fillMaxWidth().aspectRatio(if (portrait) 2f / 3f else TileLayout.aspectRatio)
                 .touchSurface(onLongClick = onLongClick, onClick = onClick)
                 .onFocusChanged { focused = it.isFocused; if (it.isFocused) onFocus() },
             shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(0.dp)),
@@ -138,7 +138,7 @@ internal fun openMediaLibrary(context: Context, id: String? = null, playIfSingle
         else if (failed) Text(tr(R.string.movies_corrupt), color = Color(0xFFFFA69A), modifier = Modifier.padding(42.dp))
         else if (movies.isEmpty()) Text(tr(R.string.media_library_empty), color = Color.LightGray, modifier = Modifier.padding(42.dp))
         else BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-            LazyVerticalGrid(columns = GridCells.Fixed(TileLayout.columns(maxWidth, LocalTileSize.current)),
+            LazyVerticalGrid(columns = GridCells.Fixed(((maxWidth - (TileLayout.screenInset + TileLayout.focusInset) * 2 + TileLayout.gap) / (100.dp + TileLayout.gap)).toInt().coerceIn(1, LocalTileSize.current.columns + 2)),
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(start = TileLayout.screenInset + TileLayout.focusInset, end = TileLayout.screenInset + TileLayout.focusInset, top = 8.dp, bottom = 18.dp),
                 horizontalArrangement = Arrangement.spacedBy(TileLayout.gap), verticalArrangement = Arrangement.spacedBy(TileLayout.gap)) {
@@ -147,7 +147,7 @@ internal fun openMediaLibrary(context: Context, id: String? = null, playIfSingle
                     val cardFocus = remember(movie.id) { FocusRequester() }
                     MediaTile(movie, modifier = Modifier.fillMaxWidth().then(if (movie.id == (lastId ?: movies.first().id)) Modifier.focusRequester(firstFocus) else Modifier).focusRequester(cardFocus),
                         onFocus = { lastId = movie.id }, onClick = { openMediaLibrary(activity, movie.id, playIfSingle = true) },
-                        onLongClick = { onMenu(movie, cardFocus) }, favorite = homeMovieKey(movie.id) in favorites)
+                        onLongClick = { onMenu(movie, cardFocus) }, favorite = homeMovieKey(movie.id) in favorites, portrait = true)
                 }
             }
         }

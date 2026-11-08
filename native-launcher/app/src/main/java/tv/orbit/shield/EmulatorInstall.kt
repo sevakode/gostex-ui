@@ -49,18 +49,19 @@ internal fun MainActivity.offerMissingEmulator(spec: PlatformSpec): Boolean {
 
 internal fun MainActivity.downloadOfficialEmulator(pkg: String) {
     if (!OfficialEmulatorApk.supports(pkg)) return
+    val isPlayer = pkg == "com.brouken.player"
     if (emulatorInstallJob != null) {
-        notice = getString(R.string.emulator_install_downloading)
+        notice = getString(if (isPlayer) R.string.just_player_downloading else R.string.emulator_install_downloading)
         return
     }
     if (!packageManager.canRequestPackageInstalls()) {
         notice = getString(R.string.emulator_install_permission)
         pendingEmulatorPermission = pkg
         runCatching { emulatorPermissionLauncher.launch(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName"))) }
-            .onFailure { pendingEmulatorPermission = null; notice = getString(R.string.emulator_install_failed) }
+            .onFailure { pendingEmulatorPermission = null; notice = getString(if (isPlayer) R.string.just_player_failed else R.string.emulator_install_failed) }
         return
     }
-    val progress = getString(R.string.emulator_install_downloading)
+    val progress = getString(if (isPlayer) R.string.just_player_downloading else R.string.emulator_install_downloading)
     notice = progress
     var job: Job? = null
     val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) job?.cancel() }
@@ -80,10 +81,10 @@ internal fun MainActivity.downloadOfficialEmulator(pkg: String) {
             throw e
         } catch (_: EmulatorApkIncompatible) {
             OfficialEmulatorApk.discard(this@downloadOfficialEmulator); pendingEmulatorApk = null
-            notice = getString(R.string.emulator_install_incompatible)
+            notice = getString(if (isPlayer) R.string.just_player_incompatible else R.string.emulator_install_incompatible)
         } catch (_: Exception) {
             OfficialEmulatorApk.discard(this@downloadOfficialEmulator); pendingEmulatorApk = null
-            notice = getString(R.string.emulator_install_failed)
+            notice = getString(if (isPlayer) R.string.just_player_failed else R.string.emulator_install_failed)
         } finally {
             lifecycle.removeObserver(observer)
             emulatorInstallJob = null

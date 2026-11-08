@@ -18,6 +18,7 @@ internal class EmulatorApkIncompatible : Exception()
 internal object OfficialEmulatorApk {
     private data class Source(val repo: String, val asset: Regex)
     private val sources = mapOf(
+        "com.brouken.player" to Source("moneytoo/Player", Regex("Just\\.Player\\.v[0-9]+(?:\\.[0-9]+)+\\.apk")),
         "me.magnum.melonds" to Source("rafaelvcaetano/melonDS-android", Regex("app-gitHub-prod-release\\.apk")),
         "com.flycast.emulator" to Source("flyinghead/flycast", Regex("flycast-[0-9][A-Za-z0-9._-]*\\.apk")),
         "org.azahar_emu.azahar" to Source("azahar-emu/azahar", Regex("azahar-android-vanilla-[A-Za-z0-9._-]+\\.apk"))

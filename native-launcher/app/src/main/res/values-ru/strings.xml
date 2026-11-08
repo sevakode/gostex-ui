@@ -242,4 +242,11 @@
     <string name="video_choose_player">Выберите плеер</string>
     <string name="video_remember_player">Использовать по умолчанию</string>
     <string name="video_current_default">Выбран по умолчанию</string>
+    <string name="just_player_title">Just Player</string>
+    <string name="just_player_installed">Установлен · открыть</string>
+    <string name="just_player_install_hint">Установить видеоплеер</string>
+    <string name="just_player_source_hint">Выберите источник установки. Google Play управляет обновлениями, если доступен.</string>
+    <string name="just_player_downloading">Загружается Just Player…</string>
+    <string name="just_player_failed">Не удалось установить Just Player. Проверьте совместимость и интернет.</string>
+    <string name="just_player_incompatible">Эта сборка Just Player несовместима с версией Android или процессором устройства.</string>
 </resources>

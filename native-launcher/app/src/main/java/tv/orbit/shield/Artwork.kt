@@ -43,6 +43,7 @@ private object ArtCache {
     }
 
     fun peek(path: String): CachedArtwork? = entries.get(path)
+    fun trim(aggressive: Boolean) { if (aggressive) entries.evictAll() else entries.trimToSize(16 * 1024) }
 
     suspend fun load(context: Context, path: String): CachedArtwork = withContext(Dispatchers.IO) {
         // Serialize cache misses so hero and card requests cannot decode the same source twice.
@@ -102,6 +103,8 @@ private object ArtCache {
         return Bitmap.createBitmap(pixels, side, side, Bitmap.Config.ARGB_8888)
     }
 }
+
+internal fun trimGameArtworkCache(aggressive: Boolean) = ArtCache.trim(aggressive)
 
 @Composable private fun rememberArtwork(path: String): CachedArtwork? {
     val context = LocalContext.current.applicationContext

@@ -110,6 +110,7 @@ private object AppArtworkCache {
     }
 
     fun get(key: String): Bitmap? = images.get(key)
+    fun trim(aggressive: Boolean) { if (aggressive) images.evictAll() else images.trimToSize(4 * 1024 * 1024) }
 
     suspend fun load(context: Context, app: TvApp, key: String): Bitmap? {
         currentCoroutineContext().ensureActive()
@@ -137,6 +138,8 @@ private object AppArtworkCache {
         }
     }
 }
+
+internal fun trimAppArtworkCache(aggressive: Boolean) = AppArtworkCache.trim(aggressive)
 
 /** Render every source with its own aspect ratio; a square icon is never stretched into a banner. */
 private fun renderAppArtwork(drawable: Drawable, isBanner: Boolean): Bitmap {

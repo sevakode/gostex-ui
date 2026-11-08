@@ -733,6 +733,16 @@ class MainActivity : ComponentActivity() {
         super.onStop()
     }
     override fun onDestroy() { if (updatesLazy.isInitialized()) updates.close(); importScope.cancel(); super.onDestroy() }
+    @Suppress("DEPRECATION")
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        val hidden = android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN
+        val low = android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW
+        if (level < low) return
+        val aggressive = level < hidden || level >= android.content.ComponentCallbacks2.TRIM_MEMORY_BACKGROUND
+        trimGameArtworkCache(aggressive)
+        trimAppArtworkCache(aggressive)
+    }
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         if (PortableMaintenance.running) return

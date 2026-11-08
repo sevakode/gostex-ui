@@ -238,4 +238,8 @@
     <string name="screensaver_shortcut_service">Ярлык заставки GOSTEX</string>
     <string name="screensaver_shortcut_description">Позволяет открывать заставку GOSTEX кнопкой Netflix на пульте NVIDIA SHIELD. При включении служба получает нажатия клавиш, но не записывает и не передаёт их.</string>
     <string name="library_group_versions">Группировать версии игр</string>
+
+    <string name="video_choose_player">Выберите плеер</string>
+    <string name="video_remember_player">Использовать по умолчанию</string>
+    <string name="video_current_default">Выбран по умолчанию</string>
 </resources>

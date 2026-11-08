@@ -107,6 +107,7 @@ private data class PortablePreviewDecisionSession(
 private class LegacyRecoveryNotice(val messageId: Int) : Exception()
 
 class MainActivity : ComponentActivity() {
+    private val videoPlayer = VideoPlayerChooser(this)
     private val updatesLazy = lazy { LauncherUpdates(this) }
     internal val updates: LauncherUpdates by updatesLazy
     private val diagnosticExport = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
@@ -257,7 +258,7 @@ class MainActivity : ComponentActivity() {
         dialog = TorrPreparationDialog.show(this, hash, fileId, onOpen = {
             runCatching {
                 val url = Uri.parse(TorrPlayback.url(hash, fileId))
-                startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(url, "video/*"))
+                videoPlayer.open(Intent(Intent.ACTION_VIEW).setDataAndType(url, "video/*"), onError = { torrDownloadMessage = getString(R.string.torr_play_failed) })
             }.onFailure { torrDownloadMessage = getString(R.string.torr_play_failed) }
         }, onDismiss = { if (torrentPlaybackDialog === dialog) torrentPlaybackDialog = null })
         torrentPlaybackDialog = dialog
@@ -1209,7 +1210,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             PortableMaintenanceBarrier(this) {
                 MaterialTheme(colorScheme = darkColorScheme(primary = Lime, surface = Ink, onSurface = White)) {
-                    ControllerProvider { Orbit(this, library.filterNot { it.demo }) }
+                    ControllerProvider { Orbit(this, library.filterNot { it.demo }); videoPlayer.Render() }
                 }
             }
         }

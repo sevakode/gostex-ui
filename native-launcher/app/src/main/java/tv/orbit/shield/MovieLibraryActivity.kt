@@ -1,7 +1,6 @@
 package tv.orbit.shield
 
 import android.app.AlertDialog
-import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -34,6 +33,7 @@ import kotlinx.coroutines.withContext
 
 /** Film metadata and user-owned sources; streaming is delegated to an installed player. */
 class MovieLibraryActivity : ComponentActivity() {
+    private val videoPlayer = VideoPlayerChooser(this)
     private var page by mutableStateOf("saved")
     private var saved by mutableStateOf<List<SavedMovie>>(emptyList())
     private var results by mutableStateOf<List<MovieCatalogItem>>(emptyList())
@@ -98,7 +98,7 @@ class MovieLibraryActivity : ComponentActivity() {
                 openMovie(MovieCatalogItem(movie.id, movie.title, movie.year, movie.poster, durationSeconds = movie.durationSeconds, mediaType = movie.mediaType))
             }
         }
-        setContent { MovieScreen() }
+        setContent { MovieScreen(); videoPlayer.Render() }
         if (savedInstanceState == null && intent.getBooleanExtra(EXTRA_PLAY_SINGLE, false)) {
             selected?.id?.let { id -> saved.firstOrNull { it.id == id }?.sources?.singleOrNull()?.let { play(it) } }
         }
@@ -428,25 +428,10 @@ class MovieLibraryActivity : ComponentActivity() {
     }
 
     private fun startMovieIntent(intent: Intent, episode: MovieEpisode? = null, choosePlayer: Boolean = false) {
-        runCatching {
-            val id = selected?.id ?: error("Missing media")
-            val resolved = packageManager.resolveActivity(intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo
-            val handlers = packageManager.queryIntentActivities(intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
-            val direct = resolved != null && handlers.any { it.activityInfo.packageName == resolved.packageName && it.activityInfo.name == resolved.name }
-            if (direct && !choosePlayer) {
-                startActivity(intent)
-                MoviePlaybackReceipt.mark(this, id, episode?.id)
-            } else {
-                val receipt = Intent(this, MoviePlaybackReceipt::class.java).apply {
-                    action = MoviePlaybackReceipt.ACTION
-                    data = Uri.Builder().scheme("gostex-recent").authority("choice").appendPath(java.util.UUID.randomUUID().toString()).build()
-                    putExtra(MoviePlaybackReceipt.EXTRA_ID, id)
-                    putExtra(MoviePlaybackReceipt.EXTRA_EPISODE_ID, episode?.id)
-                }
-                val sender = PendingIntent.getBroadcast(this, 0, receipt, PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE).intentSender
-                startActivity(Intent.createChooser(intent, null, sender))
-            }
-        }.onFailure { toast(R.string.movies_player_missing) }
+        val id = selected?.id ?: return
+        videoPlayer.open(intent, force = choosePlayer,
+            onStarted = { MoviePlaybackReceipt.mark(this, id, episode?.id) },
+            onError = { toast(R.string.movies_player_missing) })
     }
 
     private fun prepareTorrent(uri: Uri, episode: MovieEpisode?, choosePlayer: Boolean, filenameHint: String?) {

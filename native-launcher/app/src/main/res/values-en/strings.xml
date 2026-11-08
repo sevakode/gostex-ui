@@ -236,4 +236,7 @@
     <string name="screensaver_shortcut_service">GOSTEX screensaver shortcut</string>
     <string name="screensaver_shortcut_description">Lets the Netflix button on the NVIDIA SHIELD remote open the GOSTEX screensaver. This service observes key events while enabled; it does not record or transmit them.</string>
     <string name="library_group_versions">Group game versions</string>
+    <string name="video_choose_player">Choose player</string>
+    <string name="video_remember_player">Use as default</string>
+    <string name="video_current_default">Current default</string>
 </resources>

@@ -236,4 +236,8 @@
     <string name="screensaver_shortcut_service">Acceso al salvapantallas GOSTEX</string>
     <string name="screensaver_shortcut_description">Permite abrir el salvapantallas de GOSTEX con el botón Netflix del mando NVIDIA SHIELD. Cuando está activo, el servicio recibe pulsaciones, pero no las registra ni transmite.</string>
     <string name="library_group_versions">Agrupar versiones de juegos</string>
+
+    <string name="video_choose_player">Elegir reproductor</string>
+    <string name="video_remember_player">Usar como predeterminado</string>
+    <string name="video_current_default">Predeterminado actual</string>
 </resources>

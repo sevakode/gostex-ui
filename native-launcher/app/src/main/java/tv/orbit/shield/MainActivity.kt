@@ -690,13 +690,36 @@ class MainActivity : ComponentActivity() {
     private var refreshPending = false
     private var libraryVisible = false
     private var importJob: Job? = null
-    override fun onResume() { super.onResume(); pendingEmulatorApk?.delete(); pendingEmulatorApk = null; if (!PortableRestoreStartup.ready || PortableMaintenance.running) return; AgentStateHooks.attach(this); updates.onResume(); libraryVisible = true; resumeVersion++; refreshLibrary(); startCoverSync() }
+    private var mediaReceiverRegistered = false
+    private var mediaRefreshJob: Job? = null
+    private val mediaReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context, intent: Intent) {
+            if (intent.action != Intent.ACTION_MEDIA_MOUNTED || isInitialStickyBroadcast || !libraryVisible) return
+            mediaRefreshJob?.cancel()
+            mediaRefreshJob = importScope.launch {
+                kotlinx.coroutines.delay(1500)
+                if (libraryVisible && !PortableMaintenance.running) refreshLibrary()
+            }
+        }
+    }
+    @Suppress("DEPRECATION")
+    private fun watchMountedMedia() {
+        if (mediaReceiverRegistered) return
+        val filter = android.content.IntentFilter(Intent.ACTION_MEDIA_MOUNTED).apply { addDataScheme("file") }
+        // MEDIA_MOUNTED is a protected system broadcast; the flag-free overload is
+        // supported for system-only receivers, including on Android 14.
+        mediaReceiverRegistered = runCatching { registerReceiver(mediaReceiver, filter); true }.getOrDefault(false)
+    }
+    override fun onResume() { super.onResume(); pendingEmulatorApk?.delete(); pendingEmulatorApk = null; if (!PortableRestoreStartup.ready || PortableMaintenance.running) return; AgentStateHooks.attach(this); updates.onResume(); libraryVisible = true; watchMountedMedia(); resumeVersion++; refreshLibrary(); startCoverSync() }
     override fun onPause() { AndroidDiagnostics.event("launcher.pause"); super.onPause() }
     override fun onStop() {
         torrentPlaybackDialog?.dismiss()
         AgentStateHooks.detach(this)
         if (updatesLazy.isInitialized()) updates.onStop()
         libraryVisible = false
+        mediaRefreshJob?.cancel()
+        mediaRefreshJob = null
+        if (mediaReceiverRegistered) { unregisterReceiver(mediaReceiver); mediaReceiverRegistered = false }
         allowMeteredRecoveryOnce = false
         coversLoop?.cancel()
         coverSyncPending = false

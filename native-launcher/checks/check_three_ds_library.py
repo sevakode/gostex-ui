@@ -244,6 +244,9 @@ fun main(args:Array<String>)=runBlocking {
  pass("Installed scan only opens executable candidates",context.contentResolver.opened.size==2 && context.contentResolver.opened.all{it.endsWith(".app")})
  pass("Installed scan never traverses expensive or non-game branches",context.contentResolver.queried.none{it.contains("shader")||it.contains("nand")||it.contains("0004000e")||it.endsWith("/data")})
  pass("Repeated installed scans preserve game identity",LibraryImport.scan(context,root,emptyList()).single().id==found.single().id)
+ LibraryImport.write(context,found);context.contentResolver.opened.clear()
+ val installedRescan=LibraryImport.scan(context,root,emptyList())
+ pass("Known installed 3DS content is still validated on rescan",installedRescan==found && context.contentResolver.opened.size==2)
  val wrong=ctx("wrong");add(wrong,"ROMs/Game.cxi",executable)
  var wrongRejected=false;try{LibraryImport.scan(wrong,root,emptyList())}catch(_:IllegalStateException){wrongRejected=true}
  pass("Wrong Azahar data root rejected without replacing snapshot",wrongRejected && libraryRootSnapshot(root.uri,null,found)==found)
@@ -253,6 +256,9 @@ fun main(args:Array<String>)=runBlocking {
  val roms=ctx("roms");add(roms,"my.cia",junk);add(roms,"Game.cxi",executable)
  val ciaWarnings=mutableListOf<String>();val romGames=LibraryImport.scan(roms,root.copy(source=LibrarySource.FILES),emptyList()){ciaWarnings+=it}
  pass("CIA installer never becomes a launchable card",romGames.size==1 && romGames.single().files.single().endsWith("Game.cxi") && ciaWarnings.single().startsWith("res:${R.string.three_ds_cia_found}:"))
+ LibraryImport.write(roms,romGames);roms.contentResolver.opened.clear()
+ val romRescan=LibraryImport.scan(roms,root.copy(source=LibrarySource.FILES),emptyList())
+ pass("Known ordinary 3DS ROM retains its card without reopening its header",romRescan==romGames && roms.contentResolver.opened.isEmpty())
  val unreadable=ctx("unreadable");add(unreadable,"$p/00000000.app",executable);unreadable.contentResolver.fail=java.io.IOException("USB unavailable")
  var io=false;try{LibraryImport.scan(unreadable,root,emptyList())}catch(_:java.io.IOException){io=true}
  pass("Storage failure propagates so cached cards survive",io)

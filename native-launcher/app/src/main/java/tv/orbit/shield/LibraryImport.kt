@@ -305,12 +305,18 @@ internal object LibraryImport {
     private suspend fun gameForFile(context: Context, root: Root, bundled: List<Game>, known: Map<String, Game>, previous: Map<String, Game>, documentId: String, name: String, uri: Uri, raw: String, installed: Boolean): Game? {
         val platform = PlatformRegistry.find(root.platform) ?: error(context.getString(R.string.platform_unknown))
         val threeDs = root.platform == "Nintendo 3DS"
+        val existing = previous[libraryFileKey(raw)]
+        // Existing ordinary ROM cards already own their metadata. Reading their 3DS
+        // headers again cannot change that card and is expensive on slow storage.
+        // Installed .app contents still need validation before retaining a card.
+        if (!installed && !name.endsWith(".app", ignoreCase = true) && existing != null)
+            return existing.copy(files = listOf(raw), tree = root.uri)
         val metadata = if (threeDs) readThreeDsMetadata(context, uri, installed || name.endsWith(".app", ignoreCase = true)) else null
         // Installed numeric data-only contents must never become launch cards.
         if (threeDs && name.endsWith(".app", ignoreCase = true) && metadata == null) return null
         // The installed snapshot is authoritative for this source's existing cards.
         // Do not invent missing files: each variant must still be observed in this scan.
-        previous[libraryFileKey(raw)]?.let { return it.copy(files = listOf(raw), tree = root.uri) }
+        existing?.let { return it.copy(files = listOf(raw), tree = root.uri) }
         // Preserve the catalog identity and user cover/preferences when the same ROM is
         // selected as a document. Existing folder identities are unchanged.
         known[libraryFileKey(raw)]?.let { return if (root.source == LibrarySource.SINGLE_FILE) it.copy(files = listOf(raw), tree = root.uri)

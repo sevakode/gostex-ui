@@ -6,6 +6,10 @@ from kotlin_toolchain import JAVA, COMPILER, ROOT
 source = ROOT / 'native-launcher/app/src/main/java/tv/orbit/shield/TorrPlaybackLogic.kt'
 checks = '''package tv.orbit.shield
 fun main() {
+    check(!shouldAutoOpenPrepared(false, true, true))
+    check(!shouldAutoOpenPrepared(true, false, true))
+    check(!shouldAutoOpenPrepared(true, true, false))
+    check(shouldAutoOpenPrepared(true, true, true))
     check(torrentPreloadReady(3, 32, 32))
     check(torrentPreloadReady(3, 64, 32))
     check(!torrentPreloadReady(2, 64, 32))

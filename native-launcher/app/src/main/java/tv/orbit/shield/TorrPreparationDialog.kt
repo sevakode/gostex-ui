@@ -28,11 +28,18 @@ internal object TorrPreparationDialog {
         dialog.setOnDismissListener { monitor?.cancel(); preload?.cancel(); onDismiss() }
         dialog.show()
         var opened = false
+        var preloadReady = false
         fun openOnce() {
             if (opened || !dialog.isShowing) return
             opened = true
             dialog.dismiss()
             onOpen()
+        }
+        fun autoOpenIfReady(): Boolean {
+            if (!shouldAutoOpenPrepared(preloadReady, TorrPlaybackPreferences.autoPlay(activity),
+                    activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))) return false
+            openOnce()
+            return true
         }
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener { openOnce() }
         monitor = activity.lifecycleScope.launch {
@@ -43,6 +50,7 @@ internal object TorrPreparationDialog {
                 if (isActive && dialog.isShowing) {
                     lastStatus = entry?.let { torrentStatusText(activity, it, false) } ?: activity.getString(R.string.movies_status_unavailable)
                     dialog.setMessage(listOf(lastStatus, preloadMessage).filter { it.isNotEmpty() }.joinToString("\n\n"))
+                    if (autoOpenIfReady()) return@launch
                 }
                 delay(2000)
             }
@@ -53,14 +61,10 @@ internal object TorrPreparationDialog {
             val entry = result.getOrNull()
             // TorrServer can return HTTP 200 after an aborted preload. Require its
             // reported cache threshold as well; it does not guarantee future throughput.
-            val ready = torrentPreloadReady(entry?.serverState, entry?.cachedBytes, entry?.preloadBytes,
+            preloadReady = torrentPreloadReady(entry?.serverState, entry?.cachedBytes, entry?.preloadBytes,
                 entry?.files?.singleOrNull { it.id == fileId }?.size)
-            if (ready && TorrPlaybackPreferences.autoPlay(activity) &&
-                activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
-                openOnce()
-                return@launch
-            }
-            preloadMessage = activity.getString(if (ready) R.string.movies_buffer_finished else R.string.movies_buffer_waiting)
+            if (autoOpenIfReady()) return@launch
+            preloadMessage = activity.getString(if (preloadReady) R.string.movies_buffer_finished else R.string.movies_buffer_waiting)
             dialog.setMessage(listOf(lastStatus, preloadMessage).filter { it.isNotEmpty() }.joinToString("\n\n"))
         }
         return dialog

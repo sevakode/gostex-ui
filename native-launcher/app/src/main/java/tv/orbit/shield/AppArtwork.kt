@@ -97,6 +97,8 @@ private val AppWhite = Color(0xFFF5F5F5)
 
 /** Bounded final rasters only: no retained Activity, Drawable, PackageManager or full-sized source. */
 private object AppArtworkCache {
+    private val cacheGuard = Any()
+    private var generation = 0L
     private val images = object : LruCache<String, Bitmap>(8 * 1024 * 1024) {
         override fun sizeOf(key: String, value: Bitmap): Int = value.allocationByteCount
     }
@@ -110,11 +112,15 @@ private object AppArtworkCache {
     }
 
     fun get(key: String): Bitmap? = images.get(key)
-    fun trim(aggressive: Boolean) { if (aggressive) images.evictAll() else images.trimToSize(4 * 1024 * 1024) }
+    fun trim(aggressive: Boolean) = synchronized(cacheGuard) {
+        generation++
+        if (aggressive) images.evictAll() else images.trimToSize(4 * 1024 * 1024)
+    }
 
     suspend fun load(context: Context, app: TvApp, key: String): Bitmap? {
         currentCoroutineContext().ensureActive()
         images.get(key)?.let { return it }
+        val startedGeneration = synchronized(cacheGuard) { generation }
         return runCatching {
             val pm = context.packageManager
             val activity = app.activityName.takeIf(String::isNotBlank)?.let { name ->
@@ -131,7 +137,9 @@ private object AppArtworkCache {
             currentCoroutineContext().ensureActive()
             val rendered = renderAppArtwork(drawable, isBanner = banner != null)
             currentCoroutineContext().ensureActive()
-            rendered.also { images.put(key, it) }
+            rendered.also { synchronized(cacheGuard) {
+                if (generation == startedGeneration) images.put(key, it)
+            } }
         }.getOrElse { error ->
             if (error is kotlinx.coroutines.CancellationException) throw error
             null

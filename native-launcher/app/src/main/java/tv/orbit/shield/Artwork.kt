@@ -37,19 +37,25 @@ private data class CachedArtwork(val path: String, val bitmap: Bitmap?, val ambi
 /** Sources and their tiny, prepared backdrops share the same 32 MiB budget. */
 private object ArtCache {
     private val lock = Mutex()
+    private val cacheGuard = Any()
+    private var generation = 0L
     private val entries = object : LruCache<String, CachedArtwork>(32 * 1024) {
         override fun sizeOf(key: String, value: CachedArtwork): Int =
             max(1, ((value.bitmap?.allocationByteCount ?: 0) + (value.ambient?.allocationByteCount ?: 0) + 1023) / 1024)
     }
 
     fun peek(path: String): CachedArtwork? = entries.get(path)
-    fun trim(aggressive: Boolean) { if (aggressive) entries.evictAll() else entries.trimToSize(16 * 1024) }
+    fun trim(aggressive: Boolean) = synchronized(cacheGuard) {
+        generation++
+        if (aggressive) entries.evictAll() else entries.trimToSize(16 * 1024)
+    }
 
     suspend fun load(context: Context, path: String): CachedArtwork = withContext(Dispatchers.IO) {
         // Serialize cache misses so hero and card requests cannot decode the same source twice.
         lock.withLock {
             entries.get(path)?.let { return@withLock it }
             currentCoroutineContext().ensureActive()
+            val startedGeneration = synchronized(cacheGuard) { generation }
             val source = if (path.isBlank()) null else runCatching {
                 val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                 openCoverImage(context, path).use { BitmapFactory.decodeStream(it, null, bounds) }
@@ -65,7 +71,9 @@ private object ArtCache {
             val entry = CachedArtwork(path, source, source?.let(::makeAmbient))
             currentCoroutineContext().ensureActive()
             // Missing or temporarily unreadable files can become available later.
-            if (source != null) entries.put(path, entry)
+            if (source != null) synchronized(cacheGuard) {
+                if (generation == startedGeneration) entries.put(path, entry)
+            }
             entry
         }
     }

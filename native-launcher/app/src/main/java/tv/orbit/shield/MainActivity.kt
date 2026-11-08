@@ -623,7 +623,7 @@ class MainActivity : ComponentActivity() {
     var homeVersion by mutableIntStateOf(0)
     var library by mutableStateOf<List<Game>>(emptyList())
     var scanning by mutableStateOf(false)
-    internal var manualLibraryScanStatus by mutableStateOf("")
+    internal var manualLibraryScanStatus by mutableStateOf<Int?>(null)
         private set
     var legacyRecoveryPending by mutableStateOf(false)
         private set
@@ -1000,16 +1000,16 @@ class MainActivity : ComponentActivity() {
     } catch (_: Exception) { LegacyNetworkState.OFFLINE }
 
     fun retryLegacyRecovery(manual: Boolean = false) {
-        if (manual) manualLibraryScanStatus = ""
+        if (manual) manualLibraryScanStatus = null
         if (legacyRecoveryStateError) {
             try {
                 legacyRecoveryPending = LegacyRecoveryState.initialize(this, bundled)
                 legacyRecoveryStateError = false
-            } catch (_: Exception) { notice = getString(R.string.legacy_recovery_state_error); if (manual) manualLibraryScanStatus = getString(R.string.library_rescan_failed); return }
+            } catch (_: Exception) { notice = getString(R.string.legacy_recovery_state_error); if (manual) manualLibraryScanStatus = R.string.library_rescan_failed; return }
         }
         if (!legacyRecoveryPending) { refreshLibrary(manual); return }
         when (legacyNetwork()) {
-            LegacyNetworkState.OFFLINE -> { notice = getString(R.string.legacy_recovery_offline); if (manual) manualLibraryScanStatus = getString(R.string.legacy_recovery_offline) }
+            LegacyNetworkState.OFFLINE -> { notice = getString(R.string.legacy_recovery_offline); if (manual) manualLibraryScanStatus = R.string.legacy_recovery_offline }
             LegacyNetworkState.UNMETERED -> refreshLibrary(manual)
             LegacyNetworkState.METERED -> android.app.AlertDialog.Builder(this)
                 .setTitle(R.string.legacy_recovery_title).setMessage(R.string.legacy_recovery_metered_confirm)
@@ -1037,13 +1037,14 @@ class MainActivity : ComponentActivity() {
         }.setNegativeButton(getString(R.string.close), null).show()
     }
     fun refreshLibrary(manual: Boolean = false) {
-        if (PortableMaintenance.running) { if (manual) manualLibraryScanStatus = getString(R.string.library_rescan_failed); return }
+        if (PortableMaintenance.running) { if (manual) manualLibraryScanStatus = R.string.library_rescan_failed; return }
         if (!libraryVisible || scanning) { refreshPending = true; manualRefreshPending = manualRefreshPending || manual; return }
-        if (legacyRecoveryStateError) { notice = getString(R.string.legacy_recovery_state_error); if (manual) manualLibraryScanStatus = getString(R.string.library_rescan_failed); return }
+        manualLibraryScanStatus = null
+        if (legacyRecoveryStateError) { notice = getString(R.string.legacy_recovery_state_error); if (manual) manualLibraryScanStatus = R.string.library_rescan_failed; return }
         refreshPending = false
         val meteredApproved = allowMeteredRecoveryOnce
         allowMeteredRecoveryOnce = false
-        val roots = rootsOrNotify() ?: run { if (manual) manualLibraryScanStatus = getString(R.string.library_rescan_failed); return }
+        val roots = rootsOrNotify() ?: run { if (manual) manualLibraryScanStatus = R.string.library_rescan_failed; return }
         val hintRoot = importHintRoot
         val recoveryRequired = legacyRecoveryPending
         val initialCatalog = bundled
@@ -1108,10 +1109,10 @@ class MainActivity : ComponentActivity() {
                 if (importHintRoot == hintRoot) importHintRoot = null
                 if (result.second.isNotEmpty()) notice = result.second.joinToString("; ")
                 else if (recoveryRequired) notice = getString(R.string.legacy_recovery_done)
-                if (manual) manualLibraryScanStatus = getString(if (result.second.isEmpty()) R.string.library_rescan_done else R.string.library_rescan_failed)
+                if (manual) manualLibraryScanStatus = if (result.second.isEmpty()) R.string.library_rescan_done else R.string.library_rescan_failed
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
-            catch (e: LegacyRecoveryNotice) { notice = getString(e.messageId); if (manual) manualLibraryScanStatus = getString(e.messageId) }
-            catch (e: Exception) { notice = getString(R.string.refresh_error, e.localizedMessage.orEmpty()); if (manual) manualLibraryScanStatus = getString(R.string.library_rescan_failed) }
+            catch (e: LegacyRecoveryNotice) { notice = getString(e.messageId); if (manual) manualLibraryScanStatus = e.messageId }
+            catch (e: Exception) { notice = getString(R.string.refresh_error, e.localizedMessage.orEmpty()); if (manual) manualLibraryScanStatus = R.string.library_rescan_failed }
             finally {
                 scanning = false
                 if (refreshPending && libraryVisible && !isDestroyed) {
@@ -2125,7 +2126,7 @@ private fun settingsTitle(section: String): Int = when {
                 if (activity.legacyRecoveryPending) SettingRow(tr(R.string.legacy_recovery_title), tr(R.string.legacy_recovery_summary),
                     rowFocus("legacyRecovery"), onClick = { activity.retryLegacyRecovery() })
                 SettingRow(tr(R.string.add_games), modifier = rowFocus("addGames"), onClick = { activity.chooseFolder("all") })
-                SettingRow(tr(R.string.library_rescan), if (activity.scanning) tr(R.string.scanning) else activity.manualLibraryScanStatus.ifEmpty { tr(R.string.library_rescan_hint) },
+                SettingRow(tr(R.string.library_rescan), if (activity.scanning) tr(R.string.scanning) else tr(activity.manualLibraryScanStatus ?: R.string.library_rescan_hint),
                     rowFocus("rescanGames"), onClick = { if (!activity.scanning) activity.retryLegacyRecovery(manual = true) })
                 SettingRow(tr(R.string.folders), modifier = rowFocus("folders"), onClick = { activity.manageFolders() })
                 SettingRow(tr(R.string.portable_copy_title), tr(R.string.portable_copy_summary), rowFocus("portableCopy"), onClick = { onSection("portableCopy") })

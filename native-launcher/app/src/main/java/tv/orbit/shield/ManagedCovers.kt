@@ -211,12 +211,21 @@ internal object ManagedCoverStore {
         fun children(parent: Uri): List<Document> {
             val query = Docs.buildChildDocumentsUriUsingTree(root, Docs.getDocumentId(parent))
             return resolver.query(query, arrayOf(Docs.Document.COLUMN_DOCUMENT_ID, Docs.Document.COLUMN_DISPLAY_NAME, Docs.Document.COLUMN_MIME_TYPE), null, null, null)?.use { cursor ->
-                buildList {
+                fun requireComplete() {
+                    val extras = cursor.extras
+                    check(!extras.getBoolean(Docs.EXTRA_LOADING) && extras.getString(Docs.EXTRA_ERROR) == null) {
+                        context.getString(R.string.folder_unavailable)
+                    }
+                }
+                requireComplete()
+                val documents = buildList {
                     while (cursor.moveToNext()) {
                         check(size < 4096) { "Folder contains too many files" }
                         add(Document(Docs.buildDocumentUriUsingTree(root, cursor.getString(0)), cursor.getString(1), cursor.getString(2)))
                     }
                 }
+                requireComplete()
+                documents
             } ?: error("Folder unavailable")
         }
         fun find(path: String): Uri? {

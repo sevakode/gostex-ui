@@ -16,13 +16,19 @@ internal object TorrPrefetch {
     fun setCount(context: Context, value: Int) { require(value in counts); check(context.getSharedPreferences("orbit", 0).edit().putInt(COUNT, value).commit()) }
     fun setQuota(context: Context, value: Int) { require(value in quotas); check(context.getSharedPreferences("orbit", 0).edit().putInt(QUOTA, value).commit()) }
 
+    fun destinationAvailable(context: Context): Boolean {
+        val folder = context.getSharedPreferences("orbit", 0).getString("downloads.folder", "").orEmpty()
+        val tree = runCatching { Uri.parse(folder) }.getOrNull() ?: return false
+        return tree.scheme == "content" && context.contentResolver.persistedUriPermissions.any { it.uri == tree && it.isReadPermission && it.isWritePermission }
+    }
+
     /** The caller is a visible activity and starts its player after this method returns. */
     suspend fun start(context: Context, movieId: String, entry: TorrCatalogEntry, videos: List<TorrCatalogFile>, currentId: Int, canStart: () -> Boolean) {
         if (count(context) == 0 || PortableMaintenance.running) return
         val folder = context.getSharedPreferences("orbit", 0).getString("downloads.folder", "").orEmpty()
         val tree = runCatching { Uri.parse(folder) }.getOrNull() ?: return
         if (tree.scheme != "content" || context.contentResolver.persistedUriPermissions.none { it.uri == tree && it.isReadPermission && it.isWritePermission }) return
-        val jobs = withContext(Dispatchers.IO) { prepare(context, movieId, tree, entry, videos, currentId) }
+        val jobs = withContext(Dispatchers.IO) { prepare(context, movieId, tree, entry, videos, currentId, includeCurrent = true) }
         if (jobs.isNotEmpty() && canStart()) TorrDownloadActions.startMany(context, jobs.map { it.id })
     }
 
@@ -62,7 +68,7 @@ internal object TorrPrefetch {
         if (jobs.isNotEmpty() && canStart() && count(context) > 0) TorrDownloadActions.startMany(context, jobs.map { it.id })
     }
 
-    @Synchronized private fun prepare(context: Context, movieId: String, tree: Uri, entry: TorrCatalogEntry, videos: List<TorrCatalogFile>, currentId: Int): List<TorrDownloadJob> {
+    @Synchronized private fun prepare(context: Context, movieId: String, tree: Uri, entry: TorrCatalogEntry, videos: List<TorrCatalogFile>, currentId: Int, includeCurrent: Boolean = false): List<TorrDownloadJob> {
         TorrDownloadStore.recover(context)
         val existing = TorrDownloadStore.jobs.value
         val used = existing.filter { it.prefetchMovieId.isNotBlank() }.fold(0L) { sum, job ->
@@ -71,7 +77,7 @@ internal object TorrPrefetch {
         val reserve = TorrDownloadSpace.read(context).toLong() * 1024 * 1024
         val candidates = planEpisodePrefetch(videos.map { PrefetchEpisode(it.id, it.path, it.size) }, currentId,
             count(context), existing.filter { it.hash.equals(entry.hash, true) }.map { it.index }.toSet(),
-            Long.MAX_VALUE, reserve, quota(context).toLong() * 1024 * 1024 * 1024, used)
+            Long.MAX_VALUE, reserve, quota(context).toLong() * 1024 * 1024 * 1024, used, includeCurrent)
         val prepared = mutableListOf<TorrDownloadJob>()
         for (candidate in candidates) {
             val job = try { TorrDownloadDocuments.enqueue(context, tree, entry, videos.first { it.id == candidate.id }, movieId) } catch (_: Exception) { break }

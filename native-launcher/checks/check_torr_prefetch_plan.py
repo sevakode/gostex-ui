@@ -13,6 +13,8 @@ fun main() {
              quota: Long = 500, used: Long = 0) =
         planEpisodePrefetch(files, current, count, existing, free, reserve, quota, used).map { it.id }
     check(plan() == listOf(2, 3))
+    check(planEpisodePrefetch(episodes, 1, 1, emptySet(), 500, 100, 500, 0, true).map { it.id } == listOf(1, 2))
+    check(planEpisodePrefetch(episodes, 1, 1, setOf(1), 500, 100, 500, 0, true).map { it.id } == listOf(2))
     check(plan(existing = setOf(2)) == listOf(3))
     // Rolling queue advances after completion, but stops at the quota.
     check(plan(current = 2, count = 1, existing = setOf(2), used = 100) == listOf(3))

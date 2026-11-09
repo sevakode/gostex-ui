@@ -4,9 +4,13 @@
     <string name="prefetch_quota">Лимит места для серий</string>
     <string name="prefetch_folder_hint">Используется выбранная папка загрузок. После каждой серии добавляется следующая, пока не достигнут лимит. Загрузка делит скорость с просмотром.</string>
     <string name="prefetch_badge">↓ Загружено: %1$d</string>
+    <string name="prefetch_progress_badge">↓ %1$d%%</string>
     <string name="prefetch_downloaded_label">%1$s · загружено</string>
     <string name="prefetch_saved_episodes">Загруженные серии</string>
     <string name="prefetch_in_progress">Загрузка серий · нажмите для паузы или продолжения</string>
+    <string name="prefetch_status_disabled">Загрузка серий выключена. Включите её в «Загрузки → Параметры».</string>
+    <string name="prefetch_status_folder">Выберите папку в «Загрузки → Параметры», чтобы сохранять серии.</string>
+    <string name="prefetch_status_waiting">Загруженных серий пока нет. Запустите торрент здесь, чтобы сохранять текущую и следующие серии.</string>
     <string name="prefetch_delete_partial_confirm">Удалить частично загруженный файл «%1$s»? Источник в медиатеке сохранится.</string>
     <string name="prefetch_ready">Загружено · смотреть</string>
     <string name="prefetch_missing">Файл недоступен. Проверьте накопитель.</string>

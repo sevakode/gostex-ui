@@ -6,16 +6,9 @@ from urllib.parse import parse_qs, urlparse
 import subprocess
 import tempfile
 import time
+from kotlin_toolchain import JAVA, COMPILER, ROOT
 
-ROOT = Path(__file__).resolve().parents[2]
-CACHE = ROOT / '.tools/native/gradle-cache/caches/modules-2/files-2.1'
-JAVA = ROOT / '.tools/native/jdk/jdk-21.0.13+9/Contents/Home/bin/java'
-def jar(group, artifact, version):
-    return next((CACHE / group / artifact / version).glob('*/*.jar'))
-compiler = [jar('org.jetbrains.kotlin', a, v) for a, v in [
-    ('kotlin-compiler-embeddable', '2.4.21'), ('kotlin-stdlib', '2.4.21'),
-    ('kotlin-script-runtime', '2.4.21'), ('kotlin-reflect', '1.6.10'),
-]] + [jar('org.jetbrains.kotlinx', 'kotlinx-coroutines-core-jvm', '1.9.0'), jar('org.jetbrains', 'annotations', '13.0')]
+compiler = COMPILER
 DATA = bytes(range(256)) * 4096
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args): pass
@@ -32,7 +25,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)  # server ignored range
         else:
             self.send_response(206 if start else 200)
-        self.send_header('ETag', '"changed"' if start and mode == '2' else '"original"')
+        tag = '"' + 'a' * 310 + '"' if mode == '9' else ('"changed"' if start and mode == '2' else '"original"')
+        self.send_header('ETag', tag)
         self.send_header('Content-Length', str(len(DATA) - start))
         if start:
             self.send_header('Content-Range', f'bytes {start + (1 if mode == "3" else 0)}-{len(DATA)-1}/{len(DATA)}')
@@ -99,6 +93,15 @@ fun main(args: Array<String>) {
         check(resumedAfterThrottle.offset == 1048576L)
         file.seek(0); val throttleData = ByteArray(1048576); file.readFully(throttleData)
         check(throttleData.indices.all { throttleData[it] == (it % 256).toByte() })
+        // Real TorrServer encodes paths in ETags; a 312-character strong tag must resume.
+        file.setLength(0)
+        var longTag = TorrDownloadCheckpoint(0, null)
+        var longBlocks = 0
+        val longPause = TorrDownloadEngine.transfer(src(9), target, longTag, port,
+            saveCheckpoint = { longTag = it }, beforeWrite = { ++longBlocks <= 2 })
+        check(longPause.offset in 1 until 1048576 && longPause.etag?.length == 312)
+        val longDone = TorrDownloadEngine.transfer(src(9), target, longPause, port, saveCheckpoint = { longTag = it })
+        check(longDone.offset == 1048576L && longDone.etag == longPause.etag)
         file.setLength(0)
         check(TorrDownloadEngine.transfer(TorrDownloadSource("0".repeat(40), 1, 0), target,
             TorrDownloadCheckpoint(0, null), port, saveCheckpoint = {}) == TorrDownloadCheckpoint(0, null))

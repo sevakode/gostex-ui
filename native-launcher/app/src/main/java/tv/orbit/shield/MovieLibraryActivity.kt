@@ -523,14 +523,16 @@ class MovieLibraryActivity : ComponentActivity() {
                 busy = false; error = ""
                 fun open(index: Int) {
                     var currentIndex = index
+                    val prefetchJob = if (seriesId != null) lifecycleScope.launch {
+                        try { TorrPrefetch.start(this@MovieLibraryActivity, seriesId, entry, videos, videos[index].id) {
+                            lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED) && selected?.id == movieId
+                        } } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                        catch (_: Exception) { /* Playback remains available; the queue shows failed jobs. */ }
+                    } else null
                     fun launchPlayer() {
                         lifecycleScope.launch {
                         val originalIndex = currentIndex
-                        if (seriesId != null) {
-                            try { TorrPrefetch.start(this@MovieLibraryActivity, seriesId, entry, videos, videos[originalIndex].id) { lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED) } }
-                            catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
-                            catch (_: Exception) { /* Streaming remains available if offline preparation fails. */ }
-                        }
+                        prefetchJob?.join()
                         if (isFinishing || isDestroyed || !lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED) || selected?.id != movieId || currentIndex != originalIndex) return@launch
                         val file = videos[currentIndex]
                         val downloaded = TorrDownloadStore.jobs.value.firstOrNull { it.prefetchMovieId == seriesId && it.hash.equals(entry.hash, true) && it.index == file.id && it.state == "done" }
@@ -753,6 +755,14 @@ class MovieLibraryActivity : ComponentActivity() {
                             item { Text(listOf(movie.year, movie.description).filter { it.isNotBlank() }.joinToString(" · "), color = Color.LightGray, fontSize = 14.sp) }
                             val offlineEpisodes = downloads.filter { it.prefetchMovieId == movie.id && it.state == "done" }
                             val partialEpisodes = downloads.filter { it.prefetchMovieId == movie.id && it.state != "done" }
+                            if (movie.mediaType == "series" && offlineEpisodes.isEmpty() && partialEpisodes.isEmpty()) item {
+                                val message = when {
+                                    TorrPrefetch.count(this@MovieLibraryActivity) == 0 -> R.string.prefetch_status_disabled
+                                    !TorrPrefetch.destinationAvailable(this@MovieLibraryActivity) -> R.string.prefetch_status_folder
+                                    else -> R.string.prefetch_status_waiting
+                                }
+                                Text(tr(message), color = Color.LightGray, fontSize = 14.sp)
+                            }
                             if (partialEpisodes.isNotEmpty()) item { Text(tr(R.string.prefetch_in_progress), color = Color.LightGray, fontSize = 14.sp) }
                             items(partialEpisodes, key = { "offline-partial:${it.id}" }) { job ->
                                 val percent = if (job.total > 0) (job.offset.toDouble() * 100 / job.total).toInt().coerceIn(0, 100) else 0
@@ -761,10 +771,21 @@ class MovieLibraryActivity : ComponentActivity() {
                                     "running" -> R.string.torr_download_running
                                     "paused" -> R.string.torr_download_paused
                                     "finalizing" -> R.string.torr_download_finalizing
-                                    else -> R.string.torr_download_error
+                                    else -> when (job.error) {
+                                        "space" -> R.string.torr_download_low_space
+                                        "space_unavailable" -> R.string.torr_download_space_unknown
+                                        "storage" -> R.string.torr_download_storage_error
+                                        "source_timeout" -> R.string.torr_download_source_timeout
+                                        "source_connect" -> R.string.torr_download_source_connect
+                                        "source_response" -> R.string.torr_download_source_response
+                                        "source_changed" -> R.string.torr_download_source_changed
+                                        else -> R.string.torr_download_error
+                                    }
                                 }
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    SettingRow(job.name, "${tr(status)} · $percent%", modifier = Modifier.weight(1f), onClick = {
+                                    val downloadedSize = android.text.format.Formatter.formatShortFileSize(this@MovieLibraryActivity, job.offset)
+                                    val totalSize = android.text.format.Formatter.formatShortFileSize(this@MovieLibraryActivity, job.total)
+                                    SettingRow(job.name, "${tr(status)} · $downloadedSize / $totalSize · $percent%", modifier = Modifier.weight(1f), onClick = {
                                         runCatching {
                                             when (job.state) {
                                                 "queued", "running" -> TorrDownloadActions.pause(this@MovieLibraryActivity, job.id)

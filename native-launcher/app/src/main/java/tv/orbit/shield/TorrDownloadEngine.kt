@@ -141,6 +141,6 @@ internal object TorrDownloadEngine {
     }
 
     private fun isStrongEtag(value: String?): Boolean =
-        value != null && value.length in 2..256 && value.startsWith('"') && value.endsWith('"') &&
+        value != null && value.length in 2..8192 && value.startsWith('"') && value.endsWith('"') &&
             !value.contains('\r') && !value.contains('\n')
 }

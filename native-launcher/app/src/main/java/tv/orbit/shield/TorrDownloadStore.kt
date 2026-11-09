@@ -181,7 +181,7 @@ internal object TorrDownloadStore {
         require(job.offset in 0..job.total && job.name.length in 1..512 && job.finalName.length in 1..255)
         require(Uri.parse(job.tree).scheme == "content" && Uri.parse(job.document).scheme == "content")
         require(job.state in setOf("queued", "running", "paused", "done", "error", "finalizing"))
-        require(job.error.length <= 128 && (job.etag == null || job.etag.length <= 256))
+        require(job.error.length <= 128 && (job.etag == null || job.etag.length <= 8192))
         require(job.parentId.length <= 4096 && (!job.grouped || job.parentId.isNotBlank()))
         require(job.prefetchMovieId.length <= 256 && job.prefetchMovieId.none { it.isISOControl() })
         return job

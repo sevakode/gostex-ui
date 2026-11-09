@@ -13,6 +13,7 @@ internal fun planEpisodePrefetch(
     reserveBytes: Long,
     quotaBytes: Long,
     occupiedBytes: Long,
+    includeCurrent: Boolean = false,
 ): List<PrefetchEpisode> {
     if (count <= 0 || freeBytes == null || freeBytes < 0 || reserveBytes < 0 ||
         quotaBytes < 0 || occupiedBytes < 0 || occupiedBytes > quotaBytes ||
@@ -24,7 +25,8 @@ internal fun planEpisodePrefetch(
     var space = freeBytes - reserveBytes
     var allowance = quotaBytes - occupiedBytes
     val result = mutableListOf<PrefetchEpisode>()
-    for (episode in episodes.drop(current + 1).take(count)) {
+    val first = if (includeCurrent) current else current + 1
+    for (episode in episodes.drop(first).take(count + if (includeCurrent) 1 else 0)) {
         // Existing jobs, including paused ones, are left to the user's control.
         if (episode.id in existingIds) continue
         if (episode.bytes > space || episode.bytes > allowance) break

@@ -11,7 +11,7 @@ internal class TorrDownloadPartialBatch(val prepared: Int, cause: Exception) : I
 internal class TorrDownloadDestinationExists : IOException("Destination already exists")
 
 internal object TorrDownloadDocuments {
-    /** Delete only a completed file created by our prefetch job, after explicit confirmation. */
+    /** Delete only a recorded offline file, after explicit confirmation. */
     fun deletePrefetch(context: Context, id: String) {
         val job = TorrDownloadStore.beginDeletePrefetch(context, id) ?: throw IOException("Download unavailable")
         try {
@@ -140,5 +140,33 @@ internal object TorrDownloadDocuments {
             if (safeToDelete) runCatching { DocumentsContract.deleteDocument(context.contentResolver, document) }
             throw error
         }
+    }
+
+    /** Recover a matching completed file in this torrent's managed folder without changing it. */
+    @Synchronized fun recoverCompleted(context: Context, tree: Uri, entry: TorrCatalogEntry, file: TorrCatalogFile, movieId: String): TorrDownloadJob {
+        require(file in entry.files && file.size > 0 && movieId.isNotBlank() && tree.scheme == "content")
+        TorrDownloadStore.recover(context)
+        val parts = TorrDownloadPaths.components(file.path)
+        val parentId = TorrDownloadGroups.parent(context, tree, entry, parts)
+        val parent = DocumentsContract.buildChildDocumentsUriUsingTree(tree, parentId)
+        val columns = arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+            DocumentsContract.Document.COLUMN_SIZE, DocumentsContract.Document.COLUMN_MIME_TYPE)
+        val matches = context.contentResolver.query(parent, columns, null, null, null)?.use { cursor ->
+            buildList<String> {
+                while (cursor.moveToNext()) {
+                    if (cursor.getString(1) == parts.last() && !cursor.isNull(2) && cursor.getLong(2) == file.size &&
+                        cursor.getString(3) != DocumentsContract.Document.MIME_TYPE_DIR) add(cursor.getString(0) ?: throw IOException("Missing document ID"))
+                    if (size > 1) throw IOException("Ambiguous completed file")
+                }
+            }
+        } ?: throw IOException("Cannot inspect completed file")
+        val documentId = matches.singleOrNull() ?: throw IOException("Completed file unavailable")
+        if (!portableSafDirectChild(context.contentResolver, tree, parentId, documentId)) throw IOException("File is outside selected folder")
+        val document = DocumentsContract.buildDocumentUriUsingTree(tree, documentId)
+        context.contentResolver.openAssetFileDescriptor(document, "r")?.use { } ?: throw IOException("Cannot read completed file")
+        val job = TorrDownloadJob(UUID.randomUUID().toString(), entry.hash, file.id, file.size, parts.last(), tree.toString(),
+            document.toString(), parts.last(), offset = file.size, state = "done", parentId = parentId, grouped = true, prefetchMovieId = movieId)
+        TorrDownloadStore.add(context, job)
+        return job
     }
 }

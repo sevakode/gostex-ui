@@ -29,7 +29,8 @@ internal object TorrPrefetch {
         val tree = runCatching { Uri.parse(folder) }.getOrNull() ?: return
         if (tree.scheme != "content" || context.contentResolver.persistedUriPermissions.none { it.uri == tree && it.isReadPermission && it.isWritePermission }) return
         val jobs = withContext(Dispatchers.IO) { prepare(context, movieId, tree, entry, videos, currentId, includeCurrent = true) }
-        if (jobs.isNotEmpty() && canStart()) TorrDownloadActions.startMany(context, jobs.map { it.id })
+        val pending = jobs.filter { it.state != "done" }
+        if (pending.isNotEmpty() && canStart()) TorrDownloadActions.startMany(context, pending.map { it.id })
     }
 
     /** Called by the already-running foreground worker after one offline episode completes. */
@@ -45,7 +46,8 @@ internal object TorrPrefetch {
         // Re-check preferences and the finished record after the network request.
         if (count(context) == 0 || PortableMaintenance.running || TorrDownloadStore.jobs.value.none { it.id == current.id && it.state == "done" }) return
         val jobs = prepare(context, current.prefetchMovieId, tree, entry, videos, current.index)
-        if (jobs.isNotEmpty()) TorrDownloadStore.queue(context, jobs.map { it.id })
+        val pending = jobs.filter { it.state != "done" }
+        if (pending.isNotEmpty()) TorrDownloadStore.queue(context, pending.map { it.id })
     }
 
     /** Refill a queue stopped by its space limit when the user deletes a saved episode. */
@@ -65,7 +67,8 @@ internal object TorrPrefetch {
             val anchor = videos.lastOrNull { it.id in anchors } ?: return@withContext emptyList()
             prepare(context, removed.prefetchMovieId, tree, entry, videos, anchor.id)
         }
-        if (jobs.isNotEmpty() && canStart() && count(context) > 0) TorrDownloadActions.startMany(context, jobs.map { it.id })
+        val pending = jobs.filter { it.state != "done" }
+        if (pending.isNotEmpty() && canStart() && count(context) > 0) TorrDownloadActions.startMany(context, pending.map { it.id })
     }
 
     @Synchronized private fun prepare(context: Context, movieId: String, tree: Uri, entry: TorrCatalogEntry, videos: List<TorrCatalogFile>, currentId: Int, includeCurrent: Boolean = false): List<TorrDownloadJob> {
@@ -80,11 +83,17 @@ internal object TorrPrefetch {
             Long.MAX_VALUE, reserve, quota(context).toLong() * 1024 * 1024 * 1024, used, includeCurrent)
         val prepared = mutableListOf<TorrDownloadJob>()
         for (candidate in candidates) {
-            val job = try { TorrDownloadDocuments.enqueue(context, tree, entry, videos.first { it.id == candidate.id }, movieId) } catch (_: Exception) { break }
+            val file = videos.first { it.id == candidate.id }
+            val job = try { TorrDownloadDocuments.enqueue(context, tree, entry, file, movieId) }
+                catch (_: TorrDownloadDestinationExists) {
+                    try { TorrDownloadDocuments.recoverCompleted(context, tree, entry, file, movieId) }
+                    catch (_: Exception) { break }
+                } catch (_: Exception) { break }
+            if (job.state == "done") { prepared += job; continue }
             val enough = runCatching {
                 TorrSafTarget.open(context.contentResolver, Uri.parse(job.document)).use { target ->
                     val free = target.availableBytes()
-                    free >= reserve && candidate.bytes <= free - reserve - prepared.sumOf { it.total }
+                    free >= reserve && candidate.bytes <= free - reserve - prepared.filter { it.state != "done" }.sumOf { it.total }
                 }
             }.getOrDefault(false)
             if (!enough) { runCatching { TorrDownloadDocuments.discard(context, job.id) }; break }

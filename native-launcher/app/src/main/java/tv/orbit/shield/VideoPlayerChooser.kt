@@ -68,8 +68,7 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
             val duration = data.getLongExtra("extra_duration", 0L)
             val editor = prefs.edit()
             if (duration > 0) editor.putLong("video.duration.$playedKey", duration)
-            if (videoIsNearlyFinished(position, duration, TorrPlaybackPreferences.restartNearEnd(activity))) editor.remove("video.position.$playedKey")
-            else if (position >= 10_000 && (duration <= 0 || position < duration)) editor.putLong("video.position.$playedKey", position)
+            if (position >= 10_000 && (duration <= 0 || position <= duration)) editor.putLong("video.position.$playedKey", position)
             editor.apply()
         }
         val callback = onPlayerReturned.also { onPlayerReturned = null }
@@ -82,9 +81,9 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
         }
     }
     private data class Player(val component: ComponentName, val label: String)
-    private data class Request(val intent: Intent, val players: List<Player>, val onStarted: () -> Unit, val onError: () -> Unit, val onReturned: () -> Unit, val onCompleted: (() -> Unit)?, val playlist: VlcSeriesPlaylist?, val playlistUnavailable: Boolean, val resumeIdentity: String?, val fromStart: Boolean)
+    private data class Request(val intent: Intent, val players: List<Player>, val onStarted: () -> Unit, val onError: () -> Unit, val onReturned: () -> Unit, val onCompleted: (() -> Unit)?, val playlist: VlcSeriesPlaylist?, val playlistUnavailable: Boolean, val resumeIdentity: String?, val fromStart: Boolean, val askResume: Boolean)
 
-    fun open(intent: Intent, force: Boolean = false, onStarted: () -> Unit = {}, onError: () -> Unit, onReturned: () -> Unit = {}, onCompleted: (() -> Unit)? = null, playlist: VlcSeriesPlaylist? = null, playlistUnavailable: Boolean = false, resumeIdentity: String? = null, fromStart: Boolean = false) {
+    fun open(intent: Intent, force: Boolean = false, onStarted: () -> Unit = {}, onError: () -> Unit, onReturned: () -> Unit = {}, onCompleted: (() -> Unit)? = null, playlist: VlcSeriesPlaylist? = null, playlistUnavailable: Boolean = false, resumeIdentity: String? = null, fromStart: Boolean = false, askResume: Boolean = false) {
         val players = activity.packageManager.queryIntentActivities(intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
             .mapNotNull { item ->
                 val info = item.activityInfo ?: return@mapNotNull null
@@ -92,7 +91,7 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
                 Player(ComponentName(info.packageName, info.name), item.loadLabel(activity.packageManager).toString())
             }.distinctBy { it.component }.filter { !fromStart || it.component.packageName == "org.videolan.vlc" }.sortedBy { it.label.lowercase() }
         if (players.isEmpty()) { onError(); return }
-        val next = Request(Intent(intent), players, onStarted, onError, onReturned, onCompleted, playlist, playlistUnavailable, resumeIdentity, fromStart)
+        val next = Request(Intent(intent), players, onStarted, onError, onReturned, onCompleted, playlist, playlistUnavailable, resumeIdentity, fromStart, askResume)
         val preferred = prefs.getString("video.default_player", null)
         val selected = players.firstOrNull { it.component.flattenToString() == preferred }
         if (!force && selected != null) launch(next, selected, null) else request = next
@@ -110,9 +109,18 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
         val key = (req.resumeIdentity ?: req.intent.dataString)?.let(::digest)
         val savedPosition = key?.let { prefs.getLong("video.position.$it", 0L) } ?: 0L
         val knownDuration = key?.let { prefs.getLong("video.duration.$it", 0L) } ?: 0L
+        if (req.askResume && !req.fromStart && player.component.packageName == "org.videolan.vlc" &&
+            savedPosition >= 10_000L && videoResumePosition(savedPosition, knownDuration, TorrPlaybackPreferences.restartNearEnd(activity)) > 0L) {
+            android.app.AlertDialog.Builder(activity)
+                .setTitle(R.string.prefetch_resume_question)
+                .setPositiveButton(R.string.prefetch_resume) { _, _ -> launch(req.copy(askResume = false), player, rememberDefault) }
+                .setNeutralButton(R.string.prefetch_from_start) { _, _ -> launch(req.copy(fromStart = true, askResume = false), player, rememberDefault) }
+                .setNegativeButton(R.string.cancel, null)
+                .show()
+            return
+        }
         val position = if (req.fromStart) 0L else videoResumePosition(savedPosition, knownDuration, TorrPlaybackPreferences.restartNearEnd(activity))
         val wasFinished = savedPosition > 0 && position == 0L
-        if (wasFinished && !req.fromStart && key != null) prefs.edit().remove("video.position.$key").apply()
         // Without notification access we cannot reliably seek the first playlist
         // item, so keep resume correct by playing that one file directly.
         val playlist = req.playlist?.takeIf {
@@ -134,7 +142,7 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
         }
         if (player.component.packageName == "org.videolan.vlc" && key != null) {
             if ((position > 0 || wasFinished || req.fromStart) && playlist == null) intent.putExtra("position", position)
-            if (req.fromStart) intent.putExtra("from_start", true)
+            if (req.fromStart || wasFinished) intent.putExtra("from_start", true)
             prefs.edit().putString(pendingKey, key).putString(pendingUriKey, uriKey).apply()
         } else prefs.edit().remove(pendingKey).remove(pendingUriKey).apply()
         try {
@@ -147,9 +155,9 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
             val stream = localTorrentStreamIdentity(req.intent.dataString)
             if (canOpenDirectly && stream != null && MediaAccess.isGranted(activity))
                 keepPausedTorrent(stream, playlist, launchTime)
-            if (playlist != null && savedPosition > 0 && MediaAccess.isGranted(activity))
+            if (playlist != null && savedPosition > 0 && !req.fromStart && MediaAccess.isGranted(activity))
                 resumePlaylist(playlist, savedPosition, launchTime)
-            else if (playlist == null && canOpenDirectly && savedPosition > 0 && knownDuration <= 0 && MediaAccess.isGranted(activity) && key != null)
+            else if (playlist == null && canOpenDirectly && !req.fromStart && savedPosition > 0 && knownDuration <= 0 && MediaAccess.isGranted(activity) && key != null)
                 guardLegacySingle(req.intent.data, key, savedPosition, launchTime)
             if (rememberDefault == true) prefs.edit().putString("video.default_player", player.component.flattenToString()).apply()
             else if (rememberDefault == false && prefs.getString("video.default_player", null) == player.component.flattenToString())
@@ -198,7 +206,7 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
                             val key = digest(TorrPlayback.url(stream.first, stream.second))
                             val editor = prefs.edit()
                             if (duration > 0L) editor.putLong("video.duration.$key", duration)
-                            if (checkpoint == 0L) editor.remove("video.position.$key")
+                            if (checkpoint == 0L) editor.putLong("video.position.$key", state.position)
                             else editor.putLong("video.position.$key", checkpoint)
                             editor.apply()
                         }
@@ -235,7 +243,6 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
                 if (controller != null && duration > 0 && runCatching { controller.transportControls.seekTo(videoResumePosition(position, duration, restartNearEnd)) }.isSuccess) {
                     val key = digest(TorrPlayback.url(playlist.hash, playlist.startId))
                     val editor = prefs.edit().putLong("video.duration.$key", duration)
-                    if (videoIsNearlyFinished(position, duration, restartNearEnd)) editor.remove("video.position.$key")
                     editor.apply()
                     return@launch
                 }
@@ -269,8 +276,8 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
                 val duration = controller?.metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION) ?: 0L
                 if (controller != null && duration > 0) {
                     val editor = prefs.edit().putLong("video.duration.$key", duration)
-                    if (videoIsNearlyFinished(position, duration, TorrPlaybackPreferences.restartNearEnd(activity)) && runCatching { controller.transportControls.seekTo(0L) }.isSuccess)
-                        editor.remove("video.position.$key")
+                    if (videoIsNearlyFinished(position, duration, TorrPlaybackPreferences.restartNearEnd(activity)))
+                        runCatching { controller.transportControls.seekTo(0L) }
                     editor.apply()
                     return@launch
                 }

@@ -435,11 +435,11 @@ class MovieLibraryActivity : ComponentActivity() {
         startMovieIntent(intent, episode, choosePlayer)
     }
 
-    private fun startMovieIntent(intent: Intent, episode: MovieEpisode? = null, choosePlayer: Boolean = false, onStarted: () -> Unit = {}, onReturned: () -> Unit = {}, onCompleted: (() -> Unit)? = null, playlist: VlcSeriesPlaylist? = null, playlistUnavailable: Boolean = false, resumeIdentity: String? = null, fromStart: Boolean = false) {
+    private fun startMovieIntent(intent: Intent, episode: MovieEpisode? = null, choosePlayer: Boolean = false, onStarted: () -> Unit = {}, onReturned: () -> Unit = {}, onCompleted: (() -> Unit)? = null, playlist: VlcSeriesPlaylist? = null, playlistUnavailable: Boolean = false, resumeIdentity: String? = null, fromStart: Boolean = false, askResume: Boolean = true) {
         val id = selected?.id ?: return
         videoPlayer.open(intent, force = choosePlayer,
             onStarted = { MoviePlaybackReceipt.mark(this, id, episode?.id); onStarted() },
-            onError = { toast(R.string.movies_player_missing) }, onReturned = onReturned, onCompleted = onCompleted, playlist = playlist, playlistUnavailable = playlistUnavailable, resumeIdentity = resumeIdentity, fromStart = fromStart)
+            onError = { toast(R.string.movies_player_missing) }, onReturned = onReturned, onCompleted = onCompleted, playlist = playlist, playlistUnavailable = playlistUnavailable, resumeIdentity = resumeIdentity, fromStart = fromStart, askResume = askResume)
     }
 
     private fun continueSavedEpisode(movieId: String, hash: String, fileId: Int) {
@@ -564,7 +564,7 @@ class MovieLibraryActivity : ComponentActivity() {
                                 }
                             }, onCompleted = if (offline && seriesId != null) ({ continueSavedEpisode(seriesId, entry.hash, file.id) }) else null,
                             playlist = playlist, playlistUnavailable = !offline && seriesId != null && videos.size > 1 && playlist == null,
-                            resumeIdentity = if (offline) TorrPlayback.url(entry.hash, file.id) else null)
+                            resumeIdentity = if (offline) TorrPlayback.url(entry.hash, file.id) else null, askResume = afterFileId == null)
                         }
                     }
                     val cached = TorrDownloadStore.jobs.value.firstOrNull { it.prefetchMovieId == seriesId && it.hash.equals(entry.hash, true) && it.index == videos[currentIndex].id && it.state == "done" }
@@ -828,14 +828,6 @@ class MovieLibraryActivity : ComponentActivity() {
                                             if (withContext(Dispatchers.IO) { TorrPrefetch.playable(this@MovieLibraryActivity, job) }) {
                                                 val intent = Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse(job.document), "video/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                                 startMovieIntent(intent, onCompleted = { continueSavedEpisode(movie.id, job.hash, job.index) }, resumeIdentity = TorrPlayback.url(job.hash, job.index))
-                                            } else toast(R.string.prefetch_missing)
-                                        }
-                                    })
-                                    SettingRow(tr(R.string.prefetch_play_start), modifier = Modifier.widthIn(max = 160.dp), onClick = {
-                                        lifecycleScope.launch {
-                                            if (withContext(Dispatchers.IO) { TorrPrefetch.playable(this@MovieLibraryActivity, job) }) {
-                                                val intent = Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse(job.document), "video/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                                startMovieIntent(intent, onCompleted = { continueSavedEpisode(movie.id, job.hash, job.index) }, resumeIdentity = TorrPlayback.url(job.hash, job.index), fromStart = true)
                                             } else toast(R.string.prefetch_missing)
                                         }
                                     })

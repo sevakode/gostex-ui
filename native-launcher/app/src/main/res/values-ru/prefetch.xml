@@ -14,6 +14,9 @@
     <string name="prefetch_delete_partial_confirm">Удалить частично загруженный файл «%1$s»? Источник в медиатеке сохранится.</string>
     <string name="prefetch_ready">Загружено · смотреть</string>
     <string name="prefetch_play_start">С начала · VLC</string>
+    <string name="prefetch_resume_question">Продолжить просмотр?</string>
+    <string name="prefetch_resume">Продолжить</string>
+    <string name="prefetch_from_start">С начала</string>
     <string name="prefetch_missing">Файл недоступен. Проверьте накопитель.</string>
     <string name="prefetch_delete">Удалить файл</string>
     <string name="prefetch_delete_confirm">Удалить загруженный файл «%1$s»? Источник в медиатеке сохранится.</string>

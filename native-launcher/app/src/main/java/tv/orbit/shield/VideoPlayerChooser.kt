@@ -40,6 +40,7 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
     private val pendingUriKey = "$pendingKey.uri"
     private var request by mutableStateOf<Request?>(null)
     private var onPlayerReturned: (() -> Unit)? = null
+    private var onPlayerCompleted: (() -> Unit)? = null
     private var activePlaylist: VlcSeriesPlaylist? = null
     private var resumeSeek: Job? = null
     private var pausedCache: Job? = null
@@ -72,20 +73,26 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
             editor.apply()
         }
         val callback = onPlayerReturned.also { onPlayerReturned = null }
-        if (!activity.isFinishing && !activity.isDestroyed) callback?.invoke()
+        val completed = onPlayerCompleted.also { onPlayerCompleted = null }
+        if (!activity.isFinishing && !activity.isDestroyed) {
+            val ended = playlist == null && videoShouldAdvance(response.resultCode == android.app.Activity.RESULT_OK,
+                playedKey != null, data?.hasExtra("extra_position") == true, data?.hasExtra("extra_duration") == true,
+                data?.getLongExtra("extra_position", -1) ?: -1, data?.getLongExtra("extra_duration", -1) ?: -1)
+            if (ended && completed != null) completed() else callback?.invoke()
+        }
     }
     private data class Player(val component: ComponentName, val label: String)
-    private data class Request(val intent: Intent, val players: List<Player>, val onStarted: () -> Unit, val onError: () -> Unit, val onReturned: () -> Unit, val playlist: VlcSeriesPlaylist?, val playlistUnavailable: Boolean, val resumeIdentity: String?)
+    private data class Request(val intent: Intent, val players: List<Player>, val onStarted: () -> Unit, val onError: () -> Unit, val onReturned: () -> Unit, val onCompleted: (() -> Unit)?, val playlist: VlcSeriesPlaylist?, val playlistUnavailable: Boolean, val resumeIdentity: String?, val fromStart: Boolean)
 
-    fun open(intent: Intent, force: Boolean = false, onStarted: () -> Unit = {}, onError: () -> Unit, onReturned: () -> Unit = {}, playlist: VlcSeriesPlaylist? = null, playlistUnavailable: Boolean = false, resumeIdentity: String? = null) {
+    fun open(intent: Intent, force: Boolean = false, onStarted: () -> Unit = {}, onError: () -> Unit, onReturned: () -> Unit = {}, onCompleted: (() -> Unit)? = null, playlist: VlcSeriesPlaylist? = null, playlistUnavailable: Boolean = false, resumeIdentity: String? = null, fromStart: Boolean = false) {
         val players = activity.packageManager.queryIntentActivities(intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
             .mapNotNull { item ->
                 val info = item.activityInfo ?: return@mapNotNull null
                 if (!info.exported || !info.enabled || !info.applicationInfo.enabled) return@mapNotNull null
                 Player(ComponentName(info.packageName, info.name), item.loadLabel(activity.packageManager).toString())
-            }.distinctBy { it.component }.sortedBy { it.label.lowercase() }
+            }.distinctBy { it.component }.filter { !fromStart || it.component.packageName == "org.videolan.vlc" }.sortedBy { it.label.lowercase() }
         if (players.isEmpty()) { onError(); return }
-        val next = Request(Intent(intent), players, onStarted, onError, onReturned, playlist, playlistUnavailable, resumeIdentity)
+        val next = Request(Intent(intent), players, onStarted, onError, onReturned, onCompleted, playlist, playlistUnavailable, resumeIdentity, fromStart)
         val preferred = prefs.getString("video.default_player", null)
         val selected = players.firstOrNull { it.component.flattenToString() == preferred }
         if (!force && selected != null) launch(next, selected, null) else request = next
@@ -96,16 +103,16 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
         // streams. Its exported video activity can open a stream directly.
         val directVlc = ComponentName("org.videolan.vlc", "org.videolan.vlc.gui.video.VideoPlayerActivity")
         val isNetworkStream = req.intent.data?.scheme in setOf("http", "https")
-        val canOpenDirectly = player.component.packageName == directVlc.packageName && isNetworkStream && runCatching {
+        val canOpenDirectly = player.component.packageName == directVlc.packageName && (isNetworkStream || req.intent.data?.scheme == "content") && runCatching {
             activity.packageManager.getActivityInfo(directVlc, 0).let { it.exported && it.enabled && it.applicationInfo.enabled }
         }.getOrDefault(false)
         val uriKey = req.intent.dataString?.let(::digest)
         val key = (req.resumeIdentity ?: req.intent.dataString)?.let(::digest)
         val savedPosition = key?.let { prefs.getLong("video.position.$it", 0L) } ?: 0L
         val knownDuration = key?.let { prefs.getLong("video.duration.$it", 0L) } ?: 0L
-        val position = videoResumePosition(savedPosition, knownDuration, TorrPlaybackPreferences.restartNearEnd(activity))
+        val position = if (req.fromStart) 0L else videoResumePosition(savedPosition, knownDuration, TorrPlaybackPreferences.restartNearEnd(activity))
         val wasFinished = savedPosition > 0 && position == 0L
-        if (wasFinished && key != null) prefs.edit().remove("video.position.$key").apply()
+        if (wasFinished && !req.fromStart && key != null) prefs.edit().remove("video.position.$key").apply()
         // Without notification access we cannot reliably seek the first playlist
         // item, so keep resume correct by playing that one file directly.
         val playlist = req.playlist?.takeIf {
@@ -126,14 +133,17 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
             intent.setDataAndType(Uri.parse(url), "application/x-mpegURL")
         }
         if (player.component.packageName == "org.videolan.vlc" && key != null) {
-            if ((position > 0 || wasFinished) && playlist == null) intent.putExtra("position", position)
+            if ((position > 0 || wasFinished || req.fromStart) && playlist == null) intent.putExtra("position", position)
+            if (req.fromStart) intent.putExtra("from_start", true)
             prefs.edit().putString(pendingKey, key).putString(pendingUriKey, uriKey).apply()
         } else prefs.edit().remove(pendingKey).remove(pendingUriKey).apply()
         try {
             onPlayerReturned = req.onReturned
+            onPlayerCompleted = if (player.component.packageName == "org.videolan.vlc") req.onCompleted else null
             activePlaylist = playlist
             val launchTime = SystemClock.elapsedRealtime()
             result.launch(intent)
+            if (req.fromStart && key != null) prefs.edit().remove("video.position.$key").apply()
             val stream = localTorrentStreamIdentity(req.intent.dataString)
             if (canOpenDirectly && stream != null && MediaAccess.isGranted(activity))
                 keepPausedTorrent(stream, playlist, launchTime)
@@ -147,6 +157,7 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
             req.onStarted()
         } catch (_: Exception) {
             onPlayerReturned = null
+            onPlayerCompleted = null
             resumeSeek?.cancel(); resumeSeek = null
             pausedCache?.cancel(); pausedCache = null
             activePlaylist = null

@@ -435,11 +435,16 @@ class MovieLibraryActivity : ComponentActivity() {
         startMovieIntent(intent, episode, choosePlayer)
     }
 
-    private fun startMovieIntent(intent: Intent, episode: MovieEpisode? = null, choosePlayer: Boolean = false, onStarted: () -> Unit = {}, onReturned: () -> Unit = {}, playlist: VlcSeriesPlaylist? = null, playlistUnavailable: Boolean = false, resumeIdentity: String? = null) {
+    private fun startMovieIntent(intent: Intent, episode: MovieEpisode? = null, choosePlayer: Boolean = false, onStarted: () -> Unit = {}, onReturned: () -> Unit = {}, onCompleted: (() -> Unit)? = null, playlist: VlcSeriesPlaylist? = null, playlistUnavailable: Boolean = false, resumeIdentity: String? = null, fromStart: Boolean = false) {
         val id = selected?.id ?: return
         videoPlayer.open(intent, force = choosePlayer,
             onStarted = { MoviePlaybackReceipt.mark(this, id, episode?.id); onStarted() },
-            onError = { toast(R.string.movies_player_missing) }, onReturned = onReturned, playlist = playlist, playlistUnavailable = playlistUnavailable, resumeIdentity = resumeIdentity)
+            onError = { toast(R.string.movies_player_missing) }, onReturned = onReturned, onCompleted = onCompleted, playlist = playlist, playlistUnavailable = playlistUnavailable, resumeIdentity = resumeIdentity, fromStart = fromStart)
+    }
+
+    private fun continueSavedEpisode(movieId: String, hash: String, fileId: Int) {
+        if (selected?.id != movieId || !TorrPlaybackPreferences.autoNext(this)) return
+        prepareTorrent(Uri.parse("torrserver://$hash"), null, false, null, afterFileId = fileId)
     }
 
     /** Open the retained document itself; Ace asks the user which file to play. */
@@ -491,7 +496,7 @@ class MovieLibraryActivity : ComponentActivity() {
             }.show()
     }
 
-    private fun prepareTorrent(uri: Uri, episode: MovieEpisode?, choosePlayer: Boolean, filenameHint: String?) {
+    private fun prepareTorrent(uri: Uri, episode: MovieEpisode?, choosePlayer: Boolean, filenameHint: String?, afterFileId: Int? = null) {
         if (busy) return
         val generation = ++requestGeneration
         busy = true; progressMessage = getString(R.string.movies_torrent_preparing); error = ""
@@ -557,7 +562,8 @@ class MovieLibraryActivity : ComponentActivity() {
                                 if (!offline && movieId != null && selected?.id == movieId) {
                                     showTorrentBuffer(entry.hash, videos[currentIndex].id, startPreload = false, openPlayer = ::launchPlayer)
                                 }
-                            }, playlist = playlist, playlistUnavailable = !offline && seriesId != null && videos.size > 1 && playlist == null,
+                            }, onCompleted = if (offline && seriesId != null) ({ continueSavedEpisode(seriesId, entry.hash, file.id) }) else null,
+                            playlist = playlist, playlistUnavailable = !offline && seriesId != null && videos.size > 1 && playlist == null,
                             resumeIdentity = if (offline) TorrPlayback.url(entry.hash, file.id) else null)
                         }
                     }
@@ -568,7 +574,11 @@ class MovieLibraryActivity : ComponentActivity() {
                         else showTorrentBuffer(entry.hash, videos[currentIndex].id, openPlayer = ::launchPlayer)
                     }
                 }
-                if (videos.size == 1) open(0)
+                if (afterFileId != null) {
+                    if (!orderedEpisodeFiles(paths)) return@launch
+                    val previous = videos.indexOfFirst { it.id == afterFileId }
+                    if (previous >= 0 && previous + 1 < videos.size) open(previous + 1)
+                } else if (videos.size == 1) open(0)
                 else {
                     val lastFile = if (episode == null && filenameHint.isNullOrBlank() && seriesId != null)
                         TorrPlaybackPreferences.lastFileIndex(this@MovieLibraryActivity, seriesId, entry.hash, paths) else null
@@ -817,7 +827,15 @@ class MovieLibraryActivity : ComponentActivity() {
                                         lifecycleScope.launch {
                                             if (withContext(Dispatchers.IO) { TorrPrefetch.playable(this@MovieLibraryActivity, job) }) {
                                                 val intent = Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse(job.document), "video/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                                startMovieIntent(intent, resumeIdentity = TorrPlayback.url(job.hash, job.index))
+                                                startMovieIntent(intent, onCompleted = { continueSavedEpisode(movie.id, job.hash, job.index) }, resumeIdentity = TorrPlayback.url(job.hash, job.index))
+                                            } else toast(R.string.prefetch_missing)
+                                        }
+                                    })
+                                    SettingRow(tr(R.string.prefetch_play_start), modifier = Modifier.widthIn(max = 160.dp), onClick = {
+                                        lifecycleScope.launch {
+                                            if (withContext(Dispatchers.IO) { TorrPrefetch.playable(this@MovieLibraryActivity, job) }) {
+                                                val intent = Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse(job.document), "video/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                startMovieIntent(intent, onCompleted = { continueSavedEpisode(movie.id, job.hash, job.index) }, resumeIdentity = TorrPlayback.url(job.hash, job.index), fromStart = true)
                                             } else toast(R.string.prefetch_missing)
                                         }
                                     })

@@ -13,6 +13,7 @@
     <string name="prefetch_status_waiting">Aún no hay episodios guardados. Inicia un torrent aquí para descargar el actual y los siguientes.</string>
     <string name="prefetch_delete_partial_confirm">¿Eliminar el archivo parcialmente descargado «%1$s»? La fuente seguirá en la biblioteca.</string>
     <string name="prefetch_ready">Descargado · reproducir</string>
+    <string name="prefetch_play_start">Desde el inicio · VLC</string>
     <string name="prefetch_missing">El archivo no está disponible. Comprueba la unidad.</string>
     <string name="prefetch_delete">Eliminar archivo</string>
     <string name="prefetch_delete_confirm">¿Eliminar el archivo descargado «%1$s»? La fuente seguirá en la biblioteca.</string>

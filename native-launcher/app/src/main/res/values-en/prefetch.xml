@@ -13,6 +13,7 @@
     <string name="prefetch_status_waiting">No saved episodes yet. Start a torrent here to download the current and next episodes.</string>
     <string name="prefetch_delete_partial_confirm">Delete the partially downloaded file “%1$s”? The streaming source stays in your library.</string>
     <string name="prefetch_ready">Downloaded · play</string>
+    <string name="prefetch_play_start">From start · VLC</string>
     <string name="prefetch_missing">The downloaded file is unavailable. Check the drive.</string>
     <string name="prefetch_delete">Delete file</string>
     <string name="prefetch_delete_confirm">Delete the downloaded file “%1$s”? The streaming source stays in your library.</string>

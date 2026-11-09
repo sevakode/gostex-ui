@@ -13,6 +13,7 @@
     <string name="prefetch_status_waiting">Загруженных серий пока нет. Запустите торрент здесь, чтобы сохранять текущую и следующие серии.</string>
     <string name="prefetch_delete_partial_confirm">Удалить частично загруженный файл «%1$s»? Источник в медиатеке сохранится.</string>
     <string name="prefetch_ready">Загружено · смотреть</string>
+    <string name="prefetch_play_start">С начала · VLC</string>
     <string name="prefetch_missing">Файл недоступен. Проверьте накопитель.</string>
     <string name="prefetch_delete">Удалить файл</string>
     <string name="prefetch_delete_confirm">Удалить загруженный файл «%1$s»? Источник в медиатеке сохранится.</string>

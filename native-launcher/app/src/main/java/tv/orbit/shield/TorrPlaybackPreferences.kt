@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.Modifier
 import java.util.Locale
 
 /** Local playback choices. File paths are scoped to a title and torrent. */
@@ -42,12 +43,12 @@ internal object TorrPlaybackPreferences {
         enabled = TorrPlaybackPreferences.restartNearEnd(context)
         onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
     }
-    SettingRow(tr(R.string.movies_restart_near_end), tr(if (enabled) R.string.enabled else R.string.disabled), onClick = {
+    SettingRow(tr(R.string.movies_restart_near_end), tr(if (enabled) R.string.enabled else R.string.disabled), isSelected = enabled, trailing = if (enabled) "✓" else "—", onClick = {
         prefs.edit().putBoolean(TorrPlaybackPreferences.RESTART_NEAR_END_KEY, !enabled).apply()
     })
 }
 
-@Composable internal fun TorrAutoPlaySetting() {
+@Composable internal fun TorrAutoPlaySetting(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val prefs = remember(context) { context.getSharedPreferences("orbit", Context.MODE_PRIVATE) }
     var enabled by remember(context) { mutableStateOf(TorrPlaybackPreferences.autoPlay(context)) }
@@ -59,7 +60,7 @@ internal object TorrPlaybackPreferences {
         enabled = TorrPlaybackPreferences.autoPlay(context)
         onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
     }
-    SettingRow(tr(R.string.movies_auto_play), tr(if (enabled) R.string.enabled else R.string.disabled), onClick = {
+    SettingRow(tr(R.string.movies_auto_play), tr(if (enabled) R.string.enabled else R.string.disabled), modifier = modifier, isSelected = enabled, trailing = if (enabled) "✓" else "—", onClick = {
         prefs.edit().putBoolean(TorrPlaybackPreferences.AUTO_KEY, !enabled).apply()
     })
 }
@@ -76,7 +77,7 @@ internal object TorrPlaybackPreferences {
         enabled = TorrPlaybackPreferences.autoNext(context)
         onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
     }
-    SettingRow(tr(R.string.movies_auto_next), tr(if (enabled) R.string.enabled else R.string.disabled), onClick = {
+    SettingRow(tr(R.string.movies_auto_next), tr(if (enabled) R.string.enabled else R.string.disabled), isSelected = enabled, trailing = if (enabled) "✓" else "—", onClick = {
         prefs.edit().putBoolean(TorrPlaybackPreferences.NEXT_KEY, !enabled).apply()
     })
 }

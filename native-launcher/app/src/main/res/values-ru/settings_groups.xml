@@ -3,7 +3,12 @@
     <string name="settings_appearance_group">Оформление</string>
     <string name="settings_appearance_summary">Карточки и заставка</string>
     <string name="settings_media_group">Медиа и библиотека</string>
-    <string name="settings_media_summary">Игры и папки с ROM</string>
+    <string name="settings_media_summary">Игры, видео и загрузки</string>
+    <string name="settings_playback_title">Просмотр видео</string>
+    <string name="settings_playback_summary">Автозапуск, следующая серия и продолжение</string>
+    <string name="settings_services_title">Сервисы и установка приложений</string>
+    <string name="settings_services_summary">TorrServer и ReVanced Manager</string>
+    <string name="settings_device_title">Настройки устройства</string>
     <string name="settings_controls_group">Управление</string>
     <string name="settings_controls_summary">Кнопки геймпада и подсказки</string>
     <string name="settings_locale_group">Язык и часы</string>

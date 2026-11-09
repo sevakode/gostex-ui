@@ -1998,7 +1998,8 @@ private fun settingsParent(section: String): String = when {
     section in setOf("appearance", "art", "grafana") -> "appearanceGroup"
     section == "portablePreview" -> "portableCopy"
     section in setOf("covers", "portableCopy") -> "libraryGroup"
-    section in setOf("libraryGroup", "nowPlaying", "downloads") -> "mediaGroup"
+    section in setOf("libraryGroup", "nowPlaying", "downloads", "playback") -> "mediaGroup"
+    section == "services" -> "systemGroup"
     else -> "root"
 }
 
@@ -2010,6 +2011,8 @@ private fun settingsTitle(section: String): Int = when {
         "portableCopy" -> R.string.portable_copy_title
         "covers" -> R.string.covers_title
         "nowPlaying" -> R.string.media_player
+        "playback" -> R.string.settings_playback_title
+        "services" -> R.string.settings_services_title
         "downloads" -> R.string.torr_download_channel
         "appearanceGroup" -> R.string.settings_appearance_group
         "mediaGroup" -> R.string.settings_media_group
@@ -2030,7 +2033,7 @@ private fun settingsTitle(section: String): Int = when {
     var savedSection by rememberSaveable { mutableStateOf(initialSection) }
     val section = when {
         savedSection == "videoOptions" -> "homeOptions"
-        savedSection.startsWith("clock/") || savedSection in setOf("root", "appearanceGroup", "mediaGroup", "libraryGroup", "controller", "localeGroup", "systemGroup", "language", "art", "grafana", "homeOptions", "appearance", "clock", "covers", "nowPlaying", "updates", "portableCopy", "portablePreview", "downloads") -> savedSection
+        savedSection.startsWith("clock/") || savedSection in setOf("root", "appearanceGroup", "mediaGroup", "libraryGroup", "controller", "localeGroup", "systemGroup", "language", "art", "grafana", "homeOptions", "appearance", "clock", "covers", "nowPlaying", "playback", "services", "updates", "portableCopy", "portablePreview", "downloads") -> savedSection
         else -> "root"
     }
     // The route we leave identifies the exact parent row to restore on Back.
@@ -2084,12 +2087,13 @@ private fun settingsTitle(section: String): Int = when {
     val backupDateFormat = remember(section, displayLocale) { java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT, displayLocale) }
     val rows = when (section) {
         "root" -> listOf("homeOptions", "appearanceGroup", "mediaGroup", "controller", "localeGroup", "systemGroup", "updates")
-        "appearanceGroup" -> listOf("appearance", "art", "grafana")
-        "mediaGroup" -> listOf("libraryGroup", "nowPlaying", "downloads", "movies")
+        "appearanceGroup" -> listOf("appearance", "art", "grafana", "batteryStatus")
+        "mediaGroup" -> listOf("libraryGroup", "playback", "nowPlaying", "downloads", "movies")
         "libraryGroup" -> (if (activity.legacyRecoveryPending) listOf("legacyRecovery") else emptyList()) +
             listOf("addGames", "rescanGames", "folders", "portableCopy", "covers", "ndsEmulator", "androidGames", "groupVersions", "libraryTab", "appsTab")
         "localeGroup" -> listOf("language", "clock")
-        "systemGroup" -> listOf("batteryStatus", "network", "torrServer", "torrServeInstall", "revancedManager", "justPlayer", "defaultHome", "shield", "remote")
+        "systemGroup" -> listOf("network", "defaultHome", "shield", "services", "remote")
+        "services" -> listOf("torrServer", "torrServeInstall", "revancedManager")
         "portableCopy" -> listOf("copyAction", "portablePreview")
         else -> emptyList()
     }
@@ -2129,13 +2133,17 @@ private fun settingsTitle(section: String): Int = when {
                 SettingRow(tr(R.string.settings_cards_title), modifier = rowFocus("appearance"), onClick = { onSection("appearance") })
                 SettingRow(tr(R.string.art_title), modifier = rowFocus("art"), onClick = { onSection("art") })
                 SettingRow(tr(R.string.grafana_settings_title), modifier = rowFocus("grafana"), onClick = { onSection("grafana") })
+                val batteryVisible = rememberBatteryVisible()
+                SettingRow(tr(R.string.battery_visibility), tr(if (batteryVisible) R.string.enabled else R.string.disabled), rowFocus("batteryStatus"), isSelected = batteryVisible, trailing = if (batteryVisible) "✓" else "—", onClick = { BatteryPreferences.visible(activity, !batteryVisible) })
             } else if (section == "mediaGroup") {
                 SettingRow(tr(R.string.downloads_library_group), tr(R.string.downloads_library_hint), rowFocus("libraryGroup"), onClick = { onSection("libraryGroup") })
+                SettingRow(tr(R.string.settings_playback_title), tr(R.string.settings_playback_summary), rowFocus("playback"), onClick = { onSection("playback") })
                 SettingRow(tr(R.string.media_player), tr(R.string.media_settings_summary), rowFocus("nowPlaying"), onClick = { onSection("nowPlaying") })
                 SettingRow(tr(R.string.torr_download_channel), modifier = rowFocus("downloads"), onClick = { onSection("downloads") })
                 SettingRow(tr(R.string.movies_title), modifier = rowFocus("movies"), onClick = { activity.startActivity(Intent(activity, MovieLibraryActivity::class.java)) })
                 MediaAutoCoverSetting()
-                TorrAutoPlaySetting()
+            } else if (section == "playback") {
+                TorrAutoPlaySetting(Modifier.focusRequester(initialFocus))
                 TorrAutoNextSetting()
                 VideoRestartNearEndSetting()
             } else if (section == "libraryGroup") {
@@ -2156,20 +2164,19 @@ private fun settingsTitle(section: String): Int = when {
                 SettingRow(tr(R.string.language), language, rowFocus("language"), onClick = { onSection("language") })
                 SettingRow(tr(R.string.clock_title), modifier = rowFocus("clock"), onClick = { onSection("clock") })
             } else if (section == "systemGroup") {
-                val batteryVisible = rememberBatteryVisible()
-                SettingRow(tr(R.string.battery_visibility), tr(if (batteryVisible) R.string.enabled else R.string.disabled), rowFocus("batteryStatus"), onClick = { BatteryPreferences.visible(activity, !batteryVisible) })
                 SettingRow(tr(R.string.network_settings), modifier = rowFocus("network"), onClick = { activity.openNetworkSettings() })
-                TorrServerStatusSetting(rowFocus("torrServer"))
-                TorrServeInstallSetting(activity, rowFocus("torrServeInstall"))
-                ReVancedInstallSetting(activity, rowFocus("revancedManager"))
-                JustPlayerInstallSetting(activity, rowFocus("justPlayer"))
                 DefaultHomeSetting(activity, rowFocus("defaultHome"))
-                SettingRow(tr(R.string.shield_settings), modifier = rowFocus("shield"), onClick = { activity.openSettings() })
-                SettingRow(tr(R.string.remote_autostart), tr(if (remoteAuto) R.string.enabled else R.string.disabled), rowFocus("remote"), onClick = {
+                SettingRow(tr(R.string.settings_device_title), modifier = rowFocus("shield"), onClick = { activity.openSettings() })
+                SettingRow(tr(R.string.settings_services_title), tr(R.string.settings_services_summary), rowFocus("services"), onClick = { onSection("services") })
+                SettingRow(tr(R.string.remote_autostart), tr(if (remoteAuto) R.string.enabled else R.string.disabled), rowFocus("remote"), isSelected = remoteAuto, trailing = if (remoteAuto) "✓" else "—", onClick = {
                     remoteAuto = !remoteAuto
                     prefs.edit().putBoolean("remoteAutostart", remoteAuto).apply()
                     if (remoteAuto) RemoteStartup.start(activity)
                 })
+            } else if (section == "services") {
+                TorrServerStatusSetting(rowFocus("torrServer"))
+                TorrServeInstallSetting(activity, rowFocus("torrServeInstall"))
+                ReVancedInstallSetting(activity, rowFocus("revancedManager"))
             } else if (section == "updates") {
                 UpdateSettings(activity, initialFocus)
             } else if (section == "downloads") {

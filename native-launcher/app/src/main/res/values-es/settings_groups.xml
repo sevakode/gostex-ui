@@ -3,7 +3,12 @@
     <string name="settings_appearance_group">Apariencia</string>
     <string name="settings_appearance_summary">Tarjetas y salvapantallas</string>
     <string name="settings_media_group">Multimedia y biblioteca</string>
-    <string name="settings_media_summary">Juegos y carpetas de ROM</string>
+    <string name="settings_media_summary">Juegos, vídeos y descargas</string>
+    <string name="settings_playback_title">Reproducción de vídeo</string>
+    <string name="settings_playback_summary">Inicio automático, siguiente episodio y reanudación</string>
+    <string name="settings_services_title">Servicios e instalación de aplicaciones</string>
+    <string name="settings_services_summary">TorrServer y ReVanced Manager</string>
+    <string name="settings_device_title">Ajustes del dispositivo</string>
     <string name="settings_controls_group">Controles</string>
     <string name="settings_controls_summary">Botones del mando e indicaciones</string>
     <string name="settings_locale_group">Idioma y relojes</string>

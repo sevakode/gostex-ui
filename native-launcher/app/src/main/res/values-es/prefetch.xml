@@ -8,6 +8,9 @@
     <string name="prefetch_downloaded_label">%1$s · descargado</string>
     <string name="prefetch_saved_episodes">Episodios descargados</string>
     <string name="prefetch_in_progress">Descargas de episodios · pulsa para pausar o continuar</string>
+    <string name="prefetch_preparing">Descarga sin conexión: preparando…</string>
+    <string name="prefetch_not_queued">No se añadió la descarga. Comprueba el límite y el espacio libre.</string>
+    <string name="prefetch_buffer_progress">Descarga sin conexión: %1$s · %2$s / %3$s · %4$d%%</string>
     <string name="prefetch_status_disabled">La descarga de episodios está desactivada. Actívala en Descargas → Opciones.</string>
     <string name="prefetch_status_folder">Elige una carpeta en Descargas → Opciones para guardar episodios.</string>
     <string name="prefetch_status_waiting">Aún no hay episodios guardados. Inicia un torrent aquí para descargar el actual y los siguientes.</string>

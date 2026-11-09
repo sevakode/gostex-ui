@@ -15,7 +15,7 @@ import kotlinx.coroutines.withContext
 
 /** Shared preparation UI for the media library and direct torrent playback. */
 internal object TorrPreparationDialog {
-    fun show(activity: ComponentActivity, hash: String, fileId: Int, onOpen: () -> Unit, onDismiss: () -> Unit, startPreload: Boolean = true): AlertDialog {
+    fun show(activity: ComponentActivity, hash: String, fileId: Int, onOpen: () -> Unit, onDismiss: () -> Unit, startPreload: Boolean = true, trackDownload: Boolean = false, downloadPreparation: Job? = null): AlertDialog {
         val dialog = AlertDialog.Builder(activity)
             .setTitle(R.string.movies_buffer_title)
             .setMessage(R.string.movies_buffer_starting)
@@ -24,10 +24,49 @@ internal object TorrPreparationDialog {
             .create()
         var monitor: Job? = null
         var preload: Job? = null
+        var downloadMonitor: Job? = null
         var lastStatus = ""
         var preloadMessage = ""
-        dialog.setOnDismissListener { monitor?.cancel(); preload?.cancel(); onDismiss() }
+        var downloadMessage = if (trackDownload) activity.getString(R.string.prefetch_preparing) else ""
+        fun updateMessage() {
+            if (dialog.isShowing) dialog.setMessage(listOf(lastStatus, downloadMessage, preloadMessage).filter { it.isNotEmpty() }.joinToString("\n\n"))
+        }
+        dialog.setOnDismissListener { monitor?.cancel(); preload?.cancel(); downloadMonitor?.cancel(); onDismiss() }
         dialog.show()
+        if (trackDownload) {
+            fun updateDownload() {
+                val job = TorrDownloadStore.jobs.value.firstOrNull { it.hash.equals(hash, true) && it.index == fileId }
+                downloadMessage = if (job == null) {
+                    activity.getString(when {
+                        downloadPreparation?.isActive == true -> R.string.prefetch_preparing
+                        TorrPrefetch.count(activity) == 0 -> R.string.prefetch_status_disabled
+                        !TorrPrefetch.destinationAvailable(activity) -> R.string.prefetch_status_folder
+                        else -> R.string.prefetch_not_queued
+                    })
+                } else {
+                    val status = when (job.state) {
+                        "queued" -> R.string.torr_download_queued
+                        "running" -> R.string.torr_download_running
+                        "paused" -> R.string.torr_download_paused
+                        "finalizing" -> R.string.torr_download_finalizing
+                        "done" -> R.string.prefetch_ready
+                        else -> R.string.torr_download_error
+                    }
+                    val downloaded = android.text.format.Formatter.formatShortFileSize(activity, job.offset)
+                    val total = android.text.format.Formatter.formatShortFileSize(activity, job.total)
+                    val percent = if (job.total > 0) (job.offset.toDouble() * 100 / job.total).toInt().coerceIn(0, 100) else 0
+                    activity.getString(R.string.prefetch_buffer_progress, activity.getString(status), downloaded, total, percent)
+                }
+                updateMessage()
+            }
+            updateDownload()
+            downloadMonitor = activity.lifecycleScope.launch {
+                TorrDownloadStore.jobs.collect { updateDownload() }
+            }
+            downloadPreparation?.invokeOnCompletion {
+                activity.lifecycleScope.launch { if (dialog.isShowing) updateDownload() }
+            }
+        }
         var opened = false
         var preloadReady = false
         var preloadCandidate = false
@@ -60,7 +99,7 @@ internal object TorrPreparationDialog {
                 if (isActive && dialog.isShowing && activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
                     if (startPreload && entry?.serverState == 2) sawPreload = true
                     lastStatus = entry?.let { torrentStatusText(activity, it, false) } ?: activity.getString(R.string.movies_status_unavailable)
-                    dialog.setMessage(listOf(lastStatus, preloadMessage).filter { it.isNotEmpty() }.joinToString("\n\n"))
+                    updateMessage()
                     val fileSize = entry?.files?.singleOrNull { it.id == fileId }?.size
                     val readyNow = selectedTorrentPreloadReady(entry?.serverState, entry?.cachedBytes, entry?.preloadBytes, fileSize)
                     val observed = observedTorrentPreloadReady(startPreload, sawPreload,
@@ -76,7 +115,7 @@ internal object TorrPreparationDialog {
                         if (edgesReady) {
                             preloadReady = true
                             preloadMessage = activity.getString(R.string.movies_buffer_finished)
-                            dialog.setMessage(listOf(lastStatus, preloadMessage).filter { it.isNotEmpty() }.joinToString("\n\n"))
+                            updateMessage()
                         }
                     }
                     if (autoOpenIfReady()) return@launch
@@ -93,7 +132,7 @@ internal object TorrPreparationDialog {
             preloadCandidate = completedSelectedPreload(entry?.serverState,
                 entry?.files?.singleOrNull { it.id == fileId }?.size)
             preloadMessage = activity.getString(R.string.movies_buffer_waiting)
-            dialog.setMessage(listOf(lastStatus, preloadMessage).filter { it.isNotEmpty() }.joinToString("\n\n"))
+            updateMessage()
         }
         return dialog
     }

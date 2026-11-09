@@ -560,7 +560,7 @@ class MovieLibraryActivity : ComponentActivity() {
                             },
                             onReturned = {
                                 if (!offline && movieId != null && selected?.id == movieId) {
-                                    showTorrentBuffer(entry.hash, videos[currentIndex].id, startPreload = false, openPlayer = ::launchPlayer)
+                                    showTorrentBuffer(entry.hash, videos[currentIndex].id, startPreload = false, trackDownload = seriesId != null, downloadPreparation = prefetchJob, openPlayer = ::launchPlayer)
                                 }
                             }, onCompleted = if (offline && seriesId != null) ({ continueSavedEpisode(seriesId, entry.hash, file.id) }) else null,
                             playlist = playlist, playlistUnavailable = !offline && seriesId != null && videos.size > 1 && playlist == null,
@@ -568,10 +568,10 @@ class MovieLibraryActivity : ComponentActivity() {
                         }
                     }
                     val cached = TorrDownloadStore.jobs.value.firstOrNull { it.prefetchMovieId == seriesId && it.hash.equals(entry.hash, true) && it.index == videos[currentIndex].id && it.state == "done" }
-                    if (cached == null) showTorrentBuffer(entry.hash, videos[currentIndex].id, openPlayer = ::launchPlayer)
+                    if (cached == null) showTorrentBuffer(entry.hash, videos[currentIndex].id, trackDownload = seriesId != null, downloadPreparation = prefetchJob, openPlayer = ::launchPlayer)
                     else lifecycleScope.launch {
                         if (withContext(Dispatchers.IO) { TorrPrefetch.playable(this@MovieLibraryActivity, cached) }) launchPlayer()
-                        else showTorrentBuffer(entry.hash, videos[currentIndex].id, openPlayer = ::launchPlayer)
+                        else showTorrentBuffer(entry.hash, videos[currentIndex].id, trackDownload = seriesId != null, downloadPreparation = prefetchJob, openPlayer = ::launchPlayer)
                     }
                 }
                 if (afterFileId != null) {
@@ -612,7 +612,7 @@ class MovieLibraryActivity : ComponentActivity() {
         }
     }
 
-    private fun showTorrentBuffer(hash: String, fileId: Int, startPreload: Boolean = true, openPlayer: () -> Unit) {
+    private fun showTorrentBuffer(hash: String, fileId: Int, startPreload: Boolean = true, trackDownload: Boolean = false, downloadPreparation: Job? = null, openPlayer: () -> Unit) {
         val movieId = selected?.id
         bufferDialog?.dismiss()
         var dialog: AlertDialog? = null
@@ -620,7 +620,7 @@ class MovieLibraryActivity : ComponentActivity() {
             lastPreparedMovie = movieId
             lastPreparedHash = hash
             openPlayer()
-        }, onDismiss = { if (bufferDialog === dialog) bufferDialog = null }, startPreload = startPreload)
+        }, onDismiss = { if (bufferDialog === dialog) bufferDialog = null }, startPreload = startPreload, trackDownload = trackDownload, downloadPreparation = downloadPreparation)
         bufferDialog = dialog
     }
 
@@ -804,7 +804,7 @@ class MovieLibraryActivity : ComponentActivity() {
                                         }.onFailure { toast(R.string.torr_download_failed) }
                                     })
                                     SettingRow(tr(R.string.movies_play), modifier = Modifier.widthIn(max = 160.dp), onClick = {
-                                        showTorrentBuffer(job.hash, job.index) {
+                                        showTorrentBuffer(job.hash, job.index, trackDownload = true) {
                                             startMovieIntent(Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse(TorrPlayback.url(job.hash, job.index)), "video/*"))
                                         }
                                     })

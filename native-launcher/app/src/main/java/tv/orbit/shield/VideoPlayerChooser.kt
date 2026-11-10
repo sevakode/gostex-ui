@@ -43,6 +43,7 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
     private var request by mutableStateOf<Request?>(null)
     private var onPlayerReturned: (() -> Unit)? = null
     private var onPlayerCompleted: (() -> Unit)? = null
+    private var onPlayerNavigate: ((Int) -> Unit)? = null
     private var completedPlayerPackage: String? = null
     private var activePlaylist: VlcSeriesPlaylist? = null
     private var resumeSeek: Job? = null
@@ -77,24 +78,29 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
         }
         val callback = onPlayerReturned.also { onPlayerReturned = null }
         val completed = onPlayerCompleted.also { onPlayerCompleted = null }
+        val navigate = onPlayerNavigate.also { onPlayerNavigate = null }
         if (!activity.isFinishing && !activity.isDestroyed) {
             val explicitEnd = playerPackage in setOf("tv.gostex.vlc", "tv.gostex.vlc.debug") && response.resultCode == android.app.Activity.RESULT_OK &&
                 playedKey != null && data?.getBooleanExtra("tv.gostex.extra.PLAYBACK_FINISHED", false) == true
             val ended = playlist == null && (explicitEnd || videoShouldAdvance(response.resultCode == android.app.Activity.RESULT_OK,
                 playedKey != null, data?.hasExtra("extra_position") == true, data?.hasExtra("extra_duration") == true,
                 data?.getLongExtra("extra_position", -1) ?: -1, data?.getLongExtra("extra_duration", -1) ?: -1))
-            if (ended && completed != null) {
+            val step = data?.getIntExtra("tv.gostex.extra.EPISODE_STEP", 0) ?: 0
+            if (playerPackage in setOf("tv.gostex.vlc", "tv.gostex.vlc.debug") && response.resultCode == android.app.Activity.RESULT_OK && playedKey != null && step in listOf(-1, 1) && navigate != null) {
+                completedPlayerPackage = playerPackage
+                navigate(step)
+            } else if (ended && completed != null) {
                 completedPlayerPackage = playerPackage
                 completed()
             } else callback?.invoke()
         }
     }
     private data class Player(val component: ComponentName, val label: String)
-    private data class Request(val intent: Intent, val players: List<Player>, val onStarted: () -> Unit, val onError: () -> Unit, val onReturned: () -> Unit, val onCompleted: (() -> Unit)?, val playlist: VlcSeriesPlaylist?, val playlistUnavailable: Boolean, val resumeIdentity: String?, val fromStart: Boolean, val askResume: Boolean)
+    private data class Request(val intent: Intent, val players: List<Player>, val onStarted: () -> Unit, val onError: () -> Unit, val onReturned: () -> Unit, val onCompleted: (() -> Unit)?, val playlist: VlcSeriesPlaylist?, val playlistUnavailable: Boolean, val resumeIdentity: String?, val fromStart: Boolean, val askResume: Boolean, val onNavigate: ((Int) -> Unit)?)
 
     fun takeCompletedPlayerPackage(): String? = completedPlayerPackage.also { completedPlayerPackage = null }
 
-    fun open(intent: Intent, force: Boolean = false, onStarted: () -> Unit = {}, onError: () -> Unit, onReturned: () -> Unit = {}, onCompleted: (() -> Unit)? = null, playlist: VlcSeriesPlaylist? = null, playlistUnavailable: Boolean = false, resumeIdentity: String? = null, fromStart: Boolean = false, askResume: Boolean = false, preferredPackage: String? = null) {
+    fun open(intent: Intent, force: Boolean = false, onStarted: () -> Unit = {}, onError: () -> Unit, onReturned: () -> Unit = {}, onCompleted: (() -> Unit)? = null, playlist: VlcSeriesPlaylist? = null, playlistUnavailable: Boolean = false, resumeIdentity: String? = null, fromStart: Boolean = false, askResume: Boolean = false, preferredPackage: String? = null, onNavigate: ((Int) -> Unit)? = null) {
         val players = activity.packageManager.queryIntentActivities(intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
             .mapNotNull { item ->
                 val info = item.activityInfo ?: return@mapNotNull null
@@ -102,7 +108,7 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
                 Player(ComponentName(info.packageName, info.name), item.loadLabel(activity.packageManager).toString())
             }.distinctBy { it.component }.filter { !fromStart || isVlc(it.component.packageName) }.sortedBy { it.label.lowercase() }
         if (players.isEmpty()) { onError(); return }
-        val next = Request(Intent(intent), players, onStarted, onError, onReturned, onCompleted, playlist, playlistUnavailable, resumeIdentity, fromStart, askResume)
+        val next = Request(Intent(intent), players, onStarted, onError, onReturned, onCompleted, playlist, playlistUnavailable, resumeIdentity, fromStart, askResume, onNavigate)
         val preferred = prefs.getString("video.default_player", null)
         val selected = if (preferredPackage != null) players.firstOrNull { it.component.packageName == preferredPackage }
             else players.firstOrNull { it.component.flattenToString() == preferred }
@@ -136,7 +142,7 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
         // Without notification access we cannot reliably seek the first playlist
         // item, so keep resume correct by playing that one file directly.
         val playlist = req.playlist?.takeIf {
-            canOpenDirectly && TorrPlaybackPreferences.autoNext(activity) &&
+            canOpenDirectly && !(player.component.packageName in setOf("tv.gostex.vlc", "tv.gostex.vlc.debug") && req.onNavigate != null) && TorrPlaybackPreferences.autoNext(activity) &&
                 (position <= 0 || (MediaAccess.isGranted(activity) && key !in failedPlaylistResumes))
         }
         if (isVlc(player.component.packageName) && TorrPlaybackPreferences.autoNext(activity)) {
@@ -160,6 +166,7 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
         try {
             onPlayerReturned = req.onReturned
             onPlayerCompleted = if (isVlc(player.component.packageName)) req.onCompleted else null
+            onPlayerNavigate = if (player.component.packageName in setOf("tv.gostex.vlc", "tv.gostex.vlc.debug")) req.onNavigate else null
             activePlaylist = playlist
             val launchTime = SystemClock.elapsedRealtime()
             result.launch(intent)
@@ -178,6 +185,7 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
         } catch (_: Exception) {
             onPlayerReturned = null
             onPlayerCompleted = null
+            onPlayerNavigate = null
             resumeSeek?.cancel(); resumeSeek = null
             pausedCache?.cancel(); pausedCache = null
             activePlaylist = null

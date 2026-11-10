@@ -71,7 +71,7 @@ index 0000000..15c10ed
 +    }.singleOrNull()?.id
 +}
 diff --git a/application/vlc-android/src/org/videolan/vlc/gui/video/VideoPlayerActivity.kt b/application/vlc-android/src/org/videolan/vlc/gui/video/VideoPlayerActivity.kt
-index 79293d8..61b9c4f 100644
+index 79293d8..80241fb 100644
 --- a/application/vlc-android/src/org/videolan/vlc/gui/video/VideoPlayerActivity.kt
 +++ b/application/vlc-android/src/org/videolan/vlc/gui/video/VideoPlayerActivity.kt
 @@ -200,6 +200,7 @@ import org.videolan.vlc.gui.dialogs.RenderersDialog
@@ -82,21 +82,28 @@ index 79293d8..61b9c4f 100644
  import org.videolan.vlc.gui.dialogs.showContext
  import org.videolan.vlc.gui.helpers.BitmapUtil
  import org.videolan.vlc.gui.helpers.KeycodeListener
-@@ -530,6 +531,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -530,6 +531,9 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
      @TargetApi(Build.VERSION_CODES.LOLLIPOP)
      override fun onCreate(savedInstanceState: Bundle?) {
          super.onCreate(savedInstanceState)
 +        gostexSeriesId = savedInstanceState?.getString("tv.gostex.extra.SERIES_ID") ?: intent?.getStringExtra("tv.gostex.extra.SERIES_ID")
++        gostexHasPrevious = savedInstanceState?.getBoolean("tv.gostex.extra.HAS_PREVIOUS") ?: intent.getBooleanExtra("tv.gostex.extra.HAS_PREVIOUS", false)
++        gostexHasNext = savedInstanceState?.getBoolean("tv.gostex.extra.HAS_NEXT") ?: intent.getBooleanExtra("tv.gostex.extra.HAS_NEXT", false)
  
          dialogsDelegate.observeDialogs(this, this)
          Util.checkCpuCompatibility(this)
-@@ -691,6 +693,49 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -691,6 +695,54 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
          }
      }
  
 +    private val gostexTrackPrefs by lazy { getSharedPreferences("gostex_series_tracks", Context.MODE_PRIVATE) }
 +    private var gostexSeriesId: String? = null
 +    private var gostexEndedUri: String? = null
++    var gostexHasPrevious = false
++        private set
++    var gostexHasNext = false
++        private set
++    private var gostexEpisodeStep = 0
 +    private fun gostexSeriesKey(): String? {
 +        val id = gostexSeriesId?.takeIf { it.isNotBlank() && it.length <= 256 } ?: return null
 +        return MessageDigest.getInstance("SHA-256").digest(id.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
@@ -140,7 +147,7 @@ index 79293d8..61b9c4f 100644
      override fun onAttachedToWindow() {
          super.onAttachedToWindow()
          hasPhysicalNotch = hasNotch()
-@@ -764,6 +809,8 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -764,6 +816,8 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
  
      override fun onNewIntent(intent: Intent) {
          super.onNewIntent(intent)
@@ -149,15 +156,17 @@ index 79293d8..61b9c4f 100644
          setIntent(intent)
          if (playbackStarted) service?.run {
              if (overlayDelegate.isHudRightBindingInitialized()) {
-@@ -820,6 +867,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -820,6 +874,9 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
  
      override fun onSaveInstanceState(outState: Bundle) {
          super.onSaveInstanceState(outState)
 +        outState.putString("tv.gostex.extra.SERIES_ID", gostexSeriesId)
++        outState.putBoolean("tv.gostex.extra.HAS_PREVIOUS", gostexHasPrevious)
++        outState.putBoolean("tv.gostex.extra.HAS_NEXT", gostexHasNext)
          if (videoUri != null && "content" != videoUri?.scheme) {
              outState.putLong(KEY_TIME, savedTime)
              if (playlistModel == null) outState.putParcelable(KEY_URI, videoUri)
-@@ -1020,6 +1068,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -1020,6 +1077,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
      }
  
      override fun onDestroy() {
@@ -165,7 +174,7 @@ index 79293d8..61b9c4f 100644
          super.onDestroy()
          playlistModel?.run {
              dataset.removeObserver(playlistObserver)
-@@ -1213,6 +1262,10 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -1213,6 +1271,11 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
                  resultIntent.putExtra(EXTRA_DURATION, length)
              }
          }
@@ -173,10 +182,27 @@ index 79293d8..61b9c4f 100644
 +            resultIntent.putExtra(EXTRA_URI, ended)
 +            resultIntent.putExtra("tv.gostex.extra.PLAYBACK_FINISHED", true)
 +        }
++        if (gostexEpisodeStep != 0) resultIntent.putExtra("tv.gostex.extra.EPISODE_STEP", gostexEpisodeStep)
          setResult(resultCode, resultIntent)
          finish()
      }
-@@ -1580,12 +1633,16 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -1443,6 +1506,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+     }
+ 
+     override fun next() {
++        if (gostexHasNext) { gostexEpisodeStep = 1; exit(RESULT_OK); return }
+         if (service?.hasNext() == true) {
+             service?.next()
+             overlayDelegate.showInfo(getString(R.string.next), 1000)
+@@ -1451,6 +1515,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+     }
+ 
+     override fun previous() {
++        if (gostexHasPrevious) { gostexEpisodeStep = -1; exit(RESULT_OK); return }
+         service?.let { service ->
+             service.previous(false)
+             overlayDelegate.showInfo(getString(R.string.previous), 1000)
+@@ -1580,12 +1645,16 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
                  MediaPlayer.Event.Playing -> onPlaying()
                  MediaPlayer.Event.Paused -> overlayDelegate.updateOverlayPausePlay()
                  MediaPlayer.Event.Opening -> {
@@ -193,7 +219,7 @@ index 79293d8..61b9c4f 100644
                  MediaPlayer.Event.Vout -> {
                      updateNavStatus()
                      if (event.voutCount > 0)
-@@ -1622,6 +1679,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -1622,6 +1691,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
                                  }
                                  if (audioTrack != "0" || currentAudioTrack != "-2")
                                      service.setAudioTrack(audioTrack.toString())
@@ -201,7 +227,7 @@ index 79293d8..61b9c4f 100644
                              }
                          } else if (event.esChangedType == IMedia.Track.Type.Text) {
                              lifecycleScope.launch(Dispatchers.IO) {
-@@ -1655,6 +1713,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -1655,6 +1725,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
                                      service.setSpuTrack(spuTrack)
                                      lastSpuTrack = "-2"
                                  }
@@ -209,16 +235,20 @@ index 79293d8..61b9c4f 100644
                              }
                          }
                      }
-@@ -1719,6 +1778,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -1719,9 +1790,10 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
      }
  
      private fun onPlaying() {
 +        scheduleGostexTrackRestore()
          val mw = service?.currentMediaWrapper ?: return
          isPlaying = true
-         overlayDelegate.hasPlaylist = service?.hasPlaylist() == true
+-        overlayDelegate.hasPlaylist = service?.hasPlaylist() == true
++        overlayDelegate.hasPlaylist = service?.hasPlaylist() == true || gostexHasPrevious || gostexHasNext
+         setPlaybackParameters()
+         stopLoading()
+         overlayDelegate.updateOverlayPausePlay()
 diff --git a/application/vlc-android/src/org/videolan/vlc/gui/video/VideoPlayerOverlayDelegate.kt b/application/vlc-android/src/org/videolan/vlc/gui/video/VideoPlayerOverlayDelegate.kt
-index 8de5429..4d6e076 100644
+index 8de5429..02b751b 100644
 --- a/application/vlc-android/src/org/videolan/vlc/gui/video/VideoPlayerOverlayDelegate.kt
 +++ b/application/vlc-android/src/org/videolan/vlc/gui/video/VideoPlayerOverlayDelegate.kt
 @@ -272,6 +272,7 @@ class VideoPlayerOverlayDelegate (private val player: VideoPlayerActivity) {
@@ -237,7 +267,19 @@ index 8de5429..4d6e076 100644
                          if (isVLC4() && trackID == "-1")
                              service.unselectTrackType(trackType)
                          else
-@@ -1156,4 +1158,4 @@ class VideoPlayerOverlayDelegate (private val player: VideoPlayerActivity) {
+@@ -952,8 +954,9 @@ class VideoPlayerOverlayDelegate (private val player: VideoPlayerActivity) {
+             hudBinding.playerOverlayAdvFunction.visibility = if (show) View.VISIBLE else View.INVISIBLE
+             hudBinding.playerResize.visibility = if (show) View.VISIBLE else View.INVISIBLE
+             if (hasPlaylist) {
+-                hudBinding.playlistPrevious.visibility = if (show) View.VISIBLE else View.INVISIBLE
+-                hudBinding.playlistNext.visibility = if (show) View.VISIBLE else View.INVISIBLE
++                val nativePlaylist = player.service?.hasPlaylist() == true
++                hudBinding.playlistPrevious.visibility = if (show && (nativePlaylist || player.gostexHasPrevious)) View.VISIBLE else View.INVISIBLE
++                hudBinding.playlistNext.visibility = if (show && (nativePlaylist || player.gostexHasNext)) View.VISIBLE else View.INVISIBLE
+             }
+             hudBinding.orientationToggle.visibility = if (player.isTv || AndroidDevices.isChromeBook) View.INVISIBLE else if (show) View.VISIBLE else View.INVISIBLE
+             if (!show) hudBinding.playerOverlaySeekbar.disableAccessibilityEvents() else hudBinding.playerOverlaySeekbar.enableAccessibilityEvents()
+@@ -1156,4 +1159,4 @@ class VideoPlayerOverlayDelegate (private val player: VideoPlayerActivity) {
      fun onDestroy() {
          bookmarkListDelegate = null
      }

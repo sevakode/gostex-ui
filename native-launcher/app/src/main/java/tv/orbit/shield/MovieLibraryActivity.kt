@@ -435,13 +435,17 @@ class MovieLibraryActivity : ComponentActivity() {
         startMovieIntent(intent, episode, choosePlayer)
     }
 
-    private fun startMovieIntent(intent: Intent, episode: MovieEpisode? = null, choosePlayer: Boolean = false, onStarted: () -> Unit = {}, onReturned: () -> Unit = {}, onCompleted: (() -> Unit)? = null, playlist: VlcSeriesPlaylist? = null, playlistUnavailable: Boolean = false, resumeIdentity: String? = null, fromStart: Boolean = false, askResume: Boolean = true, preferredPackage: String? = null) {
+    private fun startMovieIntent(intent: Intent, episode: MovieEpisode? = null, choosePlayer: Boolean = false, onStarted: () -> Unit = {}, onReturned: () -> Unit = {}, onCompleted: (() -> Unit)? = null, playlist: VlcSeriesPlaylist? = null, playlistUnavailable: Boolean = false, resumeIdentity: String? = null, fromStart: Boolean = false, askResume: Boolean = true, preferredPackage: String? = null, canPrevious: Boolean = false, canNext: Boolean = false, onNavigate: ((Int) -> Unit)? = null) {
         val id = selected?.id ?: return
         val scopedIntent = Intent(intent)
         if (selected?.mediaType == "series") scopedIntent.putExtra("tv.gostex.extra.SERIES_ID", id)
+        if (onNavigate != null) {
+            scopedIntent.putExtra("tv.gostex.extra.HAS_PREVIOUS", canPrevious)
+            scopedIntent.putExtra("tv.gostex.extra.HAS_NEXT", canNext)
+        }
         videoPlayer.open(scopedIntent, force = choosePlayer,
             onStarted = { MoviePlaybackReceipt.mark(this, id, episode?.id); onStarted() },
-            onError = { toast(R.string.movies_player_missing) }, onReturned = onReturned, onCompleted = onCompleted, playlist = playlist, playlistUnavailable = playlistUnavailable, resumeIdentity = resumeIdentity, fromStart = fromStart, askResume = askResume, preferredPackage = preferredPackage)
+            onError = { toast(R.string.movies_player_missing) }, onReturned = onReturned, onCompleted = onCompleted, playlist = playlist, playlistUnavailable = playlistUnavailable, resumeIdentity = resumeIdentity, fromStart = fromStart, askResume = askResume, preferredPackage = preferredPackage, onNavigate = onNavigate)
     }
 
     private fun continueSavedEpisode(movieId: String, hash: String, fileId: Int) {
@@ -498,7 +502,7 @@ class MovieLibraryActivity : ComponentActivity() {
             }.show()
     }
 
-    private fun prepareTorrent(uri: Uri, episode: MovieEpisode?, choosePlayer: Boolean, filenameHint: String?, afterFileId: Int? = null, preferredPackage: String? = null) {
+    private fun prepareTorrent(uri: Uri, episode: MovieEpisode?, choosePlayer: Boolean, filenameHint: String?, afterFileId: Int? = null, preferredPackage: String? = null, step: Int = 1, exactFileId: Int? = null) {
         if (busy) return
         val generation = ++requestGeneration
         busy = true; progressMessage = getString(R.string.movies_torrent_preparing); error = ""
@@ -564,9 +568,14 @@ class MovieLibraryActivity : ComponentActivity() {
                                 if (!offline && movieId != null && selected?.id == movieId) {
                                     showTorrentBuffer(entry.hash, videos[currentIndex].id, startPreload = false, trackDownload = seriesId != null, downloadPreparation = prefetchJob, openPlayer = ::launchPlayer)
                                 }
-                            }, onCompleted = if (offline && seriesId != null) ({ continueSavedEpisode(seriesId, entry.hash, file.id) }) else null,
+                            }, onCompleted = if (seriesId != null) ({ continueSavedEpisode(seriesId, entry.hash, file.id) }) else null,
                             playlist = playlist, playlistUnavailable = !offline && seriesId != null && videos.size > 1 && playlist == null,
-                            resumeIdentity = if (offline) TorrPlayback.url(entry.hash, file.id) else null, askResume = afterFileId == null, preferredPackage = preferredPackage)
+                            resumeIdentity = if (offline) TorrPlayback.url(entry.hash, file.id) else null, askResume = afterFileId == null, preferredPackage = preferredPackage,
+                            canPrevious = seriesId != null && orderedEpisodeFiles(paths) && currentIndex > 0,
+                            canNext = seriesId != null && orderedEpisodeFiles(paths) && currentIndex + 1 < videos.size,
+                            onNavigate = if (seriesId != null && orderedEpisodeFiles(paths)) ({ direction ->
+                                prepareTorrent(Uri.parse("torrserver://${entry.hash}"), null, false, null, afterFileId = file.id, preferredPackage = videoPlayer.takeCompletedPlayerPackage(), step = direction)
+                            }) else null)
                         }
                     }
                     val cached = TorrDownloadStore.jobs.value.firstOrNull { it.prefetchMovieId == seriesId && it.hash.equals(entry.hash, true) && it.index == videos[currentIndex].id && it.state == "done" }
@@ -579,7 +588,10 @@ class MovieLibraryActivity : ComponentActivity() {
                 if (afterFileId != null) {
                     if (!orderedEpisodeFiles(paths)) return@launch
                     val previous = videos.indexOfFirst { it.id == afterFileId }
-                    if (previous >= 0 && previous + 1 < videos.size) open(previous + 1)
+                    if (previous >= 0 && previous + step in videos.indices) open(previous + step)
+                } else if (exactFileId != null) {
+                    val index = videos.indexOfFirst { it.id == exactFileId }
+                    if (index >= 0) open(index) else toast(R.string.movies_no_video)
                 } else if (videos.size == 1) open(0)
                 else {
                     val lastFile = if (episode == null && filenameHint.isNullOrBlank() && seriesId != null)
@@ -603,6 +615,15 @@ class MovieLibraryActivity : ComponentActivity() {
             } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
             catch (failure: Exception) {
                 if (generation == requestGeneration && !isFinishing && !isDestroyed) {
+                    // Preserve offline playback even if the torrent engine is unavailable.
+                    val saved = if (exactFileId != null) TorrDownloadStore.jobs.value.firstOrNull {
+                        it.prefetchMovieId == selected?.id && it.hash.equals(uri.host, true) && it.index == exactFileId && it.state == "done"
+                    } else null
+                    if (saved != null && withContext(Dispatchers.IO) { TorrPrefetch.playable(this@MovieLibraryActivity, saved) }) {
+                        busy = false
+                        startMovieIntent(Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse(saved.document), "video/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), resumeIdentity = TorrPlayback.url(saved.hash, saved.index))
+                        return@launch
+                    }
                     missingTorrentHash = if (failure is TorrEntryMissing && uri.scheme.equals("torrserver", true)) uri.host else null
                     busy = false; error = getString(when (failure) {
                         is TorrMetadataTimeout -> R.string.movies_torrent_timeout
@@ -827,10 +848,9 @@ class MovieLibraryActivity : ComponentActivity() {
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     SettingRow(job.name, tr(R.string.prefetch_ready), modifier = Modifier.weight(1f), onClick = {
                                         lifecycleScope.launch {
-                                            if (withContext(Dispatchers.IO) { TorrPrefetch.playable(this@MovieLibraryActivity, job) }) {
-                                                val intent = Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse(job.document), "video/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                                startMovieIntent(intent, onCompleted = { continueSavedEpisode(movie.id, job.hash, job.index) }, resumeIdentity = TorrPlayback.url(job.hash, job.index))
-                                            } else toast(R.string.prefetch_missing)
+                                            if (withContext(Dispatchers.IO) { TorrPrefetch.playable(this@MovieLibraryActivity, job) })
+                                                prepareTorrent(Uri.parse("torrserver://${job.hash}"), null, false, null, exactFileId = job.index)
+                                            else toast(R.string.prefetch_missing)
                                         }
                                     })
                                     SettingRow(tr(R.string.prefetch_delete), modifier = Modifier.widthIn(max = 180.dp), onClick = {

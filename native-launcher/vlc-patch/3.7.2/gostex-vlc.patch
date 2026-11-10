@@ -71,7 +71,7 @@ index 0000000..15c10ed
 +    }.singleOrNull()?.id
 +}
 diff --git a/application/vlc-android/src/org/videolan/vlc/gui/video/VideoPlayerActivity.kt b/application/vlc-android/src/org/videolan/vlc/gui/video/VideoPlayerActivity.kt
-index 79293d8..9184705 100644
+index 79293d8..a85eba1 100644
 --- a/application/vlc-android/src/org/videolan/vlc/gui/video/VideoPlayerActivity.kt
 +++ b/application/vlc-android/src/org/videolan/vlc/gui/video/VideoPlayerActivity.kt
 @@ -200,6 +200,7 @@ import org.videolan.vlc.gui.dialogs.RenderersDialog
@@ -183,7 +183,18 @@ index 79293d8..9184705 100644
          super.onDestroy()
          playlistModel?.run {
              dataset.removeObserver(playlistObserver)
-@@ -1213,6 +1280,11 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -1091,7 +1158,9 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+             if (!isFinishing) {
+                 currentAudioTrack = audioTrack
+                 currentSpuTrack = spuTrack
+-                if (tv && !waitingForPin) finish() // Leave player on TV, restauration can be difficult
++                // Keep a paused GOSTEX series on the activity stack while a screensaver
++                // or another activity covers it. onStart restores the saved media and position.
++                if (tv && !waitingForPin && !(wasPaused && gostexSeriesId != null)) finish()
+             }
+ 
+             if (isMute) mute(false)
+@@ -1213,6 +1282,11 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
                  resultIntent.putExtra(EXTRA_DURATION, length)
              }
          }
@@ -195,7 +206,7 @@ index 79293d8..9184705 100644
          setResult(resultCode, resultIntent)
          finish()
      }
-@@ -1443,6 +1515,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -1443,6 +1517,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
      }
  
      override fun next() {
@@ -203,7 +214,7 @@ index 79293d8..9184705 100644
          if (service?.hasNext() == true) {
              service?.next()
              overlayDelegate.showInfo(getString(R.string.next), 1000)
-@@ -1451,6 +1524,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -1451,6 +1526,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
      }
  
      override fun previous() {
@@ -211,7 +222,7 @@ index 79293d8..9184705 100644
          service?.let { service ->
              service.previous(false)
              overlayDelegate.showInfo(getString(R.string.previous), 1000)
-@@ -1580,12 +1654,16 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -1580,12 +1656,16 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
                  MediaPlayer.Event.Playing -> onPlaying()
                  MediaPlayer.Event.Paused -> overlayDelegate.updateOverlayPausePlay()
                  MediaPlayer.Event.Opening -> {
@@ -228,7 +239,7 @@ index 79293d8..9184705 100644
                  MediaPlayer.Event.Vout -> {
                      updateNavStatus()
                      if (event.voutCount > 0)
-@@ -1622,6 +1700,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -1622,6 +1702,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
                                  }
                                  if (audioTrack != "0" || currentAudioTrack != "-2")
                                      service.setAudioTrack(audioTrack.toString())
@@ -236,7 +247,7 @@ index 79293d8..9184705 100644
                              }
                          } else if (event.esChangedType == IMedia.Track.Type.Text) {
                              lifecycleScope.launch(Dispatchers.IO) {
-@@ -1655,6 +1734,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -1655,6 +1736,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
                                      service.setSpuTrack(spuTrack)
                                      lastSpuTrack = "-2"
                                  }
@@ -244,7 +255,7 @@ index 79293d8..9184705 100644
                              }
                          }
                      }
-@@ -1719,9 +1799,10 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -1719,9 +1801,10 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
      }
  
      private fun onPlaying() {

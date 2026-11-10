@@ -71,7 +71,7 @@ index 0000000..15c10ed
 +    }.singleOrNull()?.id
 +}
 diff --git a/application/vlc-android/src/org/videolan/vlc/gui/video/VideoPlayerActivity.kt b/application/vlc-android/src/org/videolan/vlc/gui/video/VideoPlayerActivity.kt
-index 79293d8..80241fb 100644
+index 79293d8..9184705 100644
 --- a/application/vlc-android/src/org/videolan/vlc/gui/video/VideoPlayerActivity.kt
 +++ b/application/vlc-android/src/org/videolan/vlc/gui/video/VideoPlayerActivity.kt
 @@ -200,6 +200,7 @@ import org.videolan.vlc.gui.dialogs.RenderersDialog
@@ -147,16 +147,25 @@ index 79293d8..80241fb 100644
      override fun onAttachedToWindow() {
          super.onAttachedToWindow()
          hasPhysicalNotch = hasNotch()
-@@ -764,6 +816,8 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -764,6 +816,17 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
  
      override fun onNewIntent(intent: Intent) {
          super.onNewIntent(intent)
-+        if (intent.hasExtra("tv.gostex.extra.SERIES_ID")) gostexSeriesId = intent.getStringExtra("tv.gostex.extra.SERIES_ID")
-+        else if (intent.action == Intent.ACTION_VIEW) gostexSeriesId = null
++        if (intent.hasExtra("tv.gostex.extra.SERIES_ID")) {
++            gostexSeriesId = intent.getStringExtra("tv.gostex.extra.SERIES_ID")
++            gostexHasPrevious = intent.getBooleanExtra("tv.gostex.extra.HAS_PREVIOUS", false)
++            gostexHasNext = intent.getBooleanExtra("tv.gostex.extra.HAS_NEXT", false)
++            gostexEpisodeStep = 0
++        } else if (intent.action == Intent.ACTION_VIEW) {
++            gostexSeriesId = null
++            gostexHasPrevious = false
++            gostexHasNext = false
++            gostexEpisodeStep = 0
++        }
          setIntent(intent)
          if (playbackStarted) service?.run {
              if (overlayDelegate.isHudRightBindingInitialized()) {
-@@ -820,6 +874,9 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -820,6 +883,9 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
  
      override fun onSaveInstanceState(outState: Bundle) {
          super.onSaveInstanceState(outState)
@@ -166,7 +175,7 @@ index 79293d8..80241fb 100644
          if (videoUri != null && "content" != videoUri?.scheme) {
              outState.putLong(KEY_TIME, savedTime)
              if (playlistModel == null) outState.putParcelable(KEY_URI, videoUri)
-@@ -1020,6 +1077,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -1020,6 +1086,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
      }
  
      override fun onDestroy() {
@@ -174,7 +183,7 @@ index 79293d8..80241fb 100644
          super.onDestroy()
          playlistModel?.run {
              dataset.removeObserver(playlistObserver)
-@@ -1213,6 +1271,11 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -1213,6 +1280,11 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
                  resultIntent.putExtra(EXTRA_DURATION, length)
              }
          }
@@ -186,7 +195,7 @@ index 79293d8..80241fb 100644
          setResult(resultCode, resultIntent)
          finish()
      }
-@@ -1443,6 +1506,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -1443,6 +1515,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
      }
  
      override fun next() {
@@ -194,7 +203,7 @@ index 79293d8..80241fb 100644
          if (service?.hasNext() == true) {
              service?.next()
              overlayDelegate.showInfo(getString(R.string.next), 1000)
-@@ -1451,6 +1515,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -1451,6 +1524,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
      }
  
      override fun previous() {
@@ -202,7 +211,7 @@ index 79293d8..80241fb 100644
          service?.let { service ->
              service.previous(false)
              overlayDelegate.showInfo(getString(R.string.previous), 1000)
-@@ -1580,12 +1645,16 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -1580,12 +1654,16 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
                  MediaPlayer.Event.Playing -> onPlaying()
                  MediaPlayer.Event.Paused -> overlayDelegate.updateOverlayPausePlay()
                  MediaPlayer.Event.Opening -> {
@@ -219,7 +228,7 @@ index 79293d8..80241fb 100644
                  MediaPlayer.Event.Vout -> {
                      updateNavStatus()
                      if (event.voutCount > 0)
-@@ -1622,6 +1691,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -1622,6 +1700,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
                                  }
                                  if (audioTrack != "0" || currentAudioTrack != "-2")
                                      service.setAudioTrack(audioTrack.toString())
@@ -227,7 +236,7 @@ index 79293d8..80241fb 100644
                              }
                          } else if (event.esChangedType == IMedia.Track.Type.Text) {
                              lifecycleScope.launch(Dispatchers.IO) {
-@@ -1655,6 +1725,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -1655,6 +1734,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
                                      service.setSpuTrack(spuTrack)
                                      lastSpuTrack = "-2"
                                  }
@@ -235,7 +244,7 @@ index 79293d8..80241fb 100644
                              }
                          }
                      }
-@@ -1719,9 +1790,10 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -1719,9 +1799,10 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
      }
  
      private fun onPlaying() {

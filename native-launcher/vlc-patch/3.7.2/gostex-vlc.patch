@@ -1,0 +1,259 @@
+diff --git a/application/app/flavors/release/AndroidManifest.xml b/application/app/flavors/release/AndroidManifest.xml
+index 36cfd0a..4e9146a 100644
+--- a/application/app/flavors/release/AndroidManifest.xml
++++ b/application/app/flavors/release/AndroidManifest.xml
+@@ -27,15 +27,15 @@
+ <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+ 
+     <permission
+-        android:name="org.videolan.vlc.permission.READ_EXTENSION_DATA"
++        android:name="${applicationId}.permission.READ_EXTENSION_DATA"
+         android:protectionLevel="normal" />
+ 
+     <permission
+-        android:name="org.videolan.vlc.permission.BIND_DATA_CONSUMER"
++        android:name="${applicationId}.permission.BIND_DATA_CONSUMER"
+         android:protectionLevel="normal" />
+ 
+-    <uses-permission android:name="org.videolan.vlc.permission.READ_EXTENSION_DATA" />
+-    <uses-permission android:name="org.videolan.vlc.permission.BIND_DATA_CONSUMER" />
++    <uses-permission android:name="${applicationId}.permission.READ_EXTENSION_DATA" />
++    <uses-permission android:name="${applicationId}.permission.BIND_DATA_CONSUMER" />
+ 
+     <application/>
+ 
+diff --git a/application/app/src/main/res/values/gostex.xml b/application/app/src/main/res/values/gostex.xml
+new file mode 100644
+index 0000000..0588a12
+--- /dev/null
++++ b/application/app/src/main/res/values/gostex.xml
+@@ -0,0 +1,3 @@
++<resources>
++    <string name="app_name" translatable="false">VLC · GOSTEX</string>
++</resources>
+diff --git a/application/vlc-android/AndroidManifest.xml b/application/vlc-android/AndroidManifest.xml
+index 622f418..14a3575 100644
+--- a/application/vlc-android/AndroidManifest.xml
++++ b/application/vlc-android/AndroidManifest.xml
+@@ -31,7 +31,7 @@
+     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
+     <uses-permission android:name="android.permission.BLUETOOTH"/>
+     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+-    <uses-permission android:name="org.videolan.vlc.permission.READ_EXTENSION_DATA"/>
++    <uses-permission android:name="${applicationId}.permission.READ_EXTENSION_DATA"/>
+     <uses-permission android:name="com.android.providers.tv.permission.READ_EPG_DATA"/>
+     <uses-permission android:name="com.android.providers.tv.permission.WRITE_EPG_DATA"/>
+     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+diff --git a/application/vlc-android/src/org/videolan/vlc/gui/video/GostexTrackPolicy.kt b/application/vlc-android/src/org/videolan/vlc/gui/video/GostexTrackPolicy.kt
+new file mode 100644
+index 0000000..15c10ed
+--- /dev/null
++++ b/application/vlc-android/src/org/videolan/vlc/gui/video/GostexTrackPolicy.kt
+@@ -0,0 +1,20 @@
++/* Copyright (C) 2026 GOSTEX contributors. GPL-2.0-or-later. */
++package org.videolan.vlc.gui.video
++
++import java.util.Locale
++
++internal data class GostexTrack(val id: String, val name: String, val language: String?)
++internal data class GostexTrackChoice(val disabled: Boolean, val name: String, val language: String?)
++
++/** Names are more stable than stream-specific track IDs. Never guess between duplicates. */
++internal fun gostexMatchingTrack(choice: GostexTrackChoice, tracks: List<GostexTrack>): String? {
++    if (choice.disabled) return "-1"
++    fun norm(value: String?) = value?.trim()?.lowercase(Locale.ROOT).orEmpty()
++    val name = norm(choice.name)
++    if (name.isEmpty()) return null
++    val language = norm(choice.language)
++    return tracks.filter { track ->
++        track.id != "-1" && norm(track.name) == name &&
++            (language.isEmpty() || norm(track.language).isEmpty() || norm(track.language) == language)
++    }.singleOrNull()?.id
++}
+diff --git a/application/vlc-android/src/org/videolan/vlc/gui/video/VideoPlayerActivity.kt b/application/vlc-android/src/org/videolan/vlc/gui/video/VideoPlayerActivity.kt
+index 79293d8..61b9c4f 100644
+--- a/application/vlc-android/src/org/videolan/vlc/gui/video/VideoPlayerActivity.kt
++++ b/application/vlc-android/src/org/videolan/vlc/gui/video/VideoPlayerActivity.kt
+@@ -200,6 +200,7 @@ import org.videolan.vlc.gui.dialogs.RenderersDialog
+ import org.videolan.vlc.gui.dialogs.SleepTimerDialog
+ import org.videolan.vlc.gui.dialogs.VLCBottomSheetDialogFragment.Companion.shouldInterceptRemote
+ import org.videolan.vlc.gui.dialogs.adapters.VlcTrack
++import java.security.MessageDigest
+ import org.videolan.vlc.gui.dialogs.showContext
+ import org.videolan.vlc.gui.helpers.BitmapUtil
+ import org.videolan.vlc.gui.helpers.KeycodeListener
+@@ -530,6 +531,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+     @TargetApi(Build.VERSION_CODES.LOLLIPOP)
+     override fun onCreate(savedInstanceState: Bundle?) {
+         super.onCreate(savedInstanceState)
++        gostexSeriesId = savedInstanceState?.getString("tv.gostex.extra.SERIES_ID") ?: intent?.getStringExtra("tv.gostex.extra.SERIES_ID")
+ 
+         dialogsDelegate.observeDialogs(this, this)
+         Util.checkCpuCompatibility(this)
+@@ -691,6 +693,49 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+         }
+     }
+ 
++    private val gostexTrackPrefs by lazy { getSharedPreferences("gostex_series_tracks", Context.MODE_PRIVATE) }
++    private var gostexSeriesId: String? = null
++    private var gostexEndedUri: String? = null
++    private fun gostexSeriesKey(): String? {
++        val id = gostexSeriesId?.takeIf { it.isNotBlank() && it.length <= 256 } ?: return null
++        return MessageDigest.getInstance("SHA-256").digest(id.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
++    }
++    private fun gostexTracks(audio: Boolean): List<GostexTrack> {
++        val descriptions = (if (audio) service?.audioTracks else service?.spuTracks) ?: return emptyList()
++        val mediaTracks = getCurrentMediaTracks()
++        return descriptions.map { track ->
++            GostexTrack(track.getId(), track.getName(), mediaTracks.firstOrNull { it.id.toString() == track.getId() }?.language)
++        }
++    }
++    internal fun rememberGostexTrack(audio: Boolean, id: String) {
++        val key = gostexSeriesKey() ?: return
++        val prefix = "$key.${if (audio) "audio" else "subtitle"}"
++        val track = if (id == "-1") null else gostexTracks(audio).singleOrNull { it.id == id }
++        if (id != "-1" && track == null) return
++        gostexTrackPrefs.edit().putBoolean("$prefix.disabled", id == "-1")
++            .putString("$prefix.name", track?.name.orEmpty()).putString("$prefix.language", track?.language.orEmpty())
++            .putBoolean("$prefix.set", true).apply()
++    }
++    private val gostexTrackRestore = Runnable {
++        val key = gostexSeriesKey() ?: return@Runnable
++        val player = service ?: return@Runnable
++        for (audio in listOf(true, false)) {
++            val prefix = "$key.${if (audio) "audio" else "subtitle"}"
++            if (!gostexTrackPrefs.getBoolean("$prefix.set", false)) continue
++            val choice = GostexTrackChoice(gostexTrackPrefs.getBoolean("$prefix.disabled", false),
++                gostexTrackPrefs.getString("$prefix.name", "").orEmpty(), gostexTrackPrefs.getString("$prefix.language", ""))
++            val tracks = gostexTracks(audio)
++            val id = gostexMatchingTrack(choice, tracks)
++            if (id == null) continue
++            if (audio) player.setAudioTrack(id) else player.setSpuTrack(id)
++        }
++    }
++    private fun scheduleGostexTrackRestore() {
++        if (gostexSeriesKey() == null) return
++        handler.removeCallbacks(gostexTrackRestore)
++        handler.postDelayed(gostexTrackRestore, 800L)
++    }
++
+     override fun onAttachedToWindow() {
+         super.onAttachedToWindow()
+         hasPhysicalNotch = hasNotch()
+@@ -764,6 +809,8 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+ 
+     override fun onNewIntent(intent: Intent) {
+         super.onNewIntent(intent)
++        if (intent.hasExtra("tv.gostex.extra.SERIES_ID")) gostexSeriesId = intent.getStringExtra("tv.gostex.extra.SERIES_ID")
++        else if (intent.action == Intent.ACTION_VIEW) gostexSeriesId = null
+         setIntent(intent)
+         if (playbackStarted) service?.run {
+             if (overlayDelegate.isHudRightBindingInitialized()) {
+@@ -820,6 +867,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+ 
+     override fun onSaveInstanceState(outState: Bundle) {
+         super.onSaveInstanceState(outState)
++        outState.putString("tv.gostex.extra.SERIES_ID", gostexSeriesId)
+         if (videoUri != null && "content" != videoUri?.scheme) {
+             outState.putLong(KEY_TIME, savedTime)
+             if (playlistModel == null) outState.putParcelable(KEY_URI, videoUri)
+@@ -1020,6 +1068,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+     }
+ 
+     override fun onDestroy() {
++        handler.removeCallbacks(gostexTrackRestore)
+         super.onDestroy()
+         playlistModel?.run {
+             dataset.removeObserver(playlistObserver)
+@@ -1213,6 +1262,10 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+                 resultIntent.putExtra(EXTRA_DURATION, length)
+             }
+         }
++        gostexEndedUri?.let { ended ->
++            resultIntent.putExtra(EXTRA_URI, ended)
++            resultIntent.putExtra("tv.gostex.extra.PLAYBACK_FINISHED", true)
++        }
+         setResult(resultCode, resultIntent)
+         finish()
+     }
+@@ -1580,12 +1633,16 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+                 MediaPlayer.Event.Playing -> onPlaying()
+                 MediaPlayer.Event.Paused -> overlayDelegate.updateOverlayPausePlay()
+                 MediaPlayer.Event.Opening -> {
++                    gostexEndedUri = null
+                     forcedTime = -1
+                     if (!subtitlesExtraPath.isNullOrEmpty()) {
+                         service.addSubtitleTrack(subtitlesExtraPath!!, true)
+                         subtitlesExtraPath = null
+                     }
+                 }
++                MediaPlayer.Event.EndReached -> {
++                    if (gostexSeriesKey() != null) gostexEndedUri = videoUri?.toString()
++                }
+                 MediaPlayer.Event.Vout -> {
+                     updateNavStatus()
+                     if (event.voutCount > 0)
+@@ -1622,6 +1679,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+                                 }
+                                 if (audioTrack != "0" || currentAudioTrack != "-2")
+                                     service.setAudioTrack(audioTrack.toString())
++                                withContext(Dispatchers.Main) { scheduleGostexTrackRestore() }
+                             }
+                         } else if (event.esChangedType == IMedia.Track.Type.Text) {
+                             lifecycleScope.launch(Dispatchers.IO) {
+@@ -1655,6 +1713,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+                                     service.setSpuTrack(spuTrack)
+                                     lastSpuTrack = "-2"
+                                 }
++                                withContext(Dispatchers.Main) { scheduleGostexTrackRestore() }
+                             }
+                         }
+                     }
+@@ -1719,6 +1778,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+     }
+ 
+     private fun onPlaying() {
++        scheduleGostexTrackRestore()
+         val mw = service?.currentMediaWrapper ?: return
+         isPlaying = true
+         overlayDelegate.hasPlaylist = service?.hasPlaylist() == true
+diff --git a/application/vlc-android/src/org/videolan/vlc/gui/video/VideoPlayerOverlayDelegate.kt b/application/vlc-android/src/org/videolan/vlc/gui/video/VideoPlayerOverlayDelegate.kt
+index 8de5429..4d6e076 100644
+--- a/application/vlc-android/src/org/videolan/vlc/gui/video/VideoPlayerOverlayDelegate.kt
++++ b/application/vlc-android/src/org/videolan/vlc/gui/video/VideoPlayerOverlayDelegate.kt
+@@ -272,6 +272,7 @@ class VideoPlayerOverlayDelegate (private val player: VideoPlayerActivity) {
+             when (trackType) {
+                 VideoTracksDialog.TrackType.AUDIO -> {
+                     player.service?.let { service ->
++                        player.rememberGostexTrack(true, trackID)
+                         if (isVLC4() && trackID == "-1")
+                             service.unselectTrackType(trackType)
+                         else
+@@ -284,6 +285,7 @@ class VideoPlayerOverlayDelegate (private val player: VideoPlayerActivity) {
+                 }
+                 VideoTracksDialog.TrackType.SPU -> {
+                     player.service?.let { service ->
++                        player.rememberGostexTrack(false, trackID)
+                         if (isVLC4() && trackID == "-1")
+                             service.unselectTrackType(trackType)
+                         else
+@@ -1156,4 +1158,4 @@ class VideoPlayerOverlayDelegate (private val player: VideoPlayerActivity) {
+     fun onDestroy() {
+         bookmarkListDelegate = null
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/build.gradle b/build.gradle
+index f0add6a..a80c192 100644
+--- a/build.gradle
++++ b/build.gradle
+@@ -60,7 +60,7 @@ allprojects {
+ }
+ 
+ ext {
+-    appId = "org.videolan.vlc"
++    appId = "tv.gostex.vlc"
+     versionCode = 3070200
+     vlcMajorVersion = project.hasProperty('forceVlc4') && project.getProperty('forceVlc4') ? 4 : 3
+     versionName = vlcMajorVersion == 3 ? '3.7.2' : '4.0.0-preview - ' + versionCode

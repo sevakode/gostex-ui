@@ -159,6 +159,7 @@ internal class TvBrowserActivity : ComponentActivity() {
         val draft = savedInstanceState?.getString(STATE_ADDRESS)
         currentUrl?.let(::openPage)
         if (draft != null) address.setText(draft)
+        if (intent.getBooleanExtra(RESELECT_DOWNLOAD, false)) showStatus(R.string.http_download_session_pick_same)
         if (page == null) address.requestFocus()
         updateControls()
     }
@@ -209,10 +210,16 @@ internal class TvBrowserActivity : ComponentActivity() {
                 }
             }
             webViewClient = pageClient()
-            setDownloadListener { url, _, _, _, _ ->
+            setDownloadListener { url, _, _, mime, size ->
                 if (page !== this) return@setDownloadListener
                 val link = TvBrowserOptions.webUrl(url.orEmpty())
-                if (link != null) confirmDownload(link) else showStatus(R.string.browser_error_download)
+                if (link == null) {
+                    showStatus(R.string.browser_error_download)
+                } else {
+                    val session = HttpDownloadSession.create(currentUrl.orEmpty(), link.substringBefore('#'),
+                        size, mime.orEmpty()) { target -> CookieManager.getInstance().getCookie(target) }
+                    confirmDownload(link, session)
+                }
             }
         }
         page = web
@@ -314,17 +321,32 @@ internal class TvBrowserActivity : ComponentActivity() {
         }.show()
     }
 
-    private fun confirmDownload(link: String) {
+    private fun confirmDownload(link: String, session: HttpDownloadSession? = null) {
         if (!active || isFinishing || prompt != null) return
+        val reselect = intent.getBooleanExtra(RESELECT_DOWNLOAD, false)
+        if (reselect && session == null) {
+            showStatus(R.string.http_download_session_pick_same)
+            return
+        }
         val host = Uri.parse(link).host
         val message = getString(R.string.browser_download_review)
         val dialog = AlertDialog.Builder(this)
             .setTitle(R.string.browser_download_title)
             .setMessage(if (host.isNullOrEmpty()) message else "$message\n\n$host")
             .setNegativeButton(R.string.cancel, null)
-            .setPositiveButton(R.string.browser_downloads) { _, _ ->
-                setResult(RESULT_OK, Intent().putExtra(RESULT_LINK, link))
-                finish()
+            .apply {
+                if (!reselect) setPositiveButton(R.string.browser_downloads) { _, _ ->
+                    setResult(RESULT_OK, Intent().putExtra(RESULT_LINK, link))
+                    finish()
+                }
+                if (session != null) {
+                    val acceptSession = android.content.DialogInterface.OnClickListener { _, _ ->
+                        setResult(RESULT_OK, Intent().putExtra(RESULT_SESSION, BrowserDownloadDrafts.offer(session)))
+                        finish()
+                    }
+                    if (reselect) setPositiveButton(R.string.browser_use_site_session, acceptSession)
+                    else setNeutralButton(R.string.browser_use_site_session, acceptSession)
+                }
             }
             .create()
         prompt = dialog
@@ -461,6 +483,8 @@ internal class TvBrowserActivity : ComponentActivity() {
 
     companion object {
         const val RESULT_LINK = "tv.orbit.shield.browser.LINK"
+        const val RESULT_SESSION = "tv.orbit.shield.browser.SESSION"
+        const val RESELECT_DOWNLOAD = "tv.orbit.shield.browser.RESELECT_DOWNLOAD"
         private const val STATE_PAGE = "browser.page"
         private const val STATE_ADDRESS = "browser.address"
         private const val MAX_DRAFT_LENGTH = 8192

@@ -26,7 +26,8 @@ internal object TorrDownloadJournalCodec {
             put("resourceKey", job.http.resourceKey)
             val validator = job.http.expectedEtag
             if (validator == null) put("restartOnly", true) else put("expectedEtag", validator)
-            if (job.state != "done") job.http.url?.let { put("url", it.serialized) }
+            if (job.http.sessionBound) put("sessionBound", true)
+            else if (job.state != "done") job.http.url?.let { put("url", it.serialized) }
         })
         put("total", job.total)
         put("name", job.name); put("tree", job.tree); put("document", job.document); put("finalName", job.finalName)
@@ -50,13 +51,17 @@ internal object TorrDownloadJournalCodec {
             require(obj.isNull("etag") || obj.opt("etag") is String)
             val payload = obj.opt("http") as? JSONObject ?: throw IllegalArgumentException()
             val key = payload.opt("resourceKey") as? String ?: throw IllegalArgumentException()
-            require(payload.keys().asSequence().all { it == "resourceKey" || it == "expectedEtag" || it == "restartOnly" || it == "url" })
+            require(payload.keys().asSequence().all {
+                it == "resourceKey" || it == "expectedEtag" || it == "restartOnly" || it == "url" || it == "sessionBound"
+            })
+            val sessionBound = payload.has("sessionBound")
+            if (sessionBound) require(payload.opt("sessionBound") == true && !payload.has("url") && !payload.has("restartOnly"))
             val etag = if (payload.has("restartOnly")) {
                 require(payload.opt("restartOnly") == true && !payload.has("expectedEtag"))
                 null
             } else payload.opt("expectedEtag") as? String ?: throw IllegalArgumentException()
             val url = if (payload.has("url")) HttpDownloadUrl.parse(payload.opt("url") as? String ?: throw IllegalArgumentException()) else null
-            decodeJob(obj, HttpDownloadOrigin(url, key, etag))
+            decodeJob(obj, HttpDownloadOrigin(url, key, etag, sessionBound = sessionBound))
         } catch (_: Exception) { throw IllegalArgumentException("Invalid HTTP download record") }
     }
 
@@ -113,8 +118,9 @@ internal object TorrDownloadJournalCodec {
         else {
             require(job.hash.isEmpty() && job.index == 0 && job.total > 0 && !job.grouped && job.prefetchMovieId.isEmpty())
             require(validHttpResourceKey(http.resourceKey))
-            require(if (job.state == "done") http.url == null else http.url != null)
+            require(if (job.state == "done" || http.sessionBound) http.url == null else http.url != null)
             val validator = http.expectedEtag
+            if (http.sessionBound) require(validator != null)
             if (validator == null) require(job.etag == null)
             else {
                 require(isStrongHttpEtag(validator))

@@ -124,6 +124,10 @@
     <string name="http_download_allow_http">Продолжить по HTTP</string>
     <string name="http_download_redirect">Ссылка перенаправляет на другой сервер или слишком много раз. Введите прямую ссылку на файл.</string>
     <string name="http_download_source_auth">Для доступа по ссылке нужен вход или срок её действия истёк.</string>
+    <string name="http_download_browser_session">Файл будет загружен по HTTPS с сессией браузера.</string>
+    <string name="http_download_sign_in_again">Войти заново</string>
+    <string name="http_download_session_pick_same">Чтобы продолжить, выберите в браузере тот же файл для загрузки.</string>
+    <string name="http_download_session_unavailable">Откройте ссылку на файл в браузере ещё раз, чтобы использовать сессию сайта.</string>
     <string name="http_download_not_found">Файл по этой ссылке не найден.</string>
     <string name="http_download_unsupported">Сервер не сообщил допустимый размер файла или прислал неподдерживаемый ответ.</string>
     <string name="http_download_source_timeout">Сервер не ответил вовремя.</string>

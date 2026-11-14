@@ -52,9 +52,17 @@ import kotlinx.coroutines.launch
 private val DownloadFieldText = TextStyle(color = Color.White, fontSize = 15.sp)
 
 @Composable
-internal fun HttpDownloadUi(activity: MainActivity, folderLabel: String?, initialAddress: String, onSubmit: () -> Unit, onDismiss: () -> Unit) {
+internal fun HttpDownloadUi(
+    activity: MainActivity,
+    folderLabel: String?,
+    initialAddress: String,
+    onSubmit: () -> Unit,
+    onDismiss: () -> Unit,
+    session: HttpDownloadSession? = null,
+    onRebind: ((HttpDownloadAdmissionResult) -> Boolean)? = null,
+) {
     // Keep the link and its cleartext consent in memory only, scoped to this dialog.
-    var address by remember { mutableStateOf(initialAddress) }
+    var address by remember { mutableStateOf(if (session == null) initialAddress else "") }
     var check by remember { mutableStateOf<Job?>(null) }
     var admission by remember { mutableStateOf<HttpDownloadAdmissionResult?>(null) }
     var name by remember { mutableStateOf("") }
@@ -65,6 +73,7 @@ internal fun HttpDownloadUi(activity: MainActivity, folderLabel: String?, initia
     val cancelFocus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     val scope = rememberCoroutineScope()
+    val missingSession = onRebind != null && session == null
 
     fun close() {
         check?.cancel()
@@ -82,15 +91,16 @@ internal fun HttpDownloadUi(activity: MainActivity, folderLabel: String?, initia
         onDispose { activity.lifecycle.removeObserver(observer) }
     }
     fun verify(allowCleartext: Boolean = false) {
-        if (check != null || address.isBlank() || PortableMaintenance.running) return
+        val requested = session?.url?.serialized ?: address
+        if (check != null || requested.isBlank() || missingSession || PortableMaintenance.running) return
         keyboard?.hide()
         failure = null
-        val requested = address
         val task = scope.launch(start = CoroutineStart.LAZY) {
             try {
-                val result = HttpDownloadAdmission.probeCancellable(requested, allowCleartext)
+                val result = HttpDownloadAdmission.probeCancellable(requested, allowCleartext, session = session)
                 ensureActive()
-                name = suggestHttpDownloadName(result)
+                // A private file locator can include a credential in its path as well as its query.
+                if (onRebind == null) name = if (session == null) suggestHttpDownloadName(result) else "download"
                 address = ""
                 admission = result
             } catch (cancelled: CancellationException) { throw cancelled }
@@ -118,17 +128,32 @@ internal fun HttpDownloadUi(activity: MainActivity, folderLabel: String?, initia
         } else destinationError = activity.torrDownloadMessage
     }
 
-    val needsConsent = failure == HttpDownloadAdmissionError.CLEARTEXT_CONFIRMATION
+    val needsConsent = session == null && failure == HttpDownloadAdmissionError.CLEARTEXT_CONFIRMATION
     val verified = admission
     val checking = check != null
+    val title = when {
+        onRebind != null -> R.string.torr_download_resume
+        verified != null -> R.string.http_download_save_file
+        else -> R.string.http_download_add_link
+    }
     Dialog(onDismissRequest = ::close, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Column(
             Modifier.widthIn(max = 580.dp).fillMaxWidth(0.9f).background(Color(0xFF161E24)).padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text(tr(if (verified == null) R.string.http_download_add_link else R.string.http_download_save_file), color = Color.White, fontSize = 22.sp)
+            Text(tr(title), color = Color.White, fontSize = 22.sp)
             when {
+                missingSession -> HttpDownloadFeedback(tr(R.string.http_download_session_unavailable))
                 checking -> HttpDownloadFeedback(tr(R.string.http_download_checking))
+                verified != null && onRebind != null -> {
+                    if (destinationError.isNotEmpty()) HttpDownloadFeedback(destinationError)
+                    SettingRow(tr(R.string.torr_download_resume), modifier = Modifier.focusRequester(primaryFocus), onClick = {
+                        if (onRebind(verified)) {
+                            onSubmit()
+                            close()
+                        } else destinationError = activity.getString(R.string.http_download_session_pick_same)
+                    })
+                }
                 verified != null -> {
                     val size = android.text.format.Formatter.formatShortFileSize(activity, verified.size)
                     val label = folderLabel.orEmpty()
@@ -145,9 +170,11 @@ internal fun HttpDownloadUi(activity: MainActivity, folderLabel: String?, initia
                     }
                 }
                 else -> {
-                    HttpDownloadField(address, {
-                        if (it.length <= 8192) { address = it; failure = null }
-                    }, tr(R.string.http_download_url), fieldFocus, KeyboardType.Uri, ::finishTyping)
+                    if (session == null) {
+                        HttpDownloadField(address, {
+                            if (it.length <= 8192) { address = it; failure = null }
+                        }, tr(R.string.http_download_url), fieldFocus, KeyboardType.Uri, ::finishTyping)
+                    } else HttpDownloadFeedback(tr(R.string.http_download_browser_session))
                     failure?.let { HttpDownloadFeedback(tr(httpAdmissionErrorResource(it))) }
                     SettingRow(tr(if (needsConsent) R.string.http_download_allow_http else R.string.http_download_check),
                         modifier = Modifier.focusRequester(primaryFocus), onClick = { verify(needsConsent) })
@@ -157,11 +184,11 @@ internal fun HttpDownloadUi(activity: MainActivity, folderLabel: String?, initia
                 SettingRow(tr(R.string.cancel), modifier = Modifier.focusRequester(cancelFocus), trailing = "", onClick = ::close)
             }
         }
-        LaunchedEffect(checking, verified != null, needsConsent, failure != null) {
+        LaunchedEffect(checking, verified != null, needsConsent, failure != null, session, missingSession) {
             withFrameNanos { }
             val requester = when {
-                checking -> cancelFocus
-                verified != null || failure != null -> primaryFocus
+                missingSession || checking -> cancelFocus
+                session != null || verified != null || failure != null -> primaryFocus
                 else -> fieldFocus
             }
             runCatching { requester.requestFocus() }

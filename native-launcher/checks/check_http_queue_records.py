@@ -16,6 +16,10 @@ private const val ACTIVE_ID = "00000000-0000-4000-8000-000000000002"
 private const val DONE_ID = "00000000-0000-4000-8000-000000000003"
 private const val RESTART_ID = "00000000-0000-4000-8000-000000000005"
 private const val RESTART_DONE_ID = "00000000-0000-4000-8000-000000000006"
+private const val SESSION_ID = "00000000-0000-4000-8000-000000000007"
+private const val SESSION_FULL_ID = "00000000-0000-4000-8000-000000000008"
+private const val SESSION_URL = "https://example.invalid/file?ticket=private-session-fixture"
+private const val SESSION_COOKIE = "session=private-cookie-fixture"
 private const val TREE = "content://provider/tree/downloads"
 private val tag = "\"strong-private-fixture\""
 private val legacyHash = "b".repeat(40)
@@ -32,13 +36,19 @@ fun main(args: Array<String>) {
     val restartDone = restart.copy(id = RESTART_DONE_ID, document = "$TREE/document/whole-done", name = "whole-done.bin",
         finalName = "whole-done.bin", state = "done", offset = restart.total,
         http = restart.http!!.copy(url = null, resourceKey = "f".repeat(64)))
+    val session = checkNotNull(HttpDownloadSession.create("https://example.invalid/", SESSION_URL, 1024, "application/octet-stream") { SESSION_COOKIE })
+    val admitted = HttpDownloadAdmissionResult(session.url, session.url.resourceKey(), 1024, tag, session)
+    val sessionJob = pending.copy(id = SESSION_ID, name = "site.bin", finalName = "site.bin", document = "$TREE/document/site",
+        http = HttpDownloadOrigin(null, admitted.resourceKey, tag, sessionBound = true))
+    val full = sessionJob.copy(id = SESSION_FULL_ID, name = "site-full.bin", finalName = "site-full.bin",
+        tree = "content://provider/tree/archive", document = "content://provider/tree/archive/document/site")
     fun encode(job: TorrDownloadJob) = TorrDownloadJournalCodec.encode(job)
     fun row(id: String) = TorrDownloadStore.jobs.value.single { it.id == id }
 
     if (args[0] == "reload") {
         TorrDownloadStore.recover(ctx)
         val jobs = TorrDownloadStore.jobs.value
-        check(jobs.size == 5 && jobs.first().hash == legacyHash && jobs.first().http == null)
+        check(jobs.size == 7 && jobs.first().hash == legacyHash && jobs.first().http == null)
         check(row(ACTIVE_ID) == pending.copy(offset = 17, etag = tag, state = "paused"))
         check(row(DONE_ID) == finalize.copy(offset = 1024, etag = tag, state = "done", document = "$TREE/document/done", http = finalize.http!!.copy(url = null)))
         check(!encode(row(DONE_ID)).contains("finish-fixture") && !encode(row(DONE_ID)).contains("example.invalid"))
@@ -47,6 +57,14 @@ fun main(args: Array<String>) {
         check(row(RESTART_ID).requiresHttpRestart)
         check(row(RESTART_DONE_ID) == restartDone && !row(RESTART_DONE_ID).requiresHttpRestart)
         check(FILE !in encode(row(RESTART_DONE_ID)))
+        check(row(SESSION_ID) == sessionJob.copy(offset = 123, etag = tag))
+        check(TorrDownloadStore.sessionFor(SESSION_ID) == null)
+        check(runCatching { TorrDownloadStore.queue(ctx, listOf(SESSION_ID)) }.exceptionOrNull() is HttpDownloadSessionRequired)
+        check(row(SESSION_FULL_ID) == full.copy(offset = 1024, etag = tag))
+        check(TorrDownloadStore.sessionFor(SESSION_FULL_ID) == null)
+        TorrDownloadStore.queue(ctx, listOf(SESSION_FULL_ID)) // Finalization needs only the verified local partial.
+        check(row(SESSION_FULL_ID).state == "queued")
+        check(SESSION_URL !in ctx.journalFile.readText() && SESSION_COOKIE !in ctx.journalFile.readText())
         println("PASS: cold mixed queue reopen and pause recovery; completed URL stays removed")
         return
     }
@@ -205,8 +223,44 @@ fun main(args: Array<String>) {
     TorrDownloadStore.update(ctx, RESTART_DONE_ID) { it.copy(state = "finalizing") }
     check(TorrDownloadStore.update(ctx, RESTART_DONE_ID) { restartDone } == restartDone)
     TorrDownloadStore.releaseWorker(RESTART_DONE_ID)
+    val sessionWire = JSONObject(encode(sessionJob))
+    check(sessionWire.getJSONObject("http").let { it.opt("sessionBound") == true && !it.has("url") && it.opt("expectedEtag") == tag })
+    check(TorrDownloadJournalCodec.decode(sessionWire.toString()) == sessionJob)
+    for (marker in listOf(false, "true", JSONObject.NULL)) rejects(sessionWire) { getJSONObject("http").put("sessionBound", marker) }
+    rejects(sessionWire) { getJSONObject("http").put("url", SESSION_URL) }
+    rejects(sessionWire) { getJSONObject("http").put("url", JSONObject.NULL) }
+    rejects(sessionWire) { getJSONObject("http").remove("expectedEtag"); getJSONObject("http").put("restartOnly", true) }
+    rejects(sessionWire) { getJSONObject("http").remove("sessionBound") }
+
+    check(runCatching { TorrDownloadStore.add(ctx, sessionJob) }.exceptionOrNull() is HttpDownloadSessionRequired)
+    ctx.failWriteOnce = true
+    check(runCatching { TorrDownloadStore.add(ctx, sessionJob, admitted) }.isFailure)
+    check(TorrDownloadStore.sessionFor(SESSION_ID) == null && TorrDownloadStore.jobs.value.none { it.id == SESSION_ID })
+    TorrDownloadStore.add(ctx, sessionJob, admitted)
+    check(TorrDownloadStore.sessionFor(SESSION_ID) === session)
+    TorrDownloadStore.queue(ctx, listOf(SESSION_ID))
+    check(TorrDownloadStore.claimWorker(ctx, SESSION_ID))
+    TorrDownloadStore.update(ctx, SESSION_ID) { it.copy(state = "paused", offset = 123, etag = tag) }
+    check(runCatching { TorrDownloadStore.bindSession(ctx, SESSION_ID, admitted) }.isFailure)
+    TorrDownloadStore.releaseWorker(SESSION_ID)
+    TorrDownloadStore.invalidateSession(SESSION_ID)
+    check(runCatching { TorrDownloadStore.queue(ctx, listOf(SESSION_ID, legacy.id)) }.exceptionOrNull() is HttpDownloadSessionRequired)
+    check(row(legacy.id).state == "paused")
+    for (other in listOf(admitted.copy(size = 1025), admitted.copy(strongEtag = "\"changed\""), admitted.copy(resourceKey = "1".repeat(64)), admitted.copy(session = null))) {
+        check(runCatching { TorrDownloadStore.bindSession(ctx, SESSION_ID, other) }.isFailure)
+    }
+    val diskBeforeBind = ctx.journalFile.readText()
+    TorrDownloadStore.bindSession(ctx, SESSION_ID, admitted)
+    check(TorrDownloadStore.sessionFor(SESSION_ID) === session && ctx.journalFile.readText() == diskBeforeBind)
+    TorrDownloadStore.queue(ctx, listOf(SESSION_ID))
+
+    TorrDownloadStore.add(ctx, full, admitted)
+    TorrDownloadStore.update(ctx, SESSION_FULL_ID) { it.copy(offset = it.total, etag = tag) }
+    check(TorrDownloadStore.sessionFor(SESSION_FULL_ID) == null)
+    val saved = ctx.journalFile.readText()
+    check("private-session-fixture" !in saved && "private-cookie-fixture" !in saved)
     check(ctx.prefs.getString("downloads.folder", null) == "unchanged")
-    println("PASS: typed encoding, malformed/legacy rejection, duplicate protection, immutable checkpoints, explicit durable restart and atomic URL removal")
+    println("PASS: typed encoding, malformed/legacy rejection, immutable checkpoints, durable restart, URL removal and volatile session binding")
 }
 '''
 

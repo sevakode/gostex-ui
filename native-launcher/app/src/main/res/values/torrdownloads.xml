@@ -124,6 +124,10 @@
     <string name="http_download_allow_http">Continue with HTTP</string>
     <string name="http_download_redirect">This link redirects to another host or too many times. Enter the direct file link.</string>
     <string name="http_download_source_auth">This link requires sign-in or has expired.</string>
+    <string name="http_download_browser_session">This file will use the browser session over HTTPS.</string>
+    <string name="http_download_sign_in_again">Sign in again</string>
+    <string name="http_download_session_pick_same">Select the same download in the browser to continue.</string>
+    <string name="http_download_session_unavailable">Open the file link again in the browser to use the site session.</string>
     <string name="http_download_not_found">The file was not found at this link.</string>
     <string name="http_download_unsupported">The server did not give a usable file size or sent an unsupported response.</string>
     <string name="http_download_source_timeout">The server did not respond in time.</string>

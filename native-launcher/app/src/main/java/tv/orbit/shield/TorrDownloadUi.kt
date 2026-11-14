@@ -68,6 +68,10 @@ import kotlinx.coroutines.withContext
     var showFinished by rememberSaveable { mutableStateOf(false) }
     var showHttpDownload by remember { mutableStateOf(false) }
     var httpInitialAddress by remember { mutableStateOf("") }
+    var httpSession by remember { mutableStateOf<HttpDownloadSession?>(null) }
+    var httpRebindId by remember { mutableStateOf<String?>(null) }
+    var browserRebindId by rememberSaveable { mutableStateOf<String?>(null) }
+    var httpRebindReturnId by remember { mutableStateOf<String?>(null) }
     var returnToHttpLink by remember { mutableStateOf(false) }
     var openingHttp by remember { mutableStateOf(false) }
     val httpLinkFocus = remember { FocusRequester() }
@@ -75,6 +79,7 @@ import kotlinx.coroutines.withContext
     var folderAccessReturnFocus by rememberSaveable { mutableStateOf<String?>(null) }
     var folderAccessBusy by remember { mutableStateOf(false) }
     var folderGrants by remember { mutableStateOf<Set<TorrDownloadFolderAccess.Identity>?>(null) }
+    fun needsSiteSession(job: TorrDownloadJob) = job.requiresHttpSession && TorrDownloadStore.sessionFor(job.id) == null
     val folderSnapshotGeneration = remember { intArrayOf(0) }
     LaunchedEffect(activity.resumeVersion) {
         val generation = ++folderSnapshotGeneration[0]
@@ -99,9 +104,14 @@ import kotlinx.coroutines.withContext
                 ++folderSnapshotGeneration[0]
                 folderGrants = result.grants
                 activity.torrDownloadMessage = activity.getString(when (result.outcome) {
-                    TorrDownloadFolderAccess.Outcome.RESTORED ->
-                        if (TorrDownloadStore.jobs.value.any { it.id == request?.id && it.requiresHttpRestart })
-                            R.string.http_download_restart_access_restored else R.string.torr_folder_access_restored
+                    TorrDownloadFolderAccess.Outcome.RESTORED -> {
+                        val job = TorrDownloadStore.jobs.value.firstOrNull { it.id == request?.id }
+                        when {
+                            job != null && needsSiteSession(job) -> R.string.http_download_session_pick_same
+                            job?.requiresHttpRestart == true -> R.string.http_download_restart_access_restored
+                            else -> R.string.torr_folder_access_restored
+                        }
+                    }
                     TorrDownloadFolderAccess.Outcome.CANCELLED -> R.string.torr_folder_access_cancelled
                     TorrDownloadFolderAccess.Outcome.DIFFERENT_FOLDER -> R.string.torr_folder_access_different
                     TorrDownloadFolderAccess.Outcome.STALE -> R.string.torr_folder_access_stale
@@ -149,11 +159,24 @@ import kotlinx.coroutines.withContext
     var focusBrowserMagnet by remember { mutableStateOf(false) }
     val magnetSubmitFocus = remember { FocusRequester() }
     val browser = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val rebindId = browserRebindId
+        browserRebindId = null
+        val sessionId = result.data?.getStringExtra(TvBrowserActivity.RESULT_SESSION)
+        val session = sessionId?.let(BrowserDownloadDrafts::take)
         if (result.resultCode == Activity.RESULT_OK && !PortableMaintenance.running) {
             val link = result.data?.getStringExtra(TvBrowserActivity.RESULT_LINK).orEmpty()
             val magnetLink = TvBrowserOptions.magnet(link)
             val webLink = TvBrowserOptions.webUrl(link)
             when {
+                session != null -> {
+                    httpSession = session
+                    httpRebindId = rebindId
+                    showHttpDownload = true
+                }
+                sessionId != null || rebindId != null -> {
+                    activity.torrDownloadMessage = activity.getString(R.string.http_download_session_unavailable)
+                    httpRebindReturnId = rebindId
+                }
                 magnetLink != null -> {
                     magnet = magnetLink
                     showMagnet = true
@@ -164,12 +187,18 @@ import kotlinx.coroutines.withContext
                     showHttpDownload = true
                 }
             }
-        }
+        } else httpRebindReturnId = rebindId
     }
-    fun openBrowser() {
+    fun openBrowser(rebindId: String? = null) {
         if (PortableMaintenance.running) return
-        runCatching { browser.launch(Intent(activity, TvBrowserActivity::class.java)) }
-            .onFailure { activity.torrDownloadMessage = activity.getString(R.string.browser_error_download) }
+        browserRebindId = rebindId
+        runCatching {
+            browser.launch(Intent(activity, TvBrowserActivity::class.java)
+                .putExtra(TvBrowserActivity.RESELECT_DOWNLOAD, rebindId != null))
+        }.onFailure {
+            browserRebindId = null
+            activity.torrDownloadMessage = activity.getString(R.string.browser_error_download)
+        }
     }
     LaunchedEffect(focusBrowserMagnet, showMagnet, activity.resumeVersion) {
         if (focusBrowserMagnet && showMagnet && activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
@@ -441,11 +470,21 @@ import kotlinx.coroutines.withContext
         }
         HttpDownloadUi(activity, folderLabel, httpInitialAddress, onSubmit = {
             showFinished = false
-            jobPage = 0
+            if (httpRebindId == null) jobPage = 0
         }, onDismiss = {
             showHttpDownload = false
             httpInitialAddress = ""
-            returnToHttpLink = true
+            httpSession = null
+            val rebindId = httpRebindId
+            httpRebindId = null
+            if (rebindId == null) returnToHttpLink = true else httpRebindReturnId = rebindId
+        }, session = httpSession, onRebind = httpRebindId?.let { id ->
+            { admission ->
+                runCatching {
+                    TorrDownloadStore.bindSession(activity, id, admission)
+                    activity.startTorrDownload(id)
+                }.isSuccess
+            }
         })
     }
     fun addHttpLink() {
@@ -456,14 +495,14 @@ import kotlinx.coroutines.withContext
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             SettingRow(tr(R.string.torr_download_add_file), modifier = Modifier.weight(1f).focusRequester(initialFocus), onClick = activity::chooseTorrFile)
             SettingRow(tr(R.string.http_download_add_link), modifier = Modifier.weight(1f).focusRequester(httpLinkFocus), onClick = ::addHttpLink)
-            SettingRow(tr(R.string.browser_download_entry), modifier = Modifier.weight(1f), onClick = ::openBrowser)
+            SettingRow(tr(R.string.browser_download_entry), modifier = Modifier.weight(1f), onClick = { openBrowser() })
             SettingRow(tr(if (showMagnet) R.string.downloads_magnet_hide else R.string.downloads_magnet_show), modifier = Modifier.weight(1f), onClick = { showMagnet = !showMagnet })
             SettingRow(tr(if (showOptions) R.string.downloads_options_hide else R.string.downloads_options_show), modifier = Modifier.weight(1f), onClick = { showOptions = !showOptions })
         }
     } else {
         SettingRow(tr(R.string.torr_download_add_file), modifier = Modifier.focusRequester(initialFocus), onClick = activity::chooseTorrFile)
         SettingRow(tr(R.string.http_download_add_link), modifier = Modifier.focusRequester(httpLinkFocus), onClick = ::addHttpLink)
-        SettingRow(tr(R.string.browser_download_entry), onClick = ::openBrowser)
+        SettingRow(tr(R.string.browser_download_entry), onClick = { openBrowser() })
         SettingRow(tr(if (showMagnet) R.string.downloads_magnet_hide else R.string.downloads_magnet_show), onClick = { showMagnet = !showMagnet })
         SettingRow(tr(if (showOptions) R.string.downloads_options_hide else R.string.downloads_options_show), onClick = { showOptions = !showOptions })
     }
@@ -589,9 +628,11 @@ import kotlinx.coroutines.withContext
             finishedFocusId = null
         }
     }
-    val pausedCount = activeJobs.count { it.state == "paused" && !it.requiresHttpRestart }
+    val pausedCount = activeJobs.count { it.state == "paused" && !it.requiresHttpRestart && !needsSiteSession(it) }
     if (!showFinished && !journalLoading && !journalFailed && pausedCount > 1) SettingRow(tr(R.string.torr_download_resume_paused, pausedCount), onClick = {
-        val paused = TorrDownloadStore.jobs.value.filter { it.state == "paused" && !it.requiresHttpRestart }.map { it.id }
+        val paused = TorrDownloadStore.jobs.value.filter {
+            it.state == "paused" && !it.requiresHttpRestart && !needsSiteSession(it)
+        }.map { it.id }
         if (paused.isNotEmpty()) runCatching { activity.startTorrDownloads(paused) }
             .onFailure { activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed) }
     })
@@ -600,6 +641,12 @@ import kotlinx.coroutines.withContext
     if (!journalLoading && !journalFailed && visibleJobs.isEmpty()) Text(tr(if (showFinished) R.string.torr_download_empty_finished else R.string.torr_download_empty_queue), color = Color.LightGray, fontSize = 13.sp)
     visibleJobs.drop(jobPage * 20).take(20).forEach { job ->
         val jobFocus = remember(job.id) { FocusRequester() }
+        LaunchedEffect(job.id, httpRebindReturnId, activity.resumeVersion) {
+            if (httpRebindReturnId == job.id && activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                withFrameNanos { }
+                if (runCatching { jobFocus.requestFocus() }.getOrDefault(false)) httpRebindReturnId = null
+            }
+        }
         var restartOffset by remember(job.id) { mutableStateOf<Long?>(null) }
         val restoreAccess = job.state == "error" && job.error == "storage" &&
             TorrDownloadFolderAccess.needsAccess(job.tree, folderGrants)
@@ -660,6 +707,7 @@ import kotlinx.coroutines.withContext
             "queued", "running" -> tr(R.string.torr_download_pause)
             "paused", "error" -> tr(when {
                 restoreAccess -> R.string.torr_folder_access_restore
+                needsSiteSession(job) -> R.string.http_download_sign_in_again
                 job.requiresHttpRestart -> R.string.http_download_restart
                 else -> R.string.torr_download_resume
             })
@@ -678,7 +726,11 @@ import kotlinx.coroutines.withContext
                 runCatching {
                     when (job.state) {
                         "queued", "running" -> TorrDownloadActions.pause(activity, job.id)
-                        "paused", "error" -> if (job.requiresHttpRestart) restartOffset = job.offset else activity.startTorrDownload(job.id)
+                        "paused", "error" -> when {
+                            needsSiteSession(job) -> openBrowser(job.id)
+                            job.requiresHttpRestart -> restartOffset = job.offset
+                            else -> activity.startTorrDownload(job.id)
+                        }
                         "done" -> if (job.http != null && !openingHttp && !PortableMaintenance.running) {
                             openingHttp = true
                             scope.launch {

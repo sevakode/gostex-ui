@@ -117,7 +117,7 @@ internal object TorrDownloadStore {
  fun recover(context:Context) { if(broken) throw IOException("Damaged journal") }
  fun requireActiveCapacity(context:Context, additional:Int) { recover(context); require(jobs.value.count { it.state != "done" } + additional <= 100) }
  fun requireHttpAdmission(context:Context,tree:String,resourceKey:String) { error("Torrent discovery must not admit new HTTP jobs") }
- @Synchronized fun add(context:Context,job:TorrDownloadJob) { check(jobs.value.none { it.document==job.document });jobs.value=jobs.value+job }
+ @Synchronized fun add(context:Context,job:TorrDownloadJob,admission:HttpDownloadAdmissionResult?=null) { check(jobs.value.none { it.document==job.document });jobs.value=jobs.value+job }
  fun beginDeletePrefetch(context:Context,id:String):TorrDownloadJob?=null
  fun finishDeletePrefetch(context:Context,id:String) {}
  fun endDiscard(id:String) {}

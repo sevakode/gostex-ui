@@ -128,15 +128,18 @@ internal object TorrDownloadDocuments {
     /** Direct files use the same destination checks and durable queue as a torrent file. */
     @Synchronized fun enqueueHttp(context: Context, tree: Uri, admission: HttpDownloadAdmissionResult, name: String): TorrDownloadJob {
         require(tree.scheme == "content" && admission.size > 0 &&
-            (admission.strongEtag == null || isStrongHttpEtag(admission.strongEtag)))
+            (admission.strongEtag == null || isStrongHttpEtag(admission.strongEtag)) &&
+            (admission.session == null || admission.strongEtag != null))
         val finalName = validateHttpDownloadName(name)
         prepareTree(context, tree)
         TorrDownloadStore.requireHttpAdmission(context, tree.toString(), admission.resourceKey)
         val id = UUID.randomUUID().toString()
         val parentId = DocumentsContract.getTreeDocumentId(tree)
-        return createPartial(context, tree, id, parentId, finalName) { document ->
+        val sessionBound = admission.session != null
+        return createPartial(context, tree, id, parentId, finalName, admission.takeIf { sessionBound }) { document ->
             TorrDownloadJob(id, "", 0, admission.size, finalName, tree.toString(), document.toString(), finalName,
-                parentId = parentId, http = HttpDownloadOrigin(admission.url, admission.resourceKey, admission.strongEtag))
+                parentId = parentId, http = HttpDownloadOrigin(admission.url.takeUnless { sessionBound }, admission.resourceKey,
+                    admission.strongEtag, sessionBound = sessionBound))
         }
     }
 
@@ -146,7 +149,8 @@ internal object TorrDownloadDocuments {
     }
 
     private fun createPartial(context: Context, tree: Uri, id: String, parentId: String,
-                                     finalName: String, buildJob: (Uri) -> TorrDownloadJob): TorrDownloadJob {
+                                     finalName: String, admission: HttpDownloadAdmissionResult? = null,
+                                     buildJob: (Uri) -> TorrDownloadJob): TorrDownloadJob {
         val parent = DocumentsContract.buildDocumentUriUsingTree(tree, parentId)
         val partialName = ".gostex-$id.partial"
         val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, parentId)
@@ -176,7 +180,7 @@ internal object TorrDownloadDocuments {
             // Check early that the provider can safely seek before committing a job.
             TorrSafTarget.open(context.contentResolver, document).use { if (it.size() != 0L) throw IOException("New document is not empty") }
             val job = buildJob(document)
-            TorrDownloadStore.add(context, job)
+            TorrDownloadStore.add(context, job, admission)
             return job
         } catch (error: Exception) {
             // Only delete after proving this call created this exact direct child.

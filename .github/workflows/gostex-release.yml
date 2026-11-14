@@ -81,6 +81,7 @@ jobs:
             native-launcher/checks/check_torr_catalog.py \
             native-launcher/checks/check_http_download_admission.py \
             native-launcher/checks/check_http_download_transfer.py \
+            native-launcher/checks/check_http_download_session.py \
             native-launcher/checks/check_http_queue_records.py \
             native-launcher/checks/check_torr_playback_logic.py \
             native-launcher/checks/check_torr_prefetch_plan.py \

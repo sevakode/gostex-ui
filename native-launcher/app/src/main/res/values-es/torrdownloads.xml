@@ -124,6 +124,10 @@
     <string name="http_download_allow_http">Continuar con HTTP</string>
     <string name="http_download_redirect">El enlace redirige a otro servidor o demasiadas veces. Introduce el enlace directo al archivo.</string>
     <string name="http_download_source_auth">Este enlace requiere iniciar sesión o ha caducado.</string>
+    <string name="http_download_browser_session">El archivo se descargará por HTTPS con la sesión del navegador.</string>
+    <string name="http_download_sign_in_again">Volver a iniciar sesión</string>
+    <string name="http_download_session_pick_same">Selecciona la misma descarga en el navegador para continuar.</string>
+    <string name="http_download_session_unavailable">Vuelve a abrir el enlace en el navegador para usar la sesión del sitio.</string>
     <string name="http_download_not_found">No se encontró el archivo en este enlace.</string>
     <string name="http_download_unsupported">El servidor no indicó un tamaño de archivo válido o envió una respuesta incompatible.</string>
     <string name="http_download_source_timeout">El servidor no respondió a tiempo.</string>

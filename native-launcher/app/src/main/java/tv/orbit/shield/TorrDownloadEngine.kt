@@ -133,6 +133,7 @@ internal object TorrDownloadEngine {
         reportProgress: (Long) -> Unit = {},
         abort: HttpDownloadAbort? = null,
         resetForRestart: (() -> Unit)? = null,
+        session: HttpDownloadSession? = null,
     ): TorrDownloadCheckpoint {
         val etag = source.expectedEtag
         val canResume = etag != null
@@ -149,11 +150,19 @@ internal object TorrDownloadEngine {
             return checkpoint
         }
         if (!canResume && offset != 0L && resetForRestart == null) throw TorrSourceFailure("source_restart_required")
-        val url = requireNotNull(source.url)
+        val url = if (source.sessionBound) {
+            if (!canResume || source.url != null || session == null || !session.matchesSize(size)) {
+                throw TorrSourceFailure("source_auth")
+            }
+            session.url
+        } else {
+            if (session != null) throw TorrSourceFailure("source_auth")
+            requireNotNull(source.url)
+        }
         val stopRequested = { abort?.cancelled == true || cancelled() || Thread.currentThread().isInterrupted }
         var start = checkpoint
         return try {
-            withHttpDownloadResponse(url, 5000, readTimeoutMs, stopRequested, abort, configure = {
+            withHttpDownloadResponse(url, 5000, readTimeoutMs, stopRequested, abort, session, configure = {
                 if (canResume) {
                     setRequestProperty("Range", "bytes=$offset-")
                     setRequestProperty(if (offset == 0L) "If-Match" else "If-Range", etag)
@@ -161,6 +170,7 @@ internal object TorrDownloadEngine {
             }) { effective, connection, status ->
                 fun header(name: String) = connection.singleDownloadHeader(name, HttpDownloadAdmissionError.RESPONSE)
                 if (status == 401 || status == 403 || status == 407) throw TorrSourceFailure("source_auth")
+                if (status == 200 || status == 206) session?.requireAttachment(connection)
                 if (effective.resourceKey() != source.resourceKey || (canResume && status in setOf(200, 412, 416))) {
                     throw TorrSourceFailure("source_changed")
                 }
@@ -196,6 +206,7 @@ internal object TorrDownloadEngine {
             throw TorrSourceFailure(when (error.reason) {
                 HttpDownloadAdmissionError.TIMEOUT -> "source_timeout"
                 HttpDownloadAdmissionError.NETWORK -> "source_io"
+                HttpDownloadAdmissionError.AUTH -> "source_auth"
                 else -> "source_response"
             })
         } catch (error: CancellationException) {

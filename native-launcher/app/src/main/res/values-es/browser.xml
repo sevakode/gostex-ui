@@ -22,4 +22,5 @@
     <string name="browser_download_review">Revisa este enlace en Descargas antes de empezar.</string>
     <string name="browser_pointer">Puntero</string>
     <string name="browser_pointer_hint">Flechas para mover · OK para seleccionar · Atrás para salir del puntero</string>
+    <string name="browser_use_site_session">Usar la sesión del sitio</string>
 </resources>

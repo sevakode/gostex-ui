@@ -126,6 +126,7 @@ internal class TorrDownloadService : Service() {
                                                 job = TorrDownloadStore.resetHttpCheckpoint(this, job.id)
                                                 TorrDownloadLiveProgress.clear(job.id)
                                             }) else null,
+                                            session = if (http.sessionBound) TorrDownloadStore.sessionFor(job.id) else null,
                                         )
                                     } catch (error: TorrSourceFailure) {
                                         if (cancelled()) break
@@ -171,6 +172,7 @@ internal class TorrDownloadService : Service() {
                             is TorrStorageFailure -> "storage"
                             else -> phase
                         }
+                        if (reason == "source_auth" && next.http?.sessionBound == true) TorrDownloadStore.invalidateSession(next.id)
                         runCatching { TorrDownloadStore.update(this, next.id) { if (it.state == "running" || it.state == "finalizing") it.copy(state = "error", error = reason) else it } }
                     } finally {
                         TorrDownloadLiveProgress.clear(next.id)

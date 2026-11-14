@@ -12,6 +12,7 @@ import java.net.URISyntaxException
 import java.security.MessageDigest
 import java.util.Locale
 import java.util.concurrent.CancellationException
+import javax.net.ssl.HttpsURLConnection
 import javax.net.ssl.SSLException
 import kotlin.coroutines.EmptyCoroutineContext
 
@@ -44,6 +45,9 @@ internal class HttpDownloadUrl private constructor(private val uri: URI) {
 
     internal fun connection(): HttpURLConnection = uri.toURL().openConnection(Proxy.NO_PROXY) as HttpURLConnection
 
+    internal fun sameOrigin(other: HttpDownloadUrl): Boolean =
+        scheme == other.scheme && host == other.host && port == other.port
+
     internal fun redirect(location: String): HttpDownloadUrl {
         val next = try {
             require(location.isNotBlank() && location.length <= MAX_INPUT && location.none(Char::isISOControl))
@@ -57,7 +61,7 @@ internal class HttpDownloadUrl private constructor(private val uri: URI) {
         } catch (_: URISyntaxException) { fail(HttpDownloadAdmissionError.REDIRECT) }
         catch (_: IllegalArgumentException) { fail(HttpDownloadAdmissionError.REDIRECT) }
         catch (_: HttpDownloadAdmissionException) { fail(HttpDownloadAdmissionError.REDIRECT) }
-        if (next.scheme != scheme || next.host != host || next.port != port) fail(HttpDownloadAdmissionError.REDIRECT)
+        if (!sameOrigin(next)) fail(HttpDownloadAdmissionError.REDIRECT)
         return next
     }
 
@@ -80,11 +84,12 @@ internal class HttpDownloadUrl private constructor(private val uri: URI) {
     }
 }
 
-/** Null URL is valid only for a finished record; the private locator is no longer needed. */
+/** The durable source has no locator when finished or when bound to an in-memory session. */
 internal data class HttpDownloadOrigin(
     val url: HttpDownloadUrl?,
     val resourceKey: String,
     val expectedEtag: String?, // Null means a whole-file transfer only.
+    val sessionBound: Boolean = false,
 ) {
     override fun toString(): String = "HttpDownloadOrigin(redacted)"
 }
@@ -94,11 +99,72 @@ internal data class HttpDownloadAdmissionResult(
     val resourceKey: String,
     val size: Long,
     val strongEtag: String?,
+    val session: HttpDownloadSession? = null,
 ) {
     override fun toString(): String = "HttpDownloadAdmissionResult(size=$size)"
 }
 
 private fun fail(reason: HttpDownloadAdmissionError): Nothing = throw HttpDownloadAdmissionException(reason)
+
+/** One confirmed attachment. The locator, cookie lookup, and observed metadata live in memory. */
+internal class HttpDownloadSession private constructor(
+    internal val url: HttpDownloadUrl,
+    private val size: Long,
+    private val mediaType: String,
+    private val cookieLookup: (String) -> String?,
+) {
+    override fun toString(): String = "HttpDownloadSession(redacted)"
+
+    internal fun matchesSize(value: Long): Boolean = size == value
+
+    internal fun authorize(current: HttpDownloadUrl, connection: HttpURLConnection) {
+        if (connection !is HttpsURLConnection || !url.sameOrigin(current)) fail(HttpDownloadAdmissionError.AUTH)
+        val cookie = try { cookieLookup(current.serialized) }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { fail(HttpDownloadAdmissionError.AUTH) }
+        if (cookie == null || cookie.length !in 1..8192 ||
+            cookie.any { it !in ' '..'~' } || !cookie.split(';').all { cookiePair.matches(it.trim()) }) {
+            fail(HttpDownloadAdmissionError.AUTH)
+        }
+        connection.setRequestProperty("Cookie", cookie)
+    }
+
+    internal fun requireAttachment(connection: HttpURLConnection) {
+        val type = connection.singleDownloadHeader("Content-Type", HttpDownloadAdmissionError.RESPONSE)
+        val disposition = connection.singleDownloadHeader("Content-Disposition", HttpDownloadAdmissionError.RESPONSE)
+        if (type == null || normalizedMediaType(type) != mediaType || disposition == null ||
+            disposition.length > 8192 || disposition.any(Char::isISOControl) ||
+            !disposition.substringBefore(';').trim().equals("attachment", ignoreCase = true)) {
+            fail(HttpDownloadAdmissionError.AUTH)
+        }
+    }
+
+    companion object {
+        private val mediaToken = Regex("[a-z0-9][a-z0-9!#\$&^_.+-]*/[a-z0-9][a-z0-9!#\$&^_.+-]*")
+        private const val COOKIE_OCTET = "[\\x21\\x23-\\x2b\\x2d-\\x3a\\x3c-\\x5b\\x5d-\\x7e]"
+        private val cookiePair = Regex("[A-Za-z0-9!#\$%&'*+.^_`|~-]+=(?:$COOKIE_OCTET*|\"$COOKIE_OCTET*\")")
+
+        private fun normalizedMediaType(value: String): String? {
+            if (value.length !in 1..256 || value.any(Char::isISOControl)) return null
+            val type = value.substringBefore(';').trim().lowercase(Locale.ROOT)
+            return type.takeIf { it != "text/html" && it != "application/xhtml+xml" && mediaToken.matches(it) }
+        }
+
+        fun create(page: String, attachment: String, size: Long, mime: String,
+                   cookieLookup: (String) -> String?): HttpDownloadSession? {
+            if (size <= 0 || page.length !in 1..8192 || page.any(Char::isISOControl)) return null
+            val mediaType = normalizedMediaType(mime) ?: return null
+            val topLevel: HttpDownloadUrl
+            val url: HttpDownloadUrl
+            try {
+                topLevel = HttpDownloadUrl.parse(page.substringBefore('#'))
+                url = HttpDownloadUrl.parse(attachment)
+            } catch (_: HttpDownloadAdmissionException) { return null }
+            if (url.cleartext || !url.sameOrigin(topLevel)) return null
+            return HttpDownloadSession(url, size, mediaType, cookieLookup)
+        }
+    }
+}
 
 /** RFC 9110 §8.8.3 opaque tag syntax without the optional weak prefix. */
 internal fun isStrongHttpEtag(tag: String?): Boolean = tag != null && tag.length in 2..8192 &&
@@ -151,6 +217,7 @@ internal fun <T> withHttpDownloadResponse(
     readTimeoutMs: Int,
     cancelled: () -> Boolean,
     abort: HttpDownloadAbort?,
+    session: HttpDownloadSession? = null,
     configure: HttpURLConnection.() -> Unit,
     consume: (HttpDownloadUrl, HttpURLConnection, Int) -> T,
 ): T {
@@ -164,11 +231,13 @@ internal fun <T> withHttpDownloadResponse(
     catch (_: SecurityException) { checkActive(); fail(HttpDownloadAdmissionError.NETWORK) }
     catch (_: IllegalArgumentException) { fail(HttpDownloadAdmissionError.RESPONSE) }
 
+    if (session != null && session.url != original) fail(HttpDownloadAdmissionError.AUTH)
     var current = original
     repeat(MAX_HTTP_DOWNLOAD_HOPS + 1) { hop ->
         checkActive()
         val connection = network { current.connection() }
         try {
+            session?.authorize(current, connection)
             val status = network {
                 connection.instanceFollowRedirects = false
                 connection.useCaches = false
@@ -211,7 +280,8 @@ internal object HttpDownloadAdmission {
     private val singleByteRange = Regex("bytes 0-0/([1-9][0-9]{0,18})", RegexOption.IGNORE_CASE)
     private val contentLength = Regex("[1-9][0-9]{0,18}")
 
-    suspend fun probeCancellable(value: String, allowCleartext: Boolean = false): HttpDownloadAdmissionResult =
+    suspend fun probeCancellable(value: String, allowCleartext: Boolean = false,
+                                 session: HttpDownloadSession? = null): HttpDownloadAdmissionResult =
         withTimeoutOrNull(PROBE_DEADLINE_MS) {
             suspendCancellableCoroutine { continuation ->
                 val abort = HttpDownloadAbort()
@@ -220,7 +290,7 @@ internal object HttpDownloadAdmission {
                 // waiting for an IO lane or a platform connect still unwinding after cancellation.
                 Dispatchers.IO.dispatch(EmptyCoroutineContext) {
                     if (continuation.isActive) continuation.resumeWith(runCatching {
-                        probe(value, allowCleartext, abort = abort)
+                        probe(value, allowCleartext, abort = abort, session = session)
                     })
                 }
             }
@@ -232,6 +302,7 @@ internal object HttpDownloadAdmission {
         timeoutMs: Int = MAX_TIMEOUT_MS,
         cancelled: () -> Boolean = { false },
         abort: HttpDownloadAbort? = null,
+        session: HttpDownloadSession? = null,
     ): HttpDownloadAdmissionResult {
         require(timeoutMs in 1..MAX_TIMEOUT_MS)
         fun checkActive() {
@@ -240,7 +311,7 @@ internal object HttpDownloadAdmission {
         checkActive()
         val original = HttpDownloadUrl.parse(value)
         if (original.cleartext && !allowCleartext) fail(HttpDownloadAdmissionError.CLEARTEXT_CONFIRMATION)
-        return withHttpDownloadResponse(original, timeoutMs, timeoutMs, cancelled, abort,
+        return withHttpDownloadResponse(original, timeoutMs, timeoutMs, cancelled, abort, session,
             configure = { setRequestProperty("Range", "bytes=0-0") }) { current, connection, status ->
             fun header(name: String) = connection.singleDownloadHeader(name, HttpDownloadAdmissionError.RESPONSE)
             fun requireUnencodedBody() {
@@ -251,6 +322,10 @@ internal object HttpDownloadAdmission {
             }
             when (status) {
                 200 -> {
+                    if (session != null) {
+                        session.requireAttachment(connection)
+                        fail(HttpDownloadAdmissionError.UNSUPPORTED)
+                    }
                     // A server that ignores Range may send the entire file. Do not read its body.
                     requireUnencodedBody()
                     if (header("Content-Range") != null) fail(HttpDownloadAdmissionError.UNSUPPORTED)
@@ -268,6 +343,10 @@ internal object HttpDownloadAdmission {
                     if (etag != null && strong == null && !(etag.startsWith("W/") && isStrongHttpEtag(etag.substring(2)))) {
                         fail(HttpDownloadAdmissionError.UNSUPPORTED)
                     }
+                    if (session != null) {
+                        session.requireAttachment(connection)
+                        if (strong == null || !session.matchesSize(size)) fail(HttpDownloadAdmissionError.UNSUPPORTED)
+                    }
                     checkActive()
                     val firstByte = try { connection.inputStream.use { it.read() } }
                     catch (_: SocketTimeoutException) { checkActive(); fail(HttpDownloadAdmissionError.TIMEOUT) }
@@ -275,7 +354,7 @@ internal object HttpDownloadAdmission {
                     catch (_: IOException) { checkActive(); fail(HttpDownloadAdmissionError.NETWORK) }
                     checkActive()
                     if (firstByte < 0) fail(HttpDownloadAdmissionError.RESPONSE)
-                    HttpDownloadAdmissionResult(original, current.resourceKey(), size, strong)
+                    HttpDownloadAdmissionResult(original, current.resourceKey(), size, strong, session)
                 }
                 401, 403, 407 -> fail(HttpDownloadAdmissionError.AUTH)
                 404, 410 -> fail(HttpDownloadAdmissionError.NOT_FOUND)

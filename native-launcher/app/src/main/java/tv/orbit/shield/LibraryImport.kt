@@ -48,15 +48,18 @@ internal object LibraryImport {
         // An empty fallback would overwrite both source preferences and the saved snapshot.
         throw IllegalStateException(context.getString(R.string.library_roots_unavailable), e)
     }
-    fun addRoot(context: Context, root: Root) {
+    fun addRoot(context: Context, root: Root): Boolean {
         require(PlatformRegistry.find(root.platform) != null) { context.getString(R.string.platform_unknown) }
         val existing = roots(context)
-        require(existing.none { it.uri == root.uri && it.platform == root.platform &&
+        val matchingRoots = existing.filter { it.uri == root.uri && it.platform == root.platform }
+        require(matchingRoots.none {
             (it.source == LibrarySource.PORTABLE_SNAPSHOT) != (root.source == LibrarySource.PORTABLE_SNAPSHOT) }) {
             context.getString(R.string.portable_root_conflict)
         }
+        if (matchingRoots.singleOrNull() == root) return false
         val list = existing.filter { it.uri != root.uri || it.platform != root.platform } + root
         writeRoots(context, list)
+        return true
     }
     fun removeRoot(context: Context, root: Root) {
         writeRoots(context, roots(context).filter { it != root })

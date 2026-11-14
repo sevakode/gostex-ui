@@ -188,7 +188,17 @@ class MainActivity : ComponentActivity() {
                             candidate
                         }
                         check(!PortableMaintenance.running && TorrDownloadStore.jobs.value.any { it.id == job.id && it.state == "done" && it.document == job.document })
-                        LibraryImport.addRoot(this@MainActivity, root)
+                        val added = LibraryImport.addRoot(this@MainActivity, root)
+                        if (!added) {
+                            val fileKey = libraryFileKey(root.uri)
+                            val alreadyVisible = library.any { game ->
+                                game.platform == root.platform && game.files.any { libraryFileKey(it) == fileKey }
+                            }
+                            if (alreadyVisible) {
+                                torrDownloadMessage = getString(R.string.torr_game_already_added)
+                                return@launch
+                            }
+                        }
                         refreshLibrary()
                         torrDownloadMessage = getString(R.string.torr_game_added)
                     } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }

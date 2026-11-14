@@ -221,7 +221,7 @@ if __name__ == "__main__":
             (folder / name).write_text(body)
         cp = ':'.join(map(str, [COMPILER[1], COMPILER[4], jsonjar]))
         base = ROOT / 'native-launcher/app/src/main/java/tv/orbit/shield'
-        production = [base / name for name in ('TorrDownloadStore.kt', 'TorrDownloadJournal.kt', 'TorrDownloadJournalCodec.kt')]
+        production = [base / name for name in ('TorrDownloadStore.kt', 'TorrDownloadJournal.kt', 'TorrDownloadJournalCodec.kt', 'HttpDownloadAdmission.kt')]
         compile_result = subprocess.run([str(JAVA), '-cp', ':'.join(map(str, COMPILER)),
             'org.jetbrains.kotlin.cli.jvm.K2JVMCompiler', '-no-stdlib', '-no-reflect', '-classpath', cp,
             '-d', str(folder / 'classes'), *map(str, production), *map(str, folder.glob('*.kt'))], capture_output=True, text=True)

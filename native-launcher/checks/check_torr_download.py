@@ -286,10 +286,11 @@ thread = Thread(target=server.serve_forever, daemon=True); thread.start()
 try:
     with tempfile.TemporaryDirectory(prefix='gostex-transfer-test-') as td:
         folder = Path(td); (folder / 'Checks.kt').write_text(checks)
-        cp = str(compiler[1])
+        cp = f'{compiler[1]}:{compiler[4]}'
         source = ROOT / 'native-launcher/app/src/main/java/tv/orbit/shield/TorrDownloadEngine.kt'
         result = subprocess.run([str(JAVA), '-cp', ':'.join(map(str, compiler)), 'org.jetbrains.kotlin.cli.jvm.K2JVMCompiler',
-            '-no-stdlib', '-no-reflect', '-classpath', cp, '-d', str(folder / 'classes'), str(source), str(folder / 'Checks.kt')], capture_output=True, text=True)
+            '-no-stdlib', '-no-reflect', '-classpath', cp, '-d', str(folder / 'classes'), str(source),
+            str(source.with_name('HttpDownloadAdmission.kt')), str(folder / 'Checks.kt')], capture_output=True, text=True)
         if result.returncode: raise SystemExit(result.stderr)
         result = subprocess.run([str(JAVA), '-cp', f'{folder / "classes"}:{cp}', 'tv.orbit.shield.ChecksKt', str(server.server_port)], capture_output=True, text=True)
         print(result.stdout, end='')

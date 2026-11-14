@@ -1,0 +1,149 @@
+"""Exercise mixed queue persistence and finalization through the real codec/store."""
+from pathlib import Path
+import subprocess
+import tempfile
+
+from check_torr_completed_store import context, uri, source, journal, jsonjar
+from kotlin_toolchain import JAVA, COMPILER, ROOT
+
+checks = r'''package tv.orbit.shield
+import android.content.Context
+import org.json.JSONArray
+import org.json.JSONObject
+
+private const val FILE = "https://example.invalid/record.bin?download=private-fixture"
+private const val ACTIVE_ID = "00000000-0000-4000-8000-000000000002"
+private const val DONE_ID = "00000000-0000-4000-8000-000000000003"
+private const val TREE = "content://provider/tree/downloads"
+private val tag = "\"strong-private-fixture\""
+private val legacyHash = "b".repeat(40)
+
+fun main(args: Array<String>) {
+    val ctx = Context(args[1])
+    val origin = HttpDownloadOrigin(HttpDownloadUrl.parse(FILE), "a".repeat(64), tag)
+    val pending = TorrDownloadJob(ACTIVE_ID, "", 0, 1024, "record.bin", TREE,
+        "$TREE/document/partial", "record.bin", http = origin)
+    val finalize = pending.copy(id = DONE_ID, document = "$TREE/document/other-partial", name = "done.bin", finalName = "done.bin",
+        http = origin.copy(url = HttpDownloadUrl.parse("https://example.invalid/done.bin?download=finish-fixture"), resourceKey = "c".repeat(64)))
+    fun encode(job: TorrDownloadJob) = TorrDownloadJournalCodec.encode(job)
+    fun row(id: String) = TorrDownloadStore.jobs.value.single { it.id == id }
+
+    if (args[0] == "reload") {
+        TorrDownloadStore.recover(ctx)
+        val jobs = TorrDownloadStore.jobs.value
+        check(jobs.size == 3 && jobs.first().hash == legacyHash && jobs.first().http == null)
+        check(row(ACTIVE_ID) == pending.copy(offset = 17, etag = tag, state = "paused"))
+        check(row(DONE_ID) == finalize.copy(offset = 1024, etag = tag, state = "done", document = "$TREE/document/done", http = finalize.http!!.copy(url = null)))
+        check(!encode(row(DONE_ID)).contains("finish-fixture") && !encode(row(DONE_ID)).contains("example.invalid"))
+        check(runCatching { TorrDownloadStore.requireHttpAdmission(ctx, TREE, row(DONE_ID).http!!.resourceKey) }.exceptionOrNull() is HttpDownloadDuplicate)
+        println("PASS: cold mixed queue reopen and pause recovery; completed URL stays removed")
+        return
+    }
+
+    val legacy = pending.copy(id = "00000000-0000-4000-8000-000000000001", hash = legacyHash, index = 3,
+        document = "$TREE/document/torrent", name = "torrent.bin", finalName = "torrent.bin", http = null, grouped = true, parentId = "group")
+    val legacyWire = JSONObject(encode(legacy))
+    check(legacyWire.getString("hash") == legacyHash && legacyWire.getInt("index") == 3 && !legacyWire.has("http"))
+    check(TorrDownloadJournalCodec.readLegacy(JSONArray().put(legacyWire).toString(), "[]") == listOf(legacy))
+
+    val httpWire = JSONObject(encode(pending))
+    check(!httpWire.has("hash") && !httpWire.has("index")) // Old readers require both; can't mistake this for a torrent.
+    check(httpWire.getJSONObject("http").getString("url") == FILE)
+    check(TorrDownloadJournalCodec.decode(httpWire.toString()) == pending)
+    check("private-fixture" !in pending.toString() && "private-fixture" !in pending.copy(etag = tag).toString())
+    for (value in listOf(JSONArray().put(httpWire).toString(), JSONArray().put(legacyWire).put(httpWire).toString())) {
+        check(runCatching { TorrDownloadJournalCodec.readLegacy(value, null) }.isFailure)
+        check(runCatching { TorrDownloadJournalCodec.readLegacy("[]", value) }.isFailure)
+    }
+    fun rejects(change: JSONObject.() -> Unit) {
+        val malformed = JSONObject(httpWire.toString()).apply(change)
+        val error = runCatching { TorrDownloadJournalCodec.decode(malformed.toString()) }.exceptionOrNull()
+        check(error is IllegalArgumentException && error.cause == null && "private-fixture" !in error.toString())
+    }
+    rejects { put("hash", "") }
+    rejects { put("index", 0) }
+    rejects { put("http", JSONObject.NULL) }
+    rejects { put("http", FILE) }
+    rejects { put("unexpected", FILE) }
+    rejects { getJSONObject("http").put("resourceKey", "not-a-key") }
+    rejects { getJSONObject("http").put("expectedEtag", "W/$tag") }
+    rejects { getJSONObject("http").put("url", "https://test:private-fixture@example.invalid/file") }
+    rejects { getJSONObject("http").remove("url") }
+    rejects { getJSONObject("http").put("url", JSONObject.NULL) }
+    rejects { put("offset", 17) }
+    rejects { put("offset", 17); put("etag", "\"changed\"") }
+    rejects { put("offset", 0); put("etag", "\"changed\"") }
+    rejects { put("total", 0) }
+    rejects { put("total", "1024") }
+    rejects { put("offset", 0.5) }
+    rejects { put("grouped", true); put("parentId", "group") }
+    rejects { put("prefetchMovieId", "movie:test") }
+    rejects { put("state", "finalizing") }
+    rejects { put("state", "done"); put("offset", 1024); put("etag", tag) }
+    check(TorrDownloadJournalCodec.decode(encode(pending.copy(etag = tag))) == pending.copy(etag = tag))
+
+    check(ctx.prefs.edit().putString("downloads.folder", "unchanged").commit())
+    TorrDownloadStore.add(ctx, legacy)
+    TorrDownloadStore.requireHttpAdmission(ctx, TREE, origin.resourceKey)
+    TorrDownloadStore.add(ctx, pending)
+    check(!TorrDownloadStore.beginTorrentRemoval(ctx, legacyHash))
+    val otherHash = "d".repeat(40)
+    check(TorrDownloadStore.beginTorrentRemoval(ctx, otherHash))
+    check(runCatching { TorrDownloadStore.requireHttpAdmission(ctx, TREE, origin.resourceKey) }.exceptionOrNull() is HttpDownloadDuplicate)
+    val duplicate = pending.copy(id = "00000000-0000-4000-8000-000000000004", document = "$TREE/document/different", finalName = "other.bin",
+        http = origin.copy(url = HttpDownloadUrl.parse("https://example.invalid/alternate-redirect")))
+    check(runCatching { TorrDownloadStore.add(ctx, duplicate) }.exceptionOrNull() is HttpDownloadDuplicate)
+    val otherTree = "content://provider/tree/other"
+    TorrDownloadStore.requireHttpAdmission(ctx, otherTree, origin.resourceKey)
+    TorrDownloadStore.add(ctx, duplicate.copy(tree = otherTree, document = "$otherTree/document/partial"))
+    TorrDownloadStore.removeRecord(ctx, duplicate.id)
+    TorrDownloadStore.add(ctx, finalize)
+    TorrDownloadStore.queue(ctx, listOf(pending.id, finalize.id))
+    check(TorrDownloadStore.claimWorker(ctx, pending.id))
+    TorrDownloadStore.update(ctx, pending.id) { it.copy(state = "running", offset = 17, etag = tag) }
+    TorrDownloadStore.releaseWorker(pending.id)
+    for (change in listOf<(TorrDownloadJob) -> TorrDownloadJob>(
+        { it.copy(http = origin.copy(url = HttpDownloadUrl.parse("https://example.invalid/wrong"))) },
+        { it.copy(http = origin.copy(resourceKey = "e".repeat(64))) },
+        { it.copy(http = origin.copy(expectedEtag = "\"changed\""), etag = "\"changed\"") },
+        { it.copy(document = "$TREE/document/not-owned") },
+        { it.copy(offset = 16) },
+        { it.copy(http = origin.copy(url = null), state = "done", offset = 1024) },
+    )) {
+        check(runCatching { TorrDownloadStore.update(ctx, pending.id, change) }.isFailure)
+    }
+    TorrDownloadStore.update(ctx, finalize.id) { it.copy(state = "finalizing", offset = it.total, etag = tag) }
+    val beforeDone = ctx.journalFile.readText()
+    check("finish-fixture" in beforeDone)
+    fun accept(j: TorrDownloadJob) = j.copy(state = "done", document = "$TREE/document/done", http = j.http!!.copy(url = null))
+    ctx.failWriteOnce = true
+    check(runCatching { TorrDownloadStore.update(ctx, finalize.id, ::accept) }.isFailure)
+    check(ctx.journalFile.readText() == beforeDone && row(finalize.id).http!!.url != null)
+    TorrDownloadStore.update(ctx, finalize.id, ::accept)
+    check(row(finalize.id).http!!.url == null && "finish-fixture" !in ctx.journalFile.readText())
+    check("private-fixture" in ctx.journalFile.readText()) // Unfinished direct source is still resumable.
+    check(runCatching { TorrDownloadStore.update(ctx, finalize.id) { it.copy(state = "paused", http = finalize.http) } }.isFailure)
+    check(ctx.prefs.getString("downloads.folder", null) == "unchanged")
+    println("PASS: typed encoding, malformed/legacy rejection, duplicate protection, immutable checkpoints and atomic URL removal")
+}
+'''
+
+base = ROOT / 'native-launcher/app/src/main/java/tv/orbit/shield'
+production = [base / name for name in ('TorrDownloadStore.kt', 'TorrDownloadJournal.kt', 'TorrDownloadJournalCodec.kt', 'HttpDownloadAdmission.kt')]
+cp = ':'.join(map(str, [COMPILER[1], COMPILER[4], jsonjar]))
+with tempfile.TemporaryDirectory(prefix='gostex-http-queue-') as td:
+    folder = Path(td)
+    for name, body in [('Context.kt', context), ('Uri.kt', uri), ('Source.kt', source), ('Journal.kt', journal), ('Checks.kt', checks)]:
+        (folder / name).write_text(body)
+    compile_cmd = [str(JAVA), '-cp', ':'.join(map(str, COMPILER)), 'org.jetbrains.kotlin.cli.jvm.K2JVMCompiler',
+                   '-no-stdlib', '-no-reflect', '-classpath', cp, '-d', str(folder / 'classes'),
+                   *map(str, production), *map(str, folder.glob('*.kt'))]
+    result = subprocess.run(compile_cmd, capture_output=True, text=True, timeout=60)
+    if result.returncode:
+        raise SystemExit(result.stderr)
+    for phase in ('create', 'reload'):
+        result = subprocess.run([str(JAVA), '-cp', f'{folder / "classes"}:{cp}', 'tv.orbit.shield.ChecksKt', phase,
+                                 str(folder / 'queue.properties')], capture_output=True, text=True, timeout=15)
+        print(result.stdout, end='')
+        if result.returncode:
+            raise SystemExit(result.stderr)

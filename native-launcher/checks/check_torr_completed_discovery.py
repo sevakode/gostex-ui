@@ -108,14 +108,15 @@ object TorrServerCatalog {
  fun status(hash:String,timeoutMs:Int):TorrCatalogEntry { check(timeoutMs in 1..1000);cachedRequests++;check(hash==entry.hash);return entry }
  fun loadFiles(hash:String):TorrCatalogEntry { peerRequests++;error("Discovery opened a torrent") }
 }
-data class TorrDownloadJob(val id:String,val hash:String,val index:Int,val total:Long,val name:String,
+internal data class TorrDownloadJob(val id:String,val hash:String,val index:Int,val total:Long,val name:String,
  val tree:String,val document:String,val finalName:String,val offset:Long=0,val state:String="paused",
- val parentId:String="",val grouped:Boolean=false,val prefetchMovieId:String="")
-object TorrDownloadStore {
+ val parentId:String="",val grouped:Boolean=false,val prefetchMovieId:String="",val http:HttpDownloadOrigin?=null)
+internal object TorrDownloadStore {
  val jobs=MutableStateFlow<List<TorrDownloadJob>>(emptyList())
  var broken=false
  fun recover(context:Context) { if(broken) throw IOException("Damaged journal") }
  fun requireActiveCapacity(context:Context, additional:Int) { recover(context); require(jobs.value.count { it.state != "done" } + additional <= 100) }
+ fun requireHttpAdmission(context:Context,tree:String,resourceKey:String) { error("Torrent discovery must not admit new HTTP jobs") }
  @Synchronized fun add(context:Context,job:TorrDownloadJob) { check(jobs.value.none { it.document==job.document });jobs.value=jobs.value+job }
  fun beginDeletePrefetch(context:Context,id:String):TorrDownloadJob?=null
  fun finishDeletePrefetch(context:Context,id:String) {}
@@ -225,7 +226,7 @@ with tempfile.TemporaryDirectory(prefix="gostex-completed-discovery-") as td:
     cp = ":".join(map(str, [COMPILER[1], COMPILER[4], jsonjar]))
     command = [str(JAVA), "-cp", ":".join(map(str, COMPILER)), "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler",
                "-no-stdlib", "-no-reflect", "-classpath", cp, "-d", str(folder / "classes")]
-    command += [str(base / name) for name in ("TorrPrefetch.kt", "TorrDownloadGroups.kt", "TorrDownloadDocuments.kt", "TorrDownloadPaths.kt")]
+    command += [str(base / name) for name in ("TorrPrefetch.kt", "TorrDownloadGroups.kt", "TorrDownloadDocuments.kt", "TorrDownloadPaths.kt", "HttpDownloadAdmission.kt")]
     command += [str(folder / name) for name in sources]
     result = subprocess.run(command, capture_output=True, text=True)
     if result.returncode:

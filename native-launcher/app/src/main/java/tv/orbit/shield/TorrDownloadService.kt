@@ -20,7 +20,11 @@ internal class TorrDownloadService : Service() {
     private val executor = Executors.newSingleThreadExecutor()
     private val workerActive = AtomicBoolean(false)
     private val stopping = AtomicBoolean(false)
-    @Volatile private var activeId: String? = null
+    private class Transfer(val id: String, val http: HttpDownloadAbort?) {
+        val paused = AtomicBoolean(false)
+        fun pause() { paused.set(true); http?.cancel() }
+    }
+    @Volatile private var activeTransfer: Transfer? = null
     private var storeAvailable = false
     private var participantRegistered = false
 
@@ -30,7 +34,7 @@ internal class TorrDownloadService : Service() {
             NotificationChannel(CHANNEL, getString(R.string.torr_download_channel), NotificationManager.IMPORTANCE_LOW))
         if (PortableRestoreStartup.ready) {
             participantRegistered = PortableMaintenance.registerParticipant(this) {
-                stopping.set(true)
+                stopTransfer()
                 if (participantRegistered && TorrDownloadStartup.ready) runCatching { TorrDownloadStore.pauseAll(this) }
                 stopSelf()
             }
@@ -50,7 +54,7 @@ internal class TorrDownloadService : Service() {
             val id = intent.getStringExtra("id")
             if (id != null) {
                 val paused = runCatching { TorrDownloadStore.update(this, id) { if (it.state == "running" || it.state == "queued") it.copy(state = "paused") else it } }.getOrNull()
-                if (id == activeId && paused?.state == "paused") stopping.set(true)
+                if (paused?.state == "paused") activeTransfer?.takeIf { it.id == id }?.pause()
             }
         }
         launchWorker()
@@ -66,7 +70,7 @@ internal class TorrDownloadService : Service() {
                     catch (_: kotlinx.coroutines.CancellationException) { false }
                 if (!prepared) return@execute
                 while (true) {
-                    if (isDestroyedForMaintenance || PortableMaintenance.running) break
+                    if (stopping.get() || isDestroyedForMaintenance || PortableMaintenance.running) break
                     val next = TorrDownloadStore.jobs.value.firstOrNull { it.state == "queued" } ?: break
                     if (!TorrDownloadStore.claimWorker(this, next.id)) {
                         // A prior service instance may still be closing its stream after Pause.
@@ -76,8 +80,9 @@ internal class TorrDownloadService : Service() {
                         }
                         continue
                     }
-                    activeId = next.id
-                    stopping.set(false)
+                    val transfer = Transfer(next.id, next.http?.let { HttpDownloadAbort() })
+                    activeTransfer = transfer
+                    val cancelled = { stopping.get() || transfer.paused.get() || Thread.currentThread().isInterrupted }
                     var phase = "transfer"
                     try {
                         var job = TorrDownloadStore.update(this, next.id) {
@@ -93,42 +98,51 @@ internal class TorrDownloadService : Service() {
                                 phase = "transfer"
                                 var end: TorrDownloadCheckpoint? = null
                                 var retries = 0
-                                while (end == null && !stopping.get()) {
+                                while (end == null && !cancelled()) {
                                     try {
-                                        end = TorrDownloadEngine.transfer(
-                                            TorrDownloadSource(job.hash, job.index, job.total), target,
-                                            TorrDownloadCheckpoint(job.offset, job.etag),
-                                            cancelled = { stopping.get() || Thread.currentThread().isInterrupted },
-                                            saveCheckpoint = { checkpoint ->
-                                                job = TorrDownloadStore.update(this, job.id) { it.copy(offset = checkpoint.offset, etag = checkpoint.etag) }
-                                            },
-                                            spaceAllowance = {
-                                                val reserve = TorrDownloadSpace.read(this).toLong() * 1024 * 1024
-                                                if (reserve == 0L) null else (target.availableBytes() - reserve).coerceAtLeast(0L)
-                                            },
-                                            beforeWrite = { count -> throttle.beforeWrite(count) { stopping.get() } },
-                                            reportProgress = { offset ->
-                                                TorrDownloadLiveProgress.report(job.id, offset)
-                                                notificationUpdate(job, offset)
-                                            },
+                                        val checkpoint = TorrDownloadCheckpoint(job.offset, job.etag)
+                                        val save: (TorrDownloadCheckpoint) -> Unit = { saved ->
+                                            job = TorrDownloadStore.update(this, job.id) { it.copy(offset = saved.offset, etag = saved.etag) }
+                                        }
+                                        val space = {
+                                            val reserve = TorrDownloadSpace.read(this).toLong() * 1024 * 1024
+                                            if (reserve == 0L) null else (target.availableBytes() - reserve).coerceAtLeast(0L)
+                                        }
+                                        val beforeWrite: (Int) -> Boolean = { count -> throttle.beforeWrite(count, cancelled) }
+                                        val progress: (Long) -> Unit = { offset ->
+                                            TorrDownloadLiveProgress.report(job.id, offset)
+                                            notificationUpdate(job, offset)
+                                        }
+                                        val http = job.http
+                                        end = if (http == null) TorrDownloadEngine.transfer(
+                                            TorrDownloadSource(job.hash, job.index, job.total), target, checkpoint,
+                                            cancelled = cancelled, saveCheckpoint = save, spaceAllowance = space,
+                                            beforeWrite = beforeWrite, reportProgress = progress,
+                                        ) else TorrDownloadEngine.transfer(
+                                            http, job.total, target, checkpoint, cancelled = cancelled,
+                                            saveCheckpoint = save, spaceAllowance = space, beforeWrite = beforeWrite,
+                                            reportProgress = progress, abort = transfer.http,
                                         )
                                     } catch (error: TorrSourceFailure) {
+                                        if (cancelled()) break
                                         val delay = torrRetryDelay(error.reason, retries, TorrDownloadRetryOptions.read(this)) ?: throw error
                                         retries++
                                         job = TorrDownloadStore.update(this, job.id) { if (it.state == "running") it.copy(error = "retrying") else it }
-                                        if (job.state != "running" || !waitForRetry(delay)) break
+                                        if (job.state != "running" || !waitForRetry(delay, cancelled)) break
                                         if (!TorrDownloadRetryOptions.read(this)) throw error
                                         job = TorrDownloadStore.update(this, job.id) { if (it.state == "running") it.copy(error = "") else it }
                                         if (job.state != "running") break
+                                    } catch (error: kotlinx.coroutines.CancellationException) {
+                                        if (cancelled()) break else throw error
                                     }
                                 }
-                                if (end?.offset != job.total || stopping.get()) {
+                                if (end?.offset != job.total || cancelled()) {
                                     TorrDownloadStore.update(this, job.id) { if (it.state == "running") it.copy(state = "paused") else it }
                                     continue
                                 }
                             }
                         }
-                        if (stopping.get()) {
+                        if (cancelled()) {
                             TorrDownloadStore.update(this, job.id) { if (it.state == "running") it.copy(state = "paused") else it }
                             continue
                         }
@@ -136,8 +150,10 @@ internal class TorrDownloadService : Service() {
                         if (job.state != "finalizing") continue
                         phase = "finalize"
                         val result = finalizeDocument(job)
-                        val completed = TorrDownloadStore.update(this, job.id) { it.copy(document = result.toString(), state = "done", error = "") }
-                        if (completed.prefetchMovieId.isNotBlank() && !stopping.get()) {
+                        val completed = TorrDownloadStore.update(this, job.id) {
+                            it.copy(document = result.toString(), state = "done", error = "", http = it.http?.copy(url = null))
+                        }
+                        if (completed.prefetchMovieId.isNotBlank() && !cancelled()) {
                             // A failed follow-up must not turn a completed download into an error.
                             runCatching { TorrPrefetch.continueAfter(this, completed) }
                         }
@@ -152,7 +168,7 @@ internal class TorrDownloadService : Service() {
                         runCatching { TorrDownloadStore.update(this, next.id) { if (it.state == "running" || it.state == "finalizing") it.copy(state = "error", error = reason) else it } }
                     } finally {
                         TorrDownloadLiveProgress.clear(next.id)
-                        activeId = null
+                        activeTransfer = null
                         TorrDownloadStore.releaseWorker(next.id)
                     }
                 }
@@ -160,7 +176,7 @@ internal class TorrDownloadService : Service() {
                 synchronized(this@TorrDownloadService) {
                     workerActive.set(false)
                     // A new request cannot race with the idle decision.
-                    if (prepared && !isDestroyedForMaintenance && !PortableMaintenance.running && TorrDownloadStore.jobs.value.any { it.state == "queued" }) launchWorker()
+                    if (prepared && !stopping.get() && !isDestroyedForMaintenance && !PortableMaintenance.running && TorrDownloadStore.jobs.value.any { it.state == "queued" }) launchWorker()
                     else stopSelf()
                 }
                 if (isDestroyedForMaintenance) unregisterParticipantOnMain()
@@ -168,9 +184,9 @@ internal class TorrDownloadService : Service() {
         }
     }
 
-    private fun waitForRetry(delayMs: Long): Boolean {
+    private fun waitForRetry(delayMs: Long, cancelled: () -> Boolean): Boolean {
         val deadline = android.os.SystemClock.elapsedRealtime() + delayMs
-        while (!stopping.get() && !Thread.currentThread().isInterrupted) {
+        while (!cancelled()) {
             val remaining = deadline - android.os.SystemClock.elapsedRealtime()
             if (remaining <= 0) return true
             try { Thread.sleep(minOf(remaining, 200L)) }
@@ -216,10 +232,7 @@ internal class TorrDownloadService : Service() {
         // was stopped. Never expose it as a completed ROM until checked again.
         if (job.offset != job.total) throw IOException("Incomplete checkpoint")
         TorrSafTarget.open(contentResolver, completed ?: Uri.parse(job.document)).use { target ->
-            TorrDownloadEngine.transfer(
-                TorrDownloadSource(job.hash, job.index, job.total), target,
-                TorrDownloadCheckpoint(job.offset, job.etag), saveCheckpoint = { throw IOException("Incomplete checkpoint") },
-            )
+            TorrDownloadEngine.verifyCompleted(job.total, target, TorrDownloadCheckpoint(job.offset, job.etag))
         }
         if (completed != null) return completed
         val result = DocumentsContract.renameDocument(contentResolver, Uri.parse(job.document), job.finalName)
@@ -253,7 +266,8 @@ internal class TorrDownloadService : Service() {
         }
     }
 
-    override fun onTimeout(startId: Int, fgsType: Int) { stopping.set(true); stopSelf() }
+    private fun stopTransfer() { stopping.set(true); activeTransfer?.pause() }
+    override fun onTimeout(startId: Int, fgsType: Int) { stopTransfer(); stopSelf() }
     @Volatile private var isDestroyedForMaintenance = false
     private fun unregisterParticipantOnMain() {
         Handler(Looper.getMainLooper()).post {
@@ -262,7 +276,7 @@ internal class TorrDownloadService : Service() {
     }
     override fun onDestroy() {
         isDestroyedForMaintenance = true
-        stopping.set(true)
+        stopTransfer()
         executor.shutdown()
         if (!workerActive.get()) unregisterParticipantOnMain()
         super.onDestroy()

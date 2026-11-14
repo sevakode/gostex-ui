@@ -9,6 +9,24 @@ import java.util.UUID
 
 internal class TorrDownloadPartialBatch(val prepared: Int, cause: Exception) : IOException(cause)
 internal class TorrDownloadDestinationExists : IOException("Destination already exists")
+internal class HttpDownloadInvalidName : IOException("Invalid download file name")
+
+internal fun validateHttpDownloadName(name: String): String {
+    if (name.length > 512 || name.any { it.isISOControl() || it in '\u202A'..'\u202E' || it in '\u2066'..'\u2069' }) {
+        throw HttpDownloadInvalidName()
+    }
+    val cleaned = name.trim()
+    if (cleaned.startsWith('.') || runCatching { TorrDownloadPaths.components(cleaned).size }.getOrNull() != 1) {
+        throw HttpDownloadInvalidName()
+    }
+    return cleaned
+}
+
+/** The suggested name is editable; query strings and server headers never become file names. */
+internal fun suggestHttpDownloadName(admission: HttpDownloadAdmissionResult): String = runCatching {
+    val path = java.net.URI(admission.url.serialized).rawPath.orEmpty()
+    validateHttpDownloadName(java.net.URLDecoder.decode(path.substringAfterLast('/').replace("+", "%2B"), "UTF-8"))
+}.getOrDefault("download")
 
 internal object TorrDownloadDocuments {
     /** Delete only a recorded offline file, after explicit confirmation. */
@@ -96,13 +114,39 @@ internal object TorrDownloadDocuments {
     /** Creates a new uniquely named partial document; never opens or replaces an existing file. */
     @Synchronized fun enqueue(context: Context, tree: Uri, entry: TorrCatalogEntry, file: TorrCatalogFile, prefetchMovieId: String = ""): TorrDownloadJob {
         require(file in entry.files && file.size >= 0 && tree.scheme == "content")
-        context.contentResolver.takePersistableUriPermission(tree, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
-        TorrDownloadStore.recover(context)
+        prepareTree(context, tree)
         val id = UUID.randomUUID().toString()
         val parts = TorrDownloadPaths.components(file.path)
         val base = parts.last()
-        val finalName = base
         val parentId = TorrDownloadGroups.parent(context, tree, entry, parts)
+        return createPartial(context, tree, id, parentId, base) { document ->
+            TorrDownloadJob(id, entry.hash, file.id, file.size, base, tree.toString(), document.toString(), base,
+                parentId = parentId, grouped = true, prefetchMovieId = prefetchMovieId)
+        }
+    }
+
+    /** Direct files use the same destination checks and durable queue as a torrent file. */
+    @Synchronized fun enqueueHttp(context: Context, tree: Uri, admission: HttpDownloadAdmissionResult, name: String): TorrDownloadJob {
+        require(tree.scheme == "content" && admission.size > 0 && isStrongHttpEtag(admission.strongEtag))
+        val finalName = validateHttpDownloadName(name)
+        prepareTree(context, tree)
+        TorrDownloadStore.requireActiveCapacity(context, 1)
+        TorrDownloadStore.requireHttpAdmission(context, tree.toString(), admission.resourceKey)
+        val id = UUID.randomUUID().toString()
+        val parentId = DocumentsContract.getTreeDocumentId(tree)
+        return createPartial(context, tree, id, parentId, finalName) { document ->
+            TorrDownloadJob(id, "", 0, admission.size, finalName, tree.toString(), document.toString(), finalName,
+                parentId = parentId, http = HttpDownloadOrigin(admission.url, admission.resourceKey, admission.strongEtag))
+        }
+    }
+
+    private fun prepareTree(context: Context, tree: Uri) {
+        context.contentResolver.takePersistableUriPermission(tree, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+        TorrDownloadStore.recover(context)
+    }
+
+    private fun createPartial(context: Context, tree: Uri, id: String, parentId: String,
+                                     finalName: String, buildJob: (Uri) -> TorrDownloadJob): TorrDownloadJob {
         val parent = DocumentsContract.buildDocumentUriUsingTree(tree, parentId)
         val partialName = ".gostex-$id.partial"
         val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, parentId)
@@ -131,8 +175,7 @@ internal object TorrDownloadDocuments {
             safeToDelete = true
             // Check early that the provider can safely seek before committing a job.
             TorrSafTarget.open(context.contentResolver, document).use { if (it.size() != 0L) throw IOException("New document is not empty") }
-            val job = TorrDownloadJob(id, entry.hash, file.id, file.size, base, tree.toString(), document.toString(), finalName,
-                parentId = parentId, grouped = true, prefetchMovieId = prefetchMovieId)
+            val job = buildJob(document)
             TorrDownloadStore.add(context, job)
             return job
         } catch (error: Exception) {
@@ -140,6 +183,27 @@ internal object TorrDownloadDocuments {
             if (safeToDelete) runCatching { DocumentsContract.deleteDocument(context.contentResolver, document) }
             throw error
         }
+    }
+
+    /** Return only the owned completed content document; never expose the partial or its source link. */
+    fun verifyCompletedHttp(context: Context, job: TorrDownloadJob): Uri {
+        require(job.http != null && job.state == "done" && job.total > 0 && job.offset == job.total)
+        val tree = Uri.parse(job.tree)
+        val document = Uri.parse(job.document)
+        val rootId = DocumentsContract.getTreeDocumentId(tree)
+        val documentId = DocumentsContract.getDocumentId(document)
+        if (document.scheme != "content" || tree.scheme != "content" || document.authority != tree.authority ||
+            job.parentId.ifBlank { rootId } != rootId || !portableSafDirectChild(context.contentResolver, tree, rootId, documentId)) {
+            throw IOException("Downloaded file moved or unavailable")
+        }
+        val projection = arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+            DocumentsContract.Document.COLUMN_SIZE, DocumentsContract.Document.COLUMN_MIME_TYPE)
+        val matches = context.contentResolver.query(document, projection, null, null, null)?.use { c ->
+            c.moveToFirst() && c.getString(0) == documentId && c.getString(1) == job.finalName &&
+                !c.isNull(2) && c.getLong(2) == job.total && c.getString(3) != DocumentsContract.Document.MIME_TYPE_DIR && !c.moveToNext()
+        } ?: false
+        if (!matches) throw IOException("Downloaded file no longer matches")
+        return document
     }
 
     /** Recover a matching completed file in this torrent's managed folder without changing it. */

@@ -1,16 +1,18 @@
 package tv.orbit.shield
 
 import java.io.IOException
+import java.io.InputStream
 import java.io.RandomAccessFile
 import java.net.HttpURLConnection
 import java.net.Proxy
 import java.net.URL
 import java.net.ConnectException
 import java.net.SocketTimeoutException
+import java.util.concurrent.CancellationException
 
 internal class TorrDownloadLowSpace : IOException("Download storage reserve reached")
 internal class TorrDownloadSpaceUnavailable : IOException("Cannot measure download storage")
-internal class TorrSourceFailure(val reason: String) : IOException("Torrent source error")
+internal class TorrSourceFailure(val reason: String) : IOException("Download source error")
 internal class TorrStorageFailure : IOException("Download destination error")
 
 private inline fun <T> sourceIo(block: () -> T): T = try { block() }
@@ -35,7 +37,9 @@ internal class TorrFileTarget(private val file: RandomAccessFile) : TorrDownload
     override fun sync() = file.fd.sync()
 }
 
-internal data class TorrDownloadCheckpoint(val offset: Long, val etag: String?)
+internal data class TorrDownloadCheckpoint(val offset: Long, val etag: String?) {
+    override fun toString(): String = "TorrDownloadCheckpoint(offset=$offset)"
+}
 internal data class TorrDownloadSource(val hash: String, val index: Int, val size: Long) {
     init {
         require(hash.matches(Regex("[0-9a-fA-F]{40}")))
@@ -44,8 +48,8 @@ internal data class TorrDownloadSource(val hash: String, val index: Int, val siz
 }
 
 /**
- * Copies one selected torrent file from the local server. The caller owns the
- * fresh destination and persists checkpoints atomically only after sync().
+ * Copies one validated source into a destination owned by the caller.
+ * The caller persists checkpoints atomically only after sync().
  * Progress is transient; only saveCheckpoint supplies a durable resume offset.
  * Time checks occur between reads, while the byte bound also limits read size.
  * This class does not create jobs, grant access, or silently restart a download.
@@ -76,7 +80,7 @@ internal object TorrDownloadEngine {
         require(offset in 0..source.size)
         if (target.size() < offset) throw IOException("Destination is shorter than its checkpoint")
         if (offset == source.size) {
-            if (target.size() != source.size || (source.size > 0 && !isStrongEtag(checkpoint.etag))) throw IOException("Invalid completed checkpoint")
+            verifyCompleted(source.size, target, checkpoint)
             reportProgress(offset)
             return checkpoint
         }
@@ -107,75 +111,168 @@ internal object TorrDownloadEngine {
                 val expected = "bytes $offset-${source.size - 1}/${source.size}"
                 if (connection.getHeaderField("Content-Range") != expected) throw TorrSourceFailure("source_response")
             }
-            // A crash can leave bytes after the last durable checkpoint; never trust them.
-            if (target.size() > offset) target.truncate(offset)
-            target.seek(offset)
-            var written = offset
-            var committed = offset
-            var allowance = 0L
-            var lastCheckpointNanos = nowNanos()
-            var lastProgressNanos = lastCheckpointNanos
-            fun saveTail() {
-                if (written == committed) return
-                target.sync()
-                saveCheckpoint(TorrDownloadCheckpoint(written, etag))
-                committed = written
-                lastCheckpointNanos = nowNanos()
-            }
-            fun report(force: Boolean = false) {
-                val now = nowNanos()
-                if (force || now - lastProgressNanos >= PROGRESS_NANOS) {
-                    reportProgress(written)
-                    lastProgressNanos = now
-                }
-            }
-            report(force = true)
-            try {
-                sourceIo { connection.inputStream }.use { input ->
-                    val buffer = ByteArray(BUFFER_BYTES)
-                    while (written < source.size && !cancelled()) {
-                        if (allowance <= 0) {
-                            // Keep the free-space guard independent of durable checkpoint cadence.
-                            allowance = minOf(spaceAllowance() ?: SPACE_CHECK_BYTES, SPACE_CHECK_BYTES)
-                            if (allowance <= 0) {
-                                saveTail()
-                                report(force = true)
-                                throw TorrDownloadLowSpace()
-                            }
-                        }
-                        val count = sourceIo { input.read(buffer, 0, minOf(
-                            buffer.size.toLong(), source.size - written, allowance,
-                            HARD_CHECKPOINT_BYTES - (written - committed),
-                        ).toInt()) }
-                        if (count < 0) throw TorrSourceFailure("source_incomplete")
-                        if (count == 0) continue
-                        if (!beforeWrite(count) || cancelled()) break
-                        target.write(buffer, count)
-                        written += count
-                        allowance -= count
-                        val delta = written - committed
-                        if (delta >= HARD_CHECKPOINT_BYTES ||
-                            (delta >= SOFT_CHECKPOINT_BYTES && nowNanos() - lastCheckpointNanos >= CHECKPOINT_NANOS)) saveTail()
-                        report()
-                    }
-                }
-            } catch (error: TorrSourceFailure) {
-                // These bytes came from the validated response. Retain them before retrying;
-                // a failed sync/save must instead propagate as a storage/journal failure.
-                saveTail()
-                report(force = true)
-                throw error
-            } catch (error: TorrDownloadSpaceUnavailable) {
-                saveTail()
-                report(force = true)
-                throw error
-            }
-            saveTail()
-            report(force = true)
-            return TorrDownloadCheckpoint(written, etag)
+            return copyValidated(source.size, target, checkpoint, requireNotNull(etag), { connection.inputStream },
+                cancelled, saveCheckpoint, spaceAllowance, beforeWrite, nowNanos, reportProgress)
         } finally {
             connection.disconnect()
         }
+    }
+
+    /** Verify the exact admitted resource before changing even an uncommitted tail. */
+    fun transfer(
+        source: HttpDownloadOrigin,
+        size: Long,
+        target: TorrDownloadTarget,
+        checkpoint: TorrDownloadCheckpoint,
+        cancelled: () -> Boolean = { false },
+        saveCheckpoint: (TorrDownloadCheckpoint) -> Unit,
+        spaceAllowance: () -> Long? = { null },
+        readTimeoutMs: Int = 30000,
+        beforeWrite: (Int) -> Boolean = { true },
+        nowNanos: () -> Long = System::nanoTime,
+        reportProgress: (Long) -> Unit = {},
+        abort: HttpDownloadAbort? = null,
+    ): TorrDownloadCheckpoint {
+        require(size > 0 && readTimeoutMs in 1..120000 && isStrongHttpEtag(source.expectedEtag))
+        val offset = checkpoint.offset
+        require(offset in 0..size)
+        if ((offset > 0 || checkpoint.etag != null) && checkpoint.etag != source.expectedEtag) {
+            throw IOException("Missing resume identity")
+        }
+        if (target.size() < offset) throw IOException("Destination is shorter than its checkpoint")
+        if (offset == size) {
+            verifyCompleted(size, target, checkpoint)
+            reportProgress(offset)
+            return checkpoint
+        }
+        val url = requireNotNull(source.url)
+        val stopRequested = { abort?.cancelled == true || cancelled() || Thread.currentThread().isInterrupted }
+        return try {
+            withHttpDownloadResponse(url, 5000, readTimeoutMs, stopRequested, abort, configure = {
+                setRequestProperty("Range", "bytes=$offset-")
+                setRequestProperty(if (offset == 0L) "If-Match" else "If-Range", source.expectedEtag)
+            }) { effective, connection, status ->
+                fun header(name: String) = connection.singleDownloadHeader(name, HttpDownloadAdmissionError.RESPONSE)
+                if (status == 401 || status == 403 || status == 407) throw TorrSourceFailure("source_auth")
+                if (effective.resourceKey() != source.resourceKey || status in setOf(200, 412, 416)) {
+                    throw TorrSourceFailure("source_changed")
+                }
+                if (status != 206) throw TorrSourceFailure("source_response")
+                if (header("ETag") != source.expectedEtag) throw TorrSourceFailure("source_changed")
+                val encoding = header("Content-Encoding")
+                if ((encoding != null && !encoding.equals("identity", ignoreCase = true)) ||
+                    header("Transfer-Encoding") != null || header("Content-Length") != (size - offset).toString() ||
+                    !header("Content-Range").equals("bytes $offset-${size - 1}/$size", ignoreCase = true)) {
+                    throw TorrSourceFailure("source_response")
+                }
+                copyValidated(size, target, checkpoint, source.expectedEtag, { connection.inputStream },
+                    stopRequested, saveCheckpoint, spaceAllowance, beforeWrite, nowNanos, reportProgress,
+                    abortable = true)
+            }
+        } catch (error: HttpDownloadAdmissionException) {
+            if (stopRequested()) { reportProgress(offset); return checkpoint }
+            throw TorrSourceFailure(when (error.reason) {
+                HttpDownloadAdmissionError.TIMEOUT -> "source_timeout"
+                HttpDownloadAdmissionError.NETWORK -> "source_io"
+                else -> "source_response"
+            })
+        } catch (error: CancellationException) {
+            if (!stopRequested()) throw error
+            reportProgress(offset)
+            checkpoint
+        }
+    }
+
+    /** Verify a durable, completed document without constructing or contacting a source. */
+    fun verifyCompleted(size: Long, target: TorrDownloadTarget, checkpoint: TorrDownloadCheckpoint) {
+        if (size < 0 || checkpoint.offset != size || target.size() != size || (size > 0 && !isStrongEtag(checkpoint.etag))) {
+            throw IOException("Invalid completed checkpoint")
+        }
+    }
+
+    private fun copyValidated(
+        size: Long,
+        target: TorrDownloadTarget,
+        checkpoint: TorrDownloadCheckpoint,
+        etag: String,
+        openStream: () -> InputStream,
+        cancelled: () -> Boolean,
+        saveCheckpoint: (TorrDownloadCheckpoint) -> Unit,
+        spaceAllowance: () -> Long?,
+        beforeWrite: (Int) -> Boolean,
+        nowNanos: () -> Long,
+        reportProgress: (Long) -> Unit,
+        abortable: Boolean = false,
+    ): TorrDownloadCheckpoint {
+        val offset = checkpoint.offset
+        if (abortable && cancelled()) { reportProgress(offset); return checkpoint }
+        // A crash can leave bytes after the last durable checkpoint; never trust them.
+        if (target.size() > offset) target.truncate(offset)
+        target.seek(offset)
+        var written = offset
+        var committed = offset
+        var allowance = 0L
+        var lastCheckpointNanos = nowNanos()
+        var lastProgressNanos = lastCheckpointNanos
+        fun saveTail() {
+            if (written == committed) return
+            target.sync()
+            saveCheckpoint(TorrDownloadCheckpoint(written, etag))
+            committed = written
+            lastCheckpointNanos = nowNanos()
+        }
+        fun report(force: Boolean = false) {
+            val now = nowNanos()
+            if (force || now - lastProgressNanos >= PROGRESS_NANOS) {
+                reportProgress(written)
+                lastProgressNanos = now
+            }
+        }
+        report(force = true)
+        try {
+            sourceIo(openStream).use { input ->
+                val buffer = ByteArray(BUFFER_BYTES)
+                while (written < size && !cancelled()) {
+                    if (allowance <= 0) {
+                        // Keep the free-space guard independent of durable checkpoint cadence.
+                        allowance = minOf(spaceAllowance() ?: SPACE_CHECK_BYTES, SPACE_CHECK_BYTES)
+                        if (allowance <= 0) {
+                            saveTail()
+                            report(force = true)
+                            throw TorrDownloadLowSpace()
+                        }
+                    }
+                    val count = sourceIo { input.read(buffer, 0, minOf(
+                        buffer.size.toLong(), size - written, allowance,
+                        HARD_CHECKPOINT_BYTES - (written - committed),
+                    ).toInt()) }
+                    if (count < 0) throw TorrSourceFailure("source_incomplete")
+                    if (count == 0) continue
+                    if (!beforeWrite(count) || cancelled()) break
+                    target.write(buffer, count)
+                    written += count
+                    allowance -= count
+                    val delta = written - committed
+                    if (delta >= HARD_CHECKPOINT_BYTES ||
+                        (delta >= SOFT_CHECKPOINT_BYTES && nowNanos() - lastCheckpointNanos >= CHECKPOINT_NANOS)) saveTail()
+                    report()
+                }
+            }
+        } catch (error: TorrSourceFailure) {
+            // These bytes came from the validated response. Retain them before retrying;
+            // a failed sync/save must instead propagate as a storage/journal failure.
+            saveTail()
+            report(force = true)
+            if (abortable && cancelled()) return if (written == offset) checkpoint else TorrDownloadCheckpoint(written, etag)
+            throw error
+        } catch (error: TorrDownloadSpaceUnavailable) {
+            saveTail()
+            report(force = true)
+            throw error
+        }
+        saveTail()
+        report(force = true)
+        return TorrDownloadCheckpoint(written, etag)
     }
 
     private fun isStrongEtag(value: String?): Boolean =

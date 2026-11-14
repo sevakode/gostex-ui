@@ -207,7 +207,13 @@ class MainActivity : ComponentActivity() {
             torrNotificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
         } else TorrDownloadActions.startMany(this, ids)
     }
-    private var pendingTorrDownload: Pair<TorrCatalogEntry, List<TorrCatalogFile>>? = null
+    private sealed interface DownloadFolderRequest {
+        data object ChangeDefault : DownloadFolderRequest
+        data object ExpiredHttp : DownloadFolderRequest
+        class Torrent(val entry: TorrCatalogEntry, val files: List<TorrCatalogFile>) : DownloadFolderRequest
+        class Http(val admission: HttpDownloadAdmissionResult, val name: String) : DownloadFolderRequest
+    }
+    private var pendingDownloadFolderRequest: DownloadFolderRequest? = null
     private val torrFilePicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) importTorrentUri(uri)
     }
@@ -311,14 +317,25 @@ class MainActivity : ComponentActivity() {
         finally { mediaCoverAttempts.finish(id, poster, android.os.SystemClock.elapsedRealtime(), failedAttempt) }
     }
     private val torrFolderPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-        val request = pendingTorrDownload
-        pendingTorrDownload = null
+        val request = pendingDownloadFolderRequest
+        pendingDownloadFolderRequest = null
+        if (PortableMaintenance.running) return@registerForActivityResult
+        if (request is DownloadFolderRequest.ExpiredHttp) {
+            torrDownloadMessage = getString(R.string.http_download_folder_expired)
+            return@registerForActivityResult
+        }
+        if (request is DownloadFolderRequest.Http) {
+            // A one-time HTTP destination does not replace the saved default folder.
+            if (uri != null) enqueueHttpDownload(uri, request)
+            else torrDownloadMessage = getString(R.string.http_download_folder_cancelled)
+            return@registerForActivityResult
+        }
         if (uri != null && !PortableMaintenance.running) {
             try {
                 contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
                 if (!getSharedPreferences("orbit", MODE_PRIVATE).edit().putString("downloads.folder", uri.toString()).commit()) throw java.io.IOException("Cannot save folder")
                 torrDownloadFolder = uri.toString()
-                if (request != null) enqueueTorrDownload(uri, request.first, request.second)
+                if (request is DownloadFolderRequest.Torrent) enqueueTorrDownload(uri, request.entry, request.files)
             } catch (_: Exception) { torrDownloadMessage = getString(R.string.torr_download_failed) }
         }
     }
@@ -339,10 +356,51 @@ class MainActivity : ComponentActivity() {
             finally { torrPreparing = false }
         }
     }
+    private fun enqueueHttpDownload(uri: Uri, request: DownloadFolderRequest.Http) {
+        if (torrPreparing || PortableMaintenance.running) {
+            torrDownloadMessage = getString(R.string.torr_download_preparing)
+            return
+        }
+        torrPreparing = true
+        torrDownloadMessage = getString(R.string.torr_download_preparing)
+        importScope.launch {
+            try {
+                check(TorrDownloadStartup.prepare(applicationContext))
+                val job = withContext(Dispatchers.IO) {
+                    TorrDownloadDocuments.enqueueHttp(applicationContext, uri, request.admission, request.name)
+                }
+                // A confirmed job can be left paused if the app went to the background.
+                torrDownloadMessage = if (lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
+                    && !PortableMaintenance.running) {
+                    startTorrDownload(job.id)
+                    getString(R.string.torr_download_added)
+                } else getString(R.string.http_download_added_paused)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: HttpDownloadDuplicate) {
+                torrDownloadMessage = getString(R.string.http_download_duplicate)
+            } catch (_: HttpDownloadInvalidName) {
+                torrDownloadMessage = getString(R.string.http_download_invalid_name)
+            } catch (_: TorrDownloadDestinationExists) {
+                torrDownloadMessage = getString(R.string.torr_download_exists)
+            } catch (_: Exception) { torrDownloadMessage = getString(R.string.torr_download_failed) }
+            finally { torrPreparing = false }
+        }
+    }
+
+    private fun requestDownloadFolder(request: DownloadFolderRequest): Boolean {
+        if (pendingDownloadFolderRequest != null || torrPreparing || PortableMaintenance.running) {
+            torrDownloadMessage = getString(R.string.torr_download_preparing)
+            return false
+        }
+        pendingDownloadFolderRequest = request
+        if (launchDocumentPicker(Intent.ACTION_OPEN_DOCUMENT_TREE) { torrFolderPicker.launch(torrFolderInitialUri()) }) return true
+        pendingDownloadFolderRequest = null
+        torrDownloadMessage = getString(R.string.document_picker_unavailable)
+        return false
+    }
     internal fun chooseTorrFolder() {
-        pendingTorrDownload = null
         torrDownloadMessage = ""
-        if (!launchDocumentPicker(Intent.ACTION_OPEN_DOCUMENT_TREE) { torrFolderPicker.launch(torrFolderInitialUri()) }) torrDownloadMessage = getString(R.string.document_picker_unavailable)
+        requestDownloadFolder(DownloadFolderRequest.ChangeDefault)
     }
     private fun torrFolderInitialUri(): Uri? {
         val previous = runCatching {
@@ -361,16 +419,27 @@ class MainActivity : ComponentActivity() {
         if (!launchDocumentPicker(Intent.ACTION_OPEN_DOCUMENT, "*/*") { torrFilePicker.launch(arrayOf("application/x-bittorrent", "application/octet-stream", "*/*")) }) torrDownloadMessage = getString(R.string.document_picker_unavailable)
     }
     internal fun chooseTorrDestination(entry: TorrCatalogEntry, files: List<TorrCatalogFile>) {
-        if (torrPreparing) return
+        if (torrPreparing || pendingDownloadFolderRequest != null) return
         torrDownloadMessage = ""
-        val existing = runCatching { Uri.parse(torrDownloadFolder) }.getOrNull()
-        val granted = existing != null && contentResolver.persistedUriPermissions.any { it.uri == existing && it.isReadPermission && it.isWritePermission }
-        if (granted) { enqueueTorrDownload(existing!!, entry, files); return }
-        pendingTorrDownload = entry to files
-        if (!launchDocumentPicker(Intent.ACTION_OPEN_DOCUMENT_TREE) { torrFolderPicker.launch(torrFolderInitialUri()) }) {
-            pendingTorrDownload = null
-            torrDownloadMessage = getString(R.string.document_picker_unavailable)
+        val existing = grantedDownloadFolder()
+        if (existing != null) enqueueTorrDownload(existing, entry, files)
+        else requestDownloadFolder(DownloadFolderRequest.Torrent(entry, files))
+    }
+    private fun grantedDownloadFolder(): Uri? = runCatching {
+        val existing = Uri.parse(torrDownloadFolder)
+        existing.takeIf { it.scheme == "content" && contentResolver.persistedUriPermissions.any { grant -> grant.uri == it && grant.isReadPermission && grant.isWritePermission } }
+    }.getOrNull()
+    internal fun chooseHttpDestination(admission: HttpDownloadAdmissionResult, name: String, chooseFolder: Boolean): Boolean {
+        if (torrPreparing || pendingDownloadFolderRequest != null || PortableMaintenance.running) {
+            torrDownloadMessage = getString(R.string.torr_download_preparing)
+            return false
         }
+        torrDownloadMessage = ""
+        val request = DownloadFolderRequest.Http(admission, name)
+        val existing = if (chooseFolder) null else grantedDownloadFolder()
+        if (existing == null) return requestDownloadFolder(request)
+        enqueueHttpDownload(existing, request)
+        return true
     }
     var notice: String
         get() = notices.current?.message.orEmpty()
@@ -1142,6 +1211,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (savedInstanceState?.getBoolean("httpDownloadPickerPending") == true) {
+            pendingDownloadFolderRequest = DownloadFolderRequest.ExpiredHttp
+        }
         emulatorInstall.restore(savedInstanceState)
         if (PortableRestoreStartup.ready && !PortableMaintenance.running) {
             torrDownloadFolder = getSharedPreferences("orbit", MODE_PRIVATE).getString("downloads.folder", "").orEmpty()
@@ -1209,6 +1281,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         emulatorInstall.save(outState)
+        // Only remember that a stale picker result belongs to an expired request.
+        // Never put the URL, validator, filename or the request itself in a Bundle.
+        outState.putBoolean("httpDownloadPickerPending", pendingDownloadFolderRequest is DownloadFolderRequest.Http ||
+            pendingDownloadFolderRequest == DownloadFolderRequest.ExpiredHttp)
         outState.putString("importPlatform", importPlatform)
         outState.putString("importSource", importSource.value)
         outState.putString("pendingCoverId", pendingCoverId)

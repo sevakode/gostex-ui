@@ -63,6 +63,10 @@ import kotlinx.coroutines.withContext
     var filePage by remember { mutableStateOf(0) }
     var jobPage by rememberSaveable { mutableStateOf(0) }
     var showFinished by rememberSaveable { mutableStateOf(false) }
+    var showHttpDownload by remember { mutableStateOf(false) }
+    var returnToHttpLink by remember { mutableStateOf(false) }
+    var openingHttp by remember { mutableStateOf(false) }
+    val httpLinkFocus = remember { FocusRequester() }
     var folderAccessRequest by rememberSaveable { mutableStateOf<ArrayList<String>?>(null) }
     var folderAccessReturnFocus by rememberSaveable { mutableStateOf<String?>(null) }
     var folderAccessBusy by remember { mutableStateOf(false) }
@@ -386,14 +390,40 @@ import kotlinx.coroutines.withContext
         return
     }
 
+    LaunchedEffect(showHttpDownload, returnToHttpLink, activity.resumeVersion) {
+        if (!showHttpDownload && returnToHttpLink &&
+            activity.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) {
+            withFrameNanos { }
+            if (runCatching { httpLinkFocus.requestFocus() }.getOrDefault(false)) returnToHttpLink = false
+        }
+    }
+    if (showHttpDownload) {
+        val savedFolder = TorrDownloadFolderAccess.identity(activity.torrDownloadFolder)
+        val folderLabel = savedFolder?.takeIf { folderGrants?.contains(it) == true }?.documentId?.let {
+            it.substringAfterLast('/').substringAfter(':').ifBlank { it }
+        }
+        HttpDownloadUi(activity, folderLabel, onSubmit = {
+            showFinished = false
+            jobPage = 0
+        }, onDismiss = {
+            showHttpDownload = false
+            returnToHttpLink = true
+        })
+    }
+    fun addHttpLink() {
+        if (PortableMaintenance.running) return
+        showHttpDownload = true
+    }
     if (wide) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             SettingRow(tr(R.string.torr_download_add_file), modifier = Modifier.weight(1f).focusRequester(initialFocus), onClick = activity::chooseTorrFile)
+            SettingRow(tr(R.string.http_download_add_link), modifier = Modifier.weight(1f).focusRequester(httpLinkFocus), onClick = ::addHttpLink)
             SettingRow(tr(if (showMagnet) R.string.downloads_magnet_hide else R.string.downloads_magnet_show), modifier = Modifier.weight(1f), onClick = { showMagnet = !showMagnet })
             SettingRow(tr(if (showOptions) R.string.downloads_options_hide else R.string.downloads_options_show), modifier = Modifier.weight(1f), onClick = { showOptions = !showOptions })
         }
     } else {
         SettingRow(tr(R.string.torr_download_add_file), modifier = Modifier.focusRequester(initialFocus), onClick = activity::chooseTorrFile)
+        SettingRow(tr(R.string.http_download_add_link), modifier = Modifier.focusRequester(httpLinkFocus), onClick = ::addHttpLink)
         SettingRow(tr(if (showMagnet) R.string.downloads_magnet_hide else R.string.downloads_magnet_show), onClick = { showMagnet = !showMagnet })
         SettingRow(tr(if (showOptions) R.string.downloads_options_hide else R.string.downloads_options_show), onClick = { showOptions = !showOptions })
     }
@@ -545,7 +575,7 @@ import kotlinx.coroutines.withContext
             "paused" -> R.string.torr_download_paused
             "done" -> R.string.torr_download_done
             "finalizing" -> R.string.torr_download_finalizing
-            else -> when (job.error) {
+            else -> (if (job.http != null) httpDownloadJobErrorResource(job.error) else null) ?: when (job.error) {
                 "space" -> R.string.torr_download_low_space
                 "space_unavailable" -> R.string.torr_download_space_unknown
                 "storage" -> R.string.torr_download_storage_error
@@ -564,6 +594,7 @@ import kotlinx.coroutines.withContext
         val action = when (job.state) {
             "queued", "running" -> tr(R.string.torr_download_pause)
             "paused", "error" -> tr(if (restoreAccess) R.string.torr_folder_access_restore else R.string.torr_download_resume)
+            "done" -> if (job.http != null) tr(R.string.http_download_open) else ""
             else -> ""
         }
         val summary = "${tr(label)} · $percent%" + if (action.isNotEmpty()) " · $action" else ""
@@ -575,6 +606,16 @@ import kotlinx.coroutines.withContext
                     when (job.state) {
                         "queued", "running" -> TorrDownloadActions.pause(activity, job.id)
                         "paused", "error" -> activity.startTorrDownload(job.id)
+                        "done" -> if (job.http != null && !openingHttp && !PortableMaintenance.running) {
+                            openingHttp = true
+                            scope.launch {
+                                try { openCompletedHttpDownload(activity, job) }
+                                catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                                catch (_: Exception) { activity.torrDownloadMessage = activity.getString(R.string.http_download_open_failed) }
+                                finally { openingHttp = false }
+                            }
+                        } else Unit
+                        else -> Unit
                     }
                 }.onFailure { activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed) }
             })

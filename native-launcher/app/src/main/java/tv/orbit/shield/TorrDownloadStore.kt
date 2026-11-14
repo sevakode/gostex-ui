@@ -1,10 +1,13 @@
 package tv.orbit.shield
 
 import android.content.Context
+import android.net.Uri
 import java.io.IOException
 import java.util.Locale
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+
+internal class HttpDownloadDuplicate : IOException("Download link already recorded")
 
 internal data class TorrDownloadJob(
     val id: String, val hash: String, val index: Int, val total: Long,
@@ -13,7 +16,11 @@ internal data class TorrDownloadJob(
     val state: String = "paused", val error: String = "",
     val parentId: String = "", val grouped: Boolean = false,
     val prefetchMovieId: String = "",
-)
+    val http: HttpDownloadOrigin? = null,
+) {
+    // Don't surface network validators or locators if a record is incidentally logged.
+    override fun toString(): String = "TorrDownloadJob(id=$id, state=$state, offset=$offset, total=$total)"
+}
 
 /** Download records are durable operational state, not a second settings store. */
 internal object TorrDownloadStore {
@@ -72,7 +79,7 @@ internal object TorrDownloadStore {
         init(context)
         require(hash.matches(Regex("[0-9a-fA-F]{40}")))
         val key = hash.lowercase(Locale.ROOT)
-        if (key in removingTorrents || mutable.value.any { it.hash.equals(hash, ignoreCase = true) && (it.state != "done" || it.id in activeJobs || it.id in discardingJobs) }) return false
+        if (key in removingTorrents || mutable.value.any { it.http == null && it.hash.equals(hash, ignoreCase = true) && (it.state != "done" || it.id in activeJobs || it.id in discardingJobs) }) return false
         removingTorrents += key
         return true
     }
@@ -120,14 +127,28 @@ internal object TorrDownloadStore {
             mutable.value.size <= MAX_RECORDS - additional)
     }
 
+    /** Cheap admission before allocating the new SAF partial; add rechecks under the same lock. */
+    @Synchronized fun requireHttpAdmission(context: Context, tree: String, resourceKey: String) {
+        require(Uri.parse(tree).scheme == "content" && TorrDownloadJournalCodec.validHttpResourceKey(resourceKey))
+        requireActiveCapacity(context, 1)
+        requireNoHttpDuplicate(tree, resourceKey)
+    }
+
+    private fun requireNoHttpDuplicate(tree: String, resourceKey: String) {
+        if (mutable.value.any { it.tree == tree && it.http?.resourceKey == resourceKey }) throw HttpDownloadDuplicate()
+    }
+
+    private fun canUseSource(job: TorrDownloadJob): Boolean = job.http != null || job.hash.lowercase(Locale.ROOT) !in removingTorrents
+
     @Synchronized fun add(context: Context, job: TorrDownloadJob) {
         init(context)
-        require(job.hash.lowercase(Locale.ROOT) !in removingTorrents && mutable.value.size < MAX_RECORDS &&
+        require(canUseSource(job) && mutable.value.size < MAX_RECORDS &&
             (job.state == "done" || mutable.value.count { it.state != "done" } < MAX_ACTIVE_JOBS) && mutable.value.none {
             it.id == job.id || it.document == job.document ||
                 (it.tree == job.tree && it.parentId == job.parentId && it.finalName.equals(job.finalName, ignoreCase = true))
         })
         TorrDownloadJournalCodec.validate(listOf(job))
+        job.http?.let { requireNoHttpDuplicate(job.tree, it.resourceKey) }
         persist(mutable.value + job)
     }
 
@@ -138,6 +159,16 @@ internal object TorrDownloadStore {
         if (updated == old) return old
         require(updated.id == old.id && updated.hash == old.hash && updated.index == old.index && updated.total == old.total &&
             updated.tree == old.tree && updated.parentId == old.parentId && updated.grouped == old.grouped && updated.finalName == old.finalName && updated.prefetchMovieId == old.prefetchMovieId)
+        if (old.http == null) require(updated.http == null)
+        else {
+            require(updated.name == old.name)
+            if (old.state == "finalizing" && updated.state == "done") {
+                require(old.offset == old.total && updated.offset == old.offset && updated.http == old.http.copy(url = null))
+            } else {
+                require((updated.state == "done") == (old.state == "done"))
+                require(updated.http == old.http && updated.document == old.document && updated.offset >= old.offset)
+            }
+        }
         TorrDownloadJournalCodec.validate(listOf(updated))
         persist(mutable.value.map { if (it.id == id) updated else it })
         return updated
@@ -164,7 +195,7 @@ internal object TorrDownloadStore {
         init(context)
         require(ids.isNotEmpty() && ids.distinct().size == ids.size)
         val selected = mutable.value.filter { it.id in ids }
-        require(selected.size == ids.size && selected.all { it.state in setOf("paused", "error", "queued") && it.hash.lowercase(Locale.ROOT) !in removingTorrents && it.id !in discardingJobs })
+        require(selected.size == ids.size && selected.all { it.state in setOf("paused", "error", "queued") && canUseSource(it) && it.id !in discardingJobs })
         persist(mutable.value.map { if (it.id in ids) it.copy(state = "queued", error = "") else it })
     }
 

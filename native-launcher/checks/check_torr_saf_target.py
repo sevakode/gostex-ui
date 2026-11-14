@@ -203,10 +203,11 @@ try:
             (folder / name).write_text(source)
         target = Path(os.environ.get('GOSTEX_SAF_TARGET_SOURCE', ROOT / 'native-launcher/app/src/main/java/tv/orbit/shield/TorrDownloadTarget.kt'))
         engine = ROOT / 'native-launcher/app/src/main/java/tv/orbit/shield/TorrDownloadEngine.kt'
-        cp = str(COMPILER[1])
+        cp = f'{COMPILER[1]}:{COMPILER[4]}'
         command = [str(JAVA), '-cp', ':'.join(map(str, COMPILER)), 'org.jetbrains.kotlin.cli.jvm.K2JVMCompiler',
                    '-no-stdlib', '-no-reflect', '-classpath', cp, '-d', str(folder / 'classes'),
-                   str(target), str(engine), *(str(folder / name) for name in STUBS)]
+                   str(target), str(engine), str(engine.with_name('HttpDownloadAdmission.kt')),
+                   *(str(folder / name) for name in STUBS)]
         result = subprocess.run(command, capture_output=True, text=True, timeout=60)
         if result.returncode:
             raise SystemExit(result.stderr)

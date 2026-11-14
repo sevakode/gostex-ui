@@ -64,5 +64,6 @@ with tempfile.TemporaryDirectory(prefix='gostex-indicator-') as td:
     source.write_text('package tv.orbit.shield\nimport kotlinx.coroutines.launch\n' + live + model + logic + check)
     runtime = ':'.join(map(str, [COMPILER[1], COMPILER[4]]))
     subprocess.run([str(JAVA), '-cp', ':'.join(map(str, COMPILER)), 'org.jetbrains.kotlin.cli.jvm.K2JVMCompiler',
-                    '-no-stdlib', '-no-reflect', '-classpath', runtime, '-d', str(folder / 'classes'), str(source)], check=True)
+                    '-no-stdlib', '-no-reflect', '-classpath', runtime, '-d', str(folder / 'classes'), str(source),
+                    str(src / 'HttpDownloadAdmission.kt')], check=True)
     subprocess.run([str(JAVA), '-cp', f'{folder / "classes"}:{runtime}', 'tv.orbit.shield.IndicatorKt'], check=True)

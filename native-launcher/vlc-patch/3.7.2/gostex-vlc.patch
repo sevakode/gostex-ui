@@ -46,10 +46,10 @@ index 622f418..14a3575 100644
      <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 diff --git a/application/vlc-android/src/org/videolan/vlc/gui/video/GostexTrackPolicy.kt b/application/vlc-android/src/org/videolan/vlc/gui/video/GostexTrackPolicy.kt
 new file mode 100644
-index 0000000..15c10ed
+index 0000000..b1887d8
 --- /dev/null
 +++ b/application/vlc-android/src/org/videolan/vlc/gui/video/GostexTrackPolicy.kt
-@@ -0,0 +1,20 @@
+@@ -0,0 +1,38 @@
 +/* Copyright (C) 2026 GOSTEX contributors. GPL-2.0-or-later. */
 +package org.videolan.vlc.gui.video
 +
@@ -70,8 +70,26 @@ index 0000000..15c10ed
 +            (language.isEmpty() || norm(track.language).isEmpty() || norm(track.language) == language)
 +    }.singleOrNull()?.id
 +}
++
++/** Main-thread guard for asynchronous stream discovery and explicit choices. */
++internal class GostexTrackSelectionGuard {
++    private var generation = 0L
++    private var audioChosen = false
++    private var subtitleChosen = false
++
++    fun newMedia() { generation++; audioChosen = false; subtitleChosen = false }
++    fun choose(audio: Boolean) { if (audio) audioChosen = true else subtitleChosen = true }
++    fun snapshot(): Long = generation
++    fun isCurrent(snapshot: Long): Boolean = snapshot == generation
++    fun mayApply(audio: Boolean, snapshot: Long): Boolean =
++        snapshot == generation && !(if (audio) audioChosen else subtitleChosen)
++}
++
++/** Only an explicit request for a different URI replaces a paused video. */
++internal fun <T> gostexNewViewRequest(isView: Boolean, current: T?, requested: T?): Boolean =
++    isView && requested != null && requested != current
 diff --git a/application/vlc-android/src/org/videolan/vlc/gui/video/VideoPlayerActivity.kt b/application/vlc-android/src/org/videolan/vlc/gui/video/VideoPlayerActivity.kt
-index 79293d8..7ca3823 100644
+index 79293d8..3de63b2 100644
 --- a/application/vlc-android/src/org/videolan/vlc/gui/video/VideoPlayerActivity.kt
 +++ b/application/vlc-android/src/org/videolan/vlc/gui/video/VideoPlayerActivity.kt
 @@ -200,6 +200,7 @@ import org.videolan.vlc.gui.dialogs.RenderersDialog
@@ -82,7 +100,15 @@ index 79293d8..7ca3823 100644
  import org.videolan.vlc.gui.dialogs.showContext
  import org.videolan.vlc.gui.helpers.BitmapUtil
  import org.videolan.vlc.gui.helpers.KeycodeListener
-@@ -530,6 +531,9 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -286,6 +287,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+     private var lastSpuTrack = "-2"
+     var lockBackButton = false
+     private var wasPaused = false
++    private var pendingNewView = false
+     private var savedTime: Long = -1
+ 
+     lateinit var windowLayoutInfo: WindowLayoutInfo
+@@ -530,6 +532,9 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
      @TargetApi(Build.VERSION_CODES.LOLLIPOP)
      override fun onCreate(savedInstanceState: Bundle?) {
          super.onCreate(savedInstanceState)
@@ -92,7 +118,7 @@ index 79293d8..7ca3823 100644
  
          dialogsDelegate.observeDialogs(this, this)
          Util.checkCpuCompatibility(this)
-@@ -691,6 +695,71 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -691,6 +696,75 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
          }
      }
  
@@ -104,6 +130,7 @@ index 79293d8..7ca3823 100644
 +    var gostexHasNext = false
 +        private set
 +    private var gostexEpisodeStep = 0
++    private val gostexTrackGuard = GostexTrackSelectionGuard()
 +    private fun gostexSeriesKey(): String? {
 +        val id = gostexSeriesId?.takeIf { it.isNotBlank() && it.length <= 256 } ?: return null
 +        return MessageDigest.getInstance("SHA-256").digest(id.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
@@ -134,6 +161,8 @@ index 79293d8..7ca3823 100644
 +    }
 +    internal fun rememberGostexTrack(audio: Boolean, id: String) {
 +        val key = gostexSeriesKey() ?: return
++        gostexTrackGuard.choose(audio)
++        if (!audio) addNextTrack = false
 +        val prefix = "$key.${if (audio) "audio" else "subtitle"}"
 +        val track = if (id == "-1") null else gostexTracks(audio).singleOrNull { it.id == id }
 +        if (id != "-1" && track == null) return
@@ -145,6 +174,7 @@ index 79293d8..7ca3823 100644
 +        val key = gostexSeriesKey() ?: return@Runnable
 +        val player = service ?: return@Runnable
 +        for (audio in listOf(true, false)) {
++            if (!gostexTrackGuard.mayApply(audio, gostexTrackGuard.snapshot())) continue
 +            val prefix = "$key.${if (audio) "audio" else "subtitle"}"
 +            if (!gostexTrackPrefs.getBoolean("$prefix.set", false)) continue
 +            val choice = GostexTrackChoice(gostexTrackPrefs.getBoolean("$prefix.disabled", false),
@@ -164,7 +194,7 @@ index 79293d8..7ca3823 100644
      override fun onAttachedToWindow() {
          super.onAttachedToWindow()
          hasPhysicalNotch = hasNotch()
-@@ -764,6 +833,17 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -764,21 +838,34 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
  
      override fun onNewIntent(intent: Intent) {
          super.onNewIntent(intent)
@@ -180,9 +210,46 @@ index 79293d8..7ca3823 100644
 +            gostexEpisodeStep = 0
 +        }
          setIntent(intent)
++        var requestedUri: Uri? = if (intent.hasExtra(PLAY_EXTRA_ITEM_LOCATION)) {
++            intent.extras?.parcelable<Parcelable>(PLAY_EXTRA_ITEM_LOCATION) as Uri?
++        } else intent.data
++        if (requestedUri?.scheme == "file" && requestedUri.path?.startsWith("/sdcard") == true)
++            requestedUri = FileUtils.convertLocalUri(requestedUri)
++        val newView = gostexNewViewRequest(intent.action == Intent.ACTION_VIEW, videoUri, requestedUri)
++        if (intent.action == Intent.ACTION_VIEW && requestedUri != null) pendingNewView = newView
          if (playbackStarted) service?.run {
              if (overlayDelegate.isHudRightBindingInitialized()) {
-@@ -795,6 +875,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+                 overlayDelegate.setTitle(currentMediaWrapper?.title)
+                         ?: return@run
+             }
+-            var uri: Uri? = if (intent.hasExtra(PLAY_EXTRA_ITEM_LOCATION)) {
+-                intent.extras?.parcelable<Parcelable>(PLAY_EXTRA_ITEM_LOCATION) as Uri?
+-            } else intent.data
+-            if (uri == null || uri == videoUri) return
+-            if ("file" == uri.scheme && uri.path?.startsWith("/sdcard") == true) {
+-                val convertedUri = FileUtils.convertLocalUri(uri)
+-                if (convertedUri == videoUri) return
+-                else uri = convertedUri
+-            }
++            val uri = requestedUri ?: return
++            if (uri == videoUri) return
++            gostexTrackGuard.newMedia()
++            handler.removeCallbacks(gostexTrackRestore)
+             videoUri = uri
+             if (isPlaylistVisible) {
+                 overlayDelegate.playlistAdapter.currentIndex = currentMediaPosition
+@@ -789,12 +876,17 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+             lastTime = -1
+             forcedTime = lastTime
+             enableSubs()
+-            if (this.isPlaying) loadMedia(forceUsingNew = true)
++            if (newView || this.isPlaying) {
++                if (newView) wasPaused = false
++                pendingNewView = false
++                loadMedia(forceUsingNew = true)
++            }
+         }
+     }
  
      @TargetApi(Build.VERSION_CODES.LOLLIPOP)
      override fun onPause() {
@@ -190,7 +257,7 @@ index 79293d8..7ca3823 100644
          val finishing = isFinishing
          if (finishing)
              overridePendingTransition(0, 0)
-@@ -814,12 +895,15 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -814,12 +906,15 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
      @TargetApi(Build.VERSION_CODES.O)
      override fun onUserLeaveHint() {
          if (!isInPictureInPictureMode && displayManager.isPrimary && !isShowingDialog &&
@@ -207,7 +274,7 @@ index 79293d8..7ca3823 100644
          if (videoUri != null && "content" != videoUri?.scheme) {
              outState.putLong(KEY_TIME, savedTime)
              if (playlistModel == null) outState.putParcelable(KEY_URI, videoUri)
-@@ -859,11 +943,14 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -859,11 +954,14 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
                      paramBuilder.setActions(listOf())
                      service?.updateWidgetState()
                      enterPictureInPictureMode(paramBuilder.build())
@@ -225,7 +292,7 @@ index 79293d8..7ca3823 100644
          } else {
              if (Permissions.canDrawOverlays(this)) {
                  switchingView = true
-@@ -1020,6 +1107,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -1020,6 +1118,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
      }
  
      override fun onDestroy() {
@@ -233,7 +300,19 @@ index 79293d8..7ca3823 100644
          super.onDestroy()
          playlistModel?.run {
              dataset.removeObserver(playlistObserver)
-@@ -1091,7 +1179,9 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -1056,7 +1155,10 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+ 
+             initUI()
+ 
+-            loadMedia()
++            val forceNewView = pendingNewView
++            pendingNewView = false
++            if (forceNewView) wasPaused = false
++            loadMedia(forceUsingNew = forceNewView)
+         }
+     }
+ 
+@@ -1091,7 +1193,9 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
              if (!isFinishing) {
                  currentAudioTrack = audioTrack
                  currentSpuTrack = spuTrack
@@ -244,7 +323,7 @@ index 79293d8..7ca3823 100644
              }
  
              if (isMute) mute(false)
-@@ -1202,6 +1292,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -1202,6 +1306,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
  
      open fun exit(resultCode: Int) {
          if (isFinishing) return
@@ -252,7 +331,7 @@ index 79293d8..7ca3823 100644
          val resultIntent = Intent(ACTION_RESULT)
          videoUri?.let { uri ->
              service?.run {
-@@ -1213,6 +1304,11 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -1213,6 +1318,11 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
                  resultIntent.putExtra(EXTRA_DURATION, length)
              }
          }
@@ -264,7 +343,7 @@ index 79293d8..7ca3823 100644
          setResult(resultCode, resultIntent)
          finish()
      }
-@@ -1443,6 +1539,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -1443,6 +1553,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
      }
  
      override fun next() {
@@ -272,7 +351,7 @@ index 79293d8..7ca3823 100644
          if (service?.hasNext() == true) {
              service?.next()
              overlayDelegate.showInfo(getString(R.string.next), 1000)
-@@ -1451,6 +1548,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -1451,6 +1562,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
      }
  
      override fun previous() {
@@ -280,7 +359,7 @@ index 79293d8..7ca3823 100644
          service?.let { service ->
              service.previous(false)
              overlayDelegate.showInfo(getString(R.string.previous), 1000)
-@@ -1578,14 +1676,24 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -1578,14 +1690,26 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
          service?.let { service ->
              when (event.type) {
                  MediaPlayer.Event.Playing -> onPlaying()
@@ -290,6 +369,8 @@ index 79293d8..7ca3823 100644
 +                    overlayDelegate.updateOverlayPausePlay()
 +                }
                  MediaPlayer.Event.Opening -> {
++                    gostexTrackGuard.newMedia()
++                    handler.removeCallbacks(gostexTrackRestore)
 +                    gostexEndedUri = null
                      forcedTime = -1
                      if (!subtitlesExtraPath.isNullOrEmpty()) {
@@ -306,23 +387,63 @@ index 79293d8..7ca3823 100644
                  MediaPlayer.Event.Vout -> {
                      updateNavStatus()
                      if (event.voutCount > 0)
-@@ -1622,6 +1730,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -1596,6 +1720,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+                 MediaPlayer.Event.ESAdded -> {
+                     if (menuIdx == -1) {
+                         val mw = service.currentMediaWrapper ?: return
++                        val gostexGeneration = gostexTrackGuard.snapshot()
+                         if (event.esChangedType == IMedia.Track.Type.Audio) {
+                             lifecycleScope.launch(Dispatchers.IO) {
+                                 val media = medialibrary.findMedia(mw)
+@@ -1620,8 +1745,13 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+                                     "0" -> preferredTrack
+                                     else -> savedTrack
                                  }
-                                 if (audioTrack != "0" || currentAudioTrack != "-2")
-                                     service.setAudioTrack(audioTrack.toString())
-+                                withContext(Dispatchers.Main) { scheduleGostexTrackRestore() }
+-                                if (audioTrack != "0" || currentAudioTrack != "-2")
+-                                    service.setAudioTrack(audioTrack.toString())
++                                withContext(Dispatchers.Main) {
++                                    if (this@VideoPlayerActivity.service !== service || service.currentMediaWrapper !== mw ||
++                                        !gostexTrackGuard.mayApply(true, gostexGeneration)) return@withContext
++                                    if (audioTrack != "0" || currentAudioTrack != "-2")
++                                        service.setAudioTrack(audioTrack)
++                                    scheduleGostexTrackRestore()
++                                }
                              }
                          } else if (event.esChangedType == IMedia.Track.Type.Text) {
                              lifecycleScope.launch(Dispatchers.IO) {
-@@ -1655,6 +1764,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
-                                     service.setSpuTrack(spuTrack)
-                                     lastSpuTrack = "-2"
+@@ -1646,14 +1776,23 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+                                     "0" -> preferredTrack
+                                     else -> savedTrack
                                  }
-+                                withContext(Dispatchers.Main) { scheduleGostexTrackRestore() }
+-                                if (addNextTrack) {
+-                                    val tracks = service.spuTracks
+-                                    @Suppress("UNCHECKED_CAST")
+-                                    if ((tracks as Array<VlcTrack>).isNotEmpty()) service.setSpuTrack(tracks[tracks.size - 1].getId())
+-                                    addNextTrack = false
+-                                } else if (spuTrack != "0" || currentSpuTrack != "-2") {
+-                                    service.setSpuTrack(spuTrack)
+-                                    lastSpuTrack = "-2"
++                                withContext(Dispatchers.Main) {
++                                    if (this@VideoPlayerActivity.service !== service || service.currentMediaWrapper !== mw ||
++                                        (!gostexTrackGuard.isCurrent(gostexGeneration) ||
++                                            (!addNextTrack && !gostexTrackGuard.mayApply(false, gostexGeneration)))) return@withContext
++                                    if (addNextTrack) {
++                                        val tracks = service.spuTracks
++                                        @Suppress("UNCHECKED_CAST")
++                                        if ((tracks as Array<VlcTrack>).isNotEmpty()) {
++                                            if (gostexSeriesKey() != null) gostexTrackGuard.choose(false)
++                                            service.setSpuTrack(tracks[tracks.size - 1].getId())
++                                        }
++                                        addNextTrack = false
++                                    } else if (spuTrack != "0" || currentSpuTrack != "-2") {
++                                        service.setSpuTrack(spuTrack)
++                                        lastSpuTrack = "-2"
++                                    }
++                                    scheduleGostexTrackRestore()
+                                 }
                              }
                          }
-                     }
-@@ -1719,9 +1829,10 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -1719,9 +1858,10 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
      }
  
      private fun onPlaying() {
@@ -334,7 +455,7 @@ index 79293d8..7ca3823 100644
          setPlaybackParameters()
          stopLoading()
          overlayDelegate.updateOverlayPausePlay()
-@@ -2223,6 +2334,12 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+@@ -2223,8 +2363,14 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
                  if (intent.hasExtra(PLAY_EXTRA_ITEM_TITLE))
                      itemTitle = extras.getString(PLAY_EXTRA_ITEM_TITLE)
              }
@@ -345,8 +466,20 @@ index 79293d8..7ca3823 100644
 +                else gostexProgress.getLong(key, 0L).takeIf { it > 0L }?.let { startTime = it }
 +            }
              val restorePlayback = hasMedia && currentMedia?.uri == videoUri
-             if (startTime == 0L && savedTime > 0L && restorePlayback) startTime = savedTime
+-            if (startTime == 0L && savedTime > 0L && restorePlayback) startTime = savedTime
++            if (!forceUsingNew && startTime == 0L && savedTime > 0L && restorePlayback) startTime = savedTime
  
+             var openedMedia: MediaWrapper? = null
+             val resumePlaylist = service.isValidIndex(positionInPlaylist)
+@@ -2256,7 +2402,7 @@ open class VideoPlayerActivity : AppCompatActivity(), PlaybackService.Callback,
+ 
+                         lastAudioTrack = media.audioTrack.toString()
+                         lastSpuTrack = media.spuTrack.toString()
+-                    } else if (!fromStart) {
++                    } else if (!fromStart && !forceUsingNew) {
+                         // not in media library
+                             val rTime = settings.getLong(VIDEO_RESUME_TIME, -1L)
+                             val lastUri = settings.getString(VIDEO_RESUME_URI, "")
 diff --git a/application/vlc-android/src/org/videolan/vlc/gui/video/VideoPlayerOverlayDelegate.kt b/application/vlc-android/src/org/videolan/vlc/gui/video/VideoPlayerOverlayDelegate.kt
 index 8de5429..02b751b 100644
 --- a/application/vlc-android/src/org/videolan/vlc/gui/video/VideoPlayerOverlayDelegate.kt
@@ -387,15 +520,20 @@ index 8de5429..02b751b 100644
 \ No newline at end of file
 +}
 diff --git a/build.gradle b/build.gradle
-index f0add6a..a80c192 100644
+index f0add6a..ee216b1 100644
 --- a/build.gradle
 +++ b/build.gradle
-@@ -60,7 +60,7 @@ allprojects {
+@@ -60,10 +60,10 @@ allprojects {
  }
  
  ext {
 -    appId = "org.videolan.vlc"
+-    versionCode = 3070200
 +    appId = "tv.gostex.vlc"
-     versionCode = 3070200
++    versionCode = 3070210
      vlcMajorVersion = project.hasProperty('forceVlc4') && project.getProperty('forceVlc4') ? 4 : 3
-     versionName = vlcMajorVersion == 3 ? '3.7.2' : '4.0.0-preview - ' + versionCode
+-    versionName = vlcMajorVersion == 3 ? '3.7.2' : '4.0.0-preview - ' + versionCode
++    versionName = vlcMajorVersion == 3 ? '3.7.2-gostex.2' : '4.0.0-preview - ' + versionCode
+     remoteAccessVersion = '0.24.0'
+     libvlcVersion = vlcMajorVersion == 3 ? '3.7.7' :'4.0.0-eap29'
+     medialibraryVersion = (vlcMajorVersion == 3 ? '0.13.24' : '0.13.22-vlc4')

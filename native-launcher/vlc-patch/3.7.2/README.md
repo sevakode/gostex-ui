@@ -1,6 +1,6 @@
 # VLC for Android: GOSTEX series track patch
 
-The separately signed APK and source archive are available in [VLC · GOSTEX 3.7.2](https://github.com/sevakode/gostex-ui/releases/tag/vlc-gostex-3.7.2-1). It has been tested on SHIELD; Galaxy Fold playback has not yet been verified. Download and install the APK separately from GOSTEX. The launcher updater does not update this player.
+The separately signed APK and source archive are available in [VLC · GOSTEX 3.7.2](https://github.com/sevakode/gostex-ui/releases/tag/vlc-gostex-3.7.2-2). The first player was tested on SHIELD. Player2 (13070210 / 3.7.2-gostex.2) has separate Android TV API31 emulator acceptance; physical SHIELD and Galaxy Fold acceptance is tracked separately. Download and install the APK separately from GOSTEX. The launcher updater does not update this player.
 
 This is a separate GPL-2.0-or-later derivative of VLC for Android 3.7.2, not part of the MIT-licensed GOSTEX launcher. Apply `gostex-vlc.patch` to upstream commit `e5740f713d995f6c8e7d92e64134abc3a3b6987d` from https://github.com/videolan/vlc-android. The upstream GPL notice is in COPYING. The original project, sources, build instructions and third-party notices are available from that upstream repository. Publish the complete corresponding source and applicable notices whenever distributing a binary.
 
@@ -9,3 +9,5 @@ The fork uses Android application ID `tv.gostex.vlc` and is signed independently
 Use the upstream build process and its pinned libvlcjni dependency. `TrackPolicyTest.kt` covers matching, changed IDs, duplicate or missing tracks and disabled subtitles; actual playback and automatic transitions require device tests. Debug package `tv.gostex.vlc.debug` is for development only. Never commit a keystore, signing password, or private user data.
 
 The player also checkpoints the paused position for GOSTEX series and restores it after an interrupted activity result. Explicit playback from the beginning clears that checkpoint. Automatic PiP is attempted only during active playback; a system refusal does not crash the player when the screensaver starts. The source patch and published source archive describe this derivative, independently of the launcher APK.
+
+Player2 protects manual audio/subtitle choices from stale asynchronous track discovery, and opens a distinct explicit VIEW request even when the previous item is paused or the player activity has stopped. Same-media task return preserves pause and position. The lifecycle and track policy checks are in `TrackPolicyTest.kt`, `TrackRaceSequenceTest.kt` and `ViewIntentPolicyTest.kt`; `checks/check_vlc_policy.py` runs them against the policy extracted from this source patch. These tests do not simulate every Android callback or prove PiP on all devices.

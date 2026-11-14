@@ -22,9 +22,9 @@ internal object OfficialApkPolicy {
         "com.flycast.emulator" to Source("flyinghead/flycast", Regex("flycast-[0-9][A-Za-z0-9._-]*\\.apk")),
         "org.azahar_emu.azahar" to Source("azahar-emu/azahar", Regex("azahar-android-vanilla-[A-Za-z0-9._-]+\\.apk")),
         VLC_PACKAGE to Source("sevakode/gostex-ui", Regex("VLC-GOSTEX-3\\.7\\.2-android\\.apk"), Pin(
-            tag = "vlc-gostex-3.7.2-1", name = "VLC-GOSTEX-3.7.2-android.apk", bytes = 122074150,
-            sha256 = "181a4a2b38afa7ef72a750ccb631fa277344456b6979b9cebb3b9dcd64fc54f9",
-            certificateSha256 = "9340af47ef933a86522ef340fd33045a874deafe6ddbd02049d3d42a2f6e74c8", versionCode = 13070200
+            tag = "vlc-gostex-3.7.2-2", name = "VLC-GOSTEX-3.7.2-android.apk", bytes = 122059778,
+            sha256 = "f5aefbf8fed54cbcb25b26fde42ab1c2f751d42aa8cf0e2dc131b0bdef340cc3",
+            certificateSha256 = "9340af47ef933a86522ef340fd33045a874deafe6ddbd02049d3d42a2f6e74c8", versionCode = 13070210
         ))
     )
 

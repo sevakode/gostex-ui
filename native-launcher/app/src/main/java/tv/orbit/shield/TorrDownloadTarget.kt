@@ -19,13 +19,24 @@ internal class TorrSafTarget private constructor(private val descriptor: ParcelF
     override fun truncate(size: Long) = storageIo { Os.ftruncate(fd, size) }
     override fun seek(offset: Long) { storageIo { Os.lseek(fd, offset, OsConstants.SEEK_SET) } }
     override fun write(buffer: ByteArray, count: Int) = storageIo { output.write(buffer, 0, count) }
-    override fun sync() = storageIo { Os.fsync(fd) }
+    override fun sync() = storageIo {
+        Os.fsync(fd)
+        // A reliable provider can report an error separately from the raw fd.
+        // Do not publish a durable checkpoint when that error is already known.
+        checkProviderError()
+    }
     fun availableBytes(): Long {
         val stats = try { Os.fstatvfs(fd) } catch (_: Exception) { throw TorrDownloadSpaceUnavailable() }
         if (stats.f_bavail < 0 || stats.f_frsize <= 0) throw TorrDownloadSpaceUnavailable()
         return if (stats.f_bavail > Long.MAX_VALUE / stats.f_frsize) Long.MAX_VALUE else stats.f_bavail * stats.f_frsize
     }
-    override fun close() = storageIo { output.close() }
+    override fun close() = storageIo {
+        try { checkProviderError() } finally { output.close() }
+    }
+
+    private fun checkProviderError() {
+        if (descriptor.canDetectErrors()) descriptor.checkError()
+    }
 
     companion object {
         fun open(resolver: ContentResolver, document: Uri): TorrSafTarget {
@@ -33,6 +44,7 @@ internal class TorrSafTarget private constructor(private val descriptor: ParcelF
             val descriptor = storageIo { resolver.openFileDescriptor(document, "rw") ?: throw IOException("Cannot open destination") }
             return try {
                 // Fail before the transfer if this provider cannot support a safe resume.
+                if (descriptor.canDetectErrors()) descriptor.checkError()
                 Os.lseek(descriptor.fileDescriptor, 0, OsConstants.SEEK_CUR)
                 TorrSafTarget(descriptor)
             } catch (error: Exception) {

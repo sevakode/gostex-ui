@@ -38,9 +38,9 @@ import kotlinx.coroutines.*
 fun main(args:Array<String>)=runBlocking {
  val pkg=OfficialEmulatorApk.VLC_PACKAGE
  val pin=OfficialApkPolicy.sources.getValue(pkg).pin!!
- check(pkg=="tv.gostex.vlc" && pin.tag=="vlc-gostex-3.7.2-1" && pin.name=="VLC-GOSTEX-3.7.2-android.apk")
- check(pin.bytes==122074150L && pin.versionCode==13070200L)
- check(pin.sha256=="181a4a2b38afa7ef72a750ccb631fa277344456b6979b9cebb3b9dcd64fc54f9")
+ check(pkg=="tv.gostex.vlc" && pin.tag=="vlc-gostex-3.7.2-2" && pin.name=="VLC-GOSTEX-3.7.2-android.apk")
+ check(pin.bytes==122059778L && pin.versionCode==13070210L)
+ check(pin.sha256=="f5aefbf8fed54cbcb25b26fde42ab1c2f751d42aa8cf0e2dc131b0bdef340cc3")
  check(pin.certificateSha256=="9340af47ef933a86522ef340fd33045a874deafe6ddbd02049d3d42a2f6e74c8")
  check(OfficialApkPolicy.MAX_BYTES==160L*1024*1024)
  check(OfficialApkPolicy.releaseUrl(pkg)=="https://api.github.com/repos/sevakode/gostex-ui/releases/tags/${pin.tag}")

@@ -680,15 +680,16 @@ class MainActivity : ComponentActivity() {
     }
     internal var pendingEmulatorApk: java.io.File? = null
     internal var emulatorInstallJob: Job? = null
-    internal var pendingEmulatorPermission: String? = null
+    internal var emulatorInstallPackage by mutableStateOf<String?>(null)
+    internal var pendingEmulatorPackage by mutableStateOf<String?>(null)
+    internal var emulatorInstallReturnFocus by mutableStateOf<String?>(null)
+    internal var emulatorInstallRevision by mutableIntStateOf(0)
+    internal var pendingEmulatorPermission by mutableStateOf<String?>(null)
     internal val emulatorPermissionLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        val pkg = pendingEmulatorPermission
-        pendingEmulatorPermission = null
-        if (pkg != null && packageManager.canRequestPackageInstalls() && !PortableMaintenance.running) {
-            downloadOfficialEmulator(pkg)
-        } else if (pkg != null) {
-            notice = ""
-        }
+        pendingEmulatorPermission?.let { finishEmulatorPermission(it) }
+    }
+    internal val emulatorApkLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        finishEmulatorInstall(it.resultCode)
     }
     private var importPlatform = ""
     private var importSource = LibrarySource.FILES
@@ -717,7 +718,7 @@ class MainActivity : ComponentActivity() {
         // supported for system-only receivers, including on Android 14.
         mediaReceiverRegistered = runCatching { registerReceiver(mediaReceiver, filter); true }.getOrDefault(false)
     }
-    override fun onResume() { super.onResume(); pendingEmulatorApk?.delete(); pendingEmulatorApk = null; if (!PortableRestoreStartup.ready || PortableMaintenance.running) return; AgentStateHooks.attach(this); updates.onResume(); libraryVisible = true; watchMountedMedia(); resumeVersion++; refreshLibrary(); startCoverSync() }
+    override fun onResume() { super.onResume(); if (!PortableRestoreStartup.ready || PortableMaintenance.running) return; AgentStateHooks.attach(this); updates.onResume(); libraryVisible = true; watchMountedMedia(); resumeVersion++; refreshLibrary(); startCoverSync() }
     override fun onPause() { AndroidDiagnostics.event("launcher.pause"); super.onPause() }
     override fun onStop() {
         torrentPlaybackDialog?.dismiss()
@@ -1154,6 +1155,11 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         pendingEmulatorPermission = savedInstanceState?.getString("pendingEmulatorPermission")?.takeIf(OfficialEmulatorApk::supports)
+        val stagedPackage = savedInstanceState?.getString("pendingEmulatorPackage")?.takeIf(OfficialEmulatorApk::supports)
+        if (stagedPackage != null) {
+            pendingEmulatorApk = OfficialEmulatorApk.restoreAttempt(this, savedInstanceState?.getString("pendingEmulatorApk"))
+            if (pendingEmulatorApk != null) pendingEmulatorPackage = stagedPackage
+        }
         if (PortableRestoreStartup.ready && !PortableMaintenance.running) {
             torrDownloadFolder = getSharedPreferences("orbit", MODE_PRIVATE).getString("downloads.folder", "").orEmpty()
         }
@@ -1220,6 +1226,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putString("pendingEmulatorPermission", pendingEmulatorPermission)
+        outState.putString("pendingEmulatorPackage", pendingEmulatorPackage)
+        outState.putString("pendingEmulatorApk", pendingEmulatorApk?.name)
         outState.putString("importPlatform", importPlatform)
         outState.putString("importSource", importSource.value)
         outState.putString("pendingCoverId", pendingCoverId)
@@ -2093,7 +2101,7 @@ private fun settingsTitle(section: String): Int = when {
             listOf("addGames", "rescanGames", "folders", "portableCopy", "covers", "ndsEmulator", "androidGames", "groupVersions", "libraryTab", "appsTab")
         "localeGroup" -> listOf("language", "clock")
         "systemGroup" -> listOf("network", "defaultHome", "shield", "services", "remote")
-        "services" -> listOf("torrServer", "torrServeInstall", "revancedManager")
+        "services" -> listOf("vlcGostex", "torrServer", "torrServeInstall", "revancedManager")
         "portableCopy" -> listOf("copyAction", "portablePreview")
         else -> emptyList()
     }
@@ -2174,6 +2182,7 @@ private fun settingsTitle(section: String): Int = when {
                     if (remoteAuto) RemoteStartup.start(activity)
                 })
             } else if (section == "services") {
+                VlcGostexInstallSetting(activity, rowFocus("vlcGostex"))
                 TorrServerStatusSetting(rowFocus("torrServer"))
                 TorrServeInstallSetting(activity, rowFocus("torrServeInstall"))
                 ReVancedInstallSetting(activity, rowFocus("revancedManager"))

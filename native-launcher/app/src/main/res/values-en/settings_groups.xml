@@ -7,7 +7,7 @@
     <string name="settings_playback_title">Video playback</string>
     <string name="settings_playback_summary">Auto-play, next episode and resume</string>
     <string name="settings_services_title">Services and app installers</string>
-    <string name="settings_services_summary">TorrServer and ReVanced Manager</string>
+    <string name="settings_services_summary">Player, torrents and app installation</string>
     <string name="settings_device_title">Device settings</string>
     <string name="settings_controls_group">Controls</string>
     <string name="settings_controls_summary">Gamepad buttons and on-screen hints</string>

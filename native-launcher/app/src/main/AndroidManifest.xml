@@ -13,6 +13,7 @@
     <queries>
         <package android:name="com.termux" />
         <package android:name="com.brouken.player" />
+        <package android:name="tv.gostex.vlc" />
         <package android:name="com.android.vending" />
         <package android:name="com.explusalpha.Snes9xPlus" />
         <package android:name="org.ppsspp.ppsspp" />

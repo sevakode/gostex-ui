@@ -7,7 +7,7 @@
     <string name="settings_playback_title">Reproducción de vídeo</string>
     <string name="settings_playback_summary">Inicio automático, siguiente episodio y reanudación</string>
     <string name="settings_services_title">Servicios e instalación de aplicaciones</string>
-    <string name="settings_services_summary">TorrServer y ReVanced Manager</string>
+    <string name="settings_services_summary">Reproductor, torrents e instalación de apps</string>
     <string name="settings_device_title">Ajustes del dispositivo</string>
     <string name="settings_controls_group">Controles</string>
     <string name="settings_controls_summary">Botones del mando e indicaciones</string>

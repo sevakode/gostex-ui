@@ -67,6 +67,7 @@ jobs:
             native-launcher/checks/check_library_snapshot.py \
             native-launcher/checks/check_import_warnings.py \
             native-launcher/checks/check_remote_install_policy.py \
+            native-launcher/checks/check_official_apk_policy.py \
             native-launcher/checks/check_legacy_catalog_bridge.py \
             native-launcher/checks/check_legacy_catalog_archive.py \
             native-launcher/checks/check_legacy_catalog_recovery.py \

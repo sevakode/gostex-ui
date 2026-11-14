@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="vlc_install_name">VLC · GOSTEX</string>
+    <string name="vlc_install_title">Instalar VLC · GOSTEX</string>
+    <string name="vlc_install_open">Abrir VLC · GOSTEX</string>
+    <string name="vlc_install_update">Actualizar VLC · GOSTEX</string>
+    <string name="vlc_install_source">Versión de VLC de GOSTEX · descargar de GitHub</string>
+    <string name="vlc_install_installed">Instalado · versión de VLC de GOSTEX</string>
+    <string name="vlc_install_downloading">Descargando VLC · GOSTEX…</string>
+    <string name="vlc_install_cancel_hint">Descargando… Pulsa de nuevo para cancelar</string>
+    <string name="vlc_install_permission_hint">Permite la instalación en Android. Pulsa de nuevo para cancelar esta solicitud.</string>
+    <string name="vlc_install_failed">No se pudo instalar VLC · GOSTEX. Comprueba la conexión y vuelve a intentarlo.</string>
+    <string name="vlc_install_incompatible">Esta versión del reproductor no es compatible con Android o el procesador del dispositivo.</string>
+    <string name="vlc_install_conflict">Este paquete procede de otra fuente. No se puede sustituir automáticamente.</string>
+    <string name="app_install_busy">Se está descargando otra aplicación. Espera o cancela su descarga.</string>
+    <string name="app_install_confirm">Finaliza o cancela la instalación en Android</string>
+</resources>

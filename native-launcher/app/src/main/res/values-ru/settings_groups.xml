@@ -7,7 +7,7 @@
     <string name="settings_playback_title">Просмотр видео</string>
     <string name="settings_playback_summary">Автозапуск, следующая серия и продолжение</string>
     <string name="settings_services_title">Сервисы и установка приложений</string>
-    <string name="settings_services_summary">TorrServer и ReVanced Manager</string>
+    <string name="settings_services_summary">Плеер, торренты и установка приложений</string>
     <string name="settings_device_title">Настройки устройства</string>
     <string name="settings_controls_group">Управление</string>
     <string name="settings_controls_summary">Кнопки геймпада и подсказки</string>

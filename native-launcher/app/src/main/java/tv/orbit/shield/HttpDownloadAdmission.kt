@@ -84,7 +84,7 @@ internal class HttpDownloadUrl private constructor(private val uri: URI) {
 internal data class HttpDownloadOrigin(
     val url: HttpDownloadUrl?,
     val resourceKey: String,
-    val expectedEtag: String,
+    val expectedEtag: String?, // Null means a whole-file transfer only.
 ) {
     override fun toString(): String = "HttpDownloadOrigin(redacted)"
 }
@@ -93,7 +93,7 @@ internal data class HttpDownloadAdmissionResult(
     val url: HttpDownloadUrl,
     val resourceKey: String,
     val size: Long,
-    val strongEtag: String,
+    val strongEtag: String?,
 ) {
     override fun toString(): String = "HttpDownloadAdmissionResult(size=$size)"
 }
@@ -204,11 +204,12 @@ internal fun <T> withHttpDownloadResponse(
     fail(HttpDownloadAdmissionError.REDIRECT)
 }
 
-/** A one-byte preflight for a known-size resumable file. */
+/** Identify a known-size file with a one-byte Range request, before creating a partial. */
 internal object HttpDownloadAdmission {
     private const val MAX_TIMEOUT_MS = 5_000
     private const val PROBE_DEADLINE_MS = 12_000L
     private val singleByteRange = Regex("bytes 0-0/([1-9][0-9]{0,18})", RegexOption.IGNORE_CASE)
+    private val contentLength = Regex("[1-9][0-9]{0,18}")
 
     suspend fun probeCancellable(value: String, allowCleartext: Boolean = false): HttpDownloadAdmissionResult =
         withTimeoutOrNull(PROBE_DEADLINE_MS) {
@@ -241,16 +242,32 @@ internal object HttpDownloadAdmission {
         if (original.cleartext && !allowCleartext) fail(HttpDownloadAdmissionError.CLEARTEXT_CONFIRMATION)
         return withHttpDownloadResponse(original, timeoutMs, timeoutMs, cancelled, abort,
             configure = { setRequestProperty("Range", "bytes=0-0") }) { current, connection, status ->
+            fun header(name: String) = connection.singleDownloadHeader(name, HttpDownloadAdmissionError.RESPONSE)
+            fun requireUnencodedBody() {
+                val encoding = header("Content-Encoding")
+                if ((encoding != null && !encoding.equals("identity", ignoreCase = true)) || header("Transfer-Encoding") != null) {
+                    fail(HttpDownloadAdmissionError.UNSUPPORTED)
+                }
+            }
             when (status) {
+                200 -> {
+                    // A server that ignores Range may send the entire file. Do not read its body.
+                    requireUnencodedBody()
+                    if (header("Content-Range") != null) fail(HttpDownloadAdmissionError.UNSUPPORTED)
+                    val size = header("Content-Length")?.takeIf(contentLength::matches)?.toLongOrNull()
+                        ?: fail(HttpDownloadAdmissionError.UNSUPPORTED)
+                    HttpDownloadAdmissionResult(original, current.resourceKey(), size, null)
+                }
                 206 -> {
-                    fun header(name: String) = connection.singleDownloadHeader(name, HttpDownloadAdmissionError.RESPONSE)
-                    val encoding = header("Content-Encoding")
-                    if (encoding != null && !encoding.equals("identity", ignoreCase = true)) fail(HttpDownloadAdmissionError.UNSUPPORTED)
-                    if (header("Content-Length") != "1" || header("Transfer-Encoding") != null) fail(HttpDownloadAdmissionError.UNSUPPORTED)
+                    requireUnencodedBody()
+                    if (header("Content-Length") != "1") fail(HttpDownloadAdmissionError.UNSUPPORTED)
                     val size = header("Content-Range")?.let { singleByteRange.matchEntire(it)?.groupValues?.get(1)?.toLongOrNull() }
                         ?: fail(HttpDownloadAdmissionError.UNSUPPORTED)
                     val etag = header("ETag")
-                    if (etag == null || !isStrongHttpEtag(etag)) fail(HttpDownloadAdmissionError.UNSUPPORTED)
+                    val strong = etag?.takeIf(::isStrongHttpEtag)
+                    if (etag != null && strong == null && !(etag.startsWith("W/") && isStrongHttpEtag(etag.substring(2)))) {
+                        fail(HttpDownloadAdmissionError.UNSUPPORTED)
+                    }
                     checkActive()
                     val firstByte = try { connection.inputStream.use { it.read() } }
                     catch (_: SocketTimeoutException) { checkActive(); fail(HttpDownloadAdmissionError.TIMEOUT) }
@@ -258,11 +275,11 @@ internal object HttpDownloadAdmission {
                     catch (_: IOException) { checkActive(); fail(HttpDownloadAdmissionError.NETWORK) }
                     checkActive()
                     if (firstByte < 0) fail(HttpDownloadAdmissionError.RESPONSE)
-                    HttpDownloadAdmissionResult(original, current.resourceKey(), size, etag)
+                    HttpDownloadAdmissionResult(original, current.resourceKey(), size, strong)
                 }
                 401, 403, 407 -> fail(HttpDownloadAdmissionError.AUTH)
                 404, 410 -> fail(HttpDownloadAdmissionError.NOT_FOUND)
-                200, 204, 416 -> fail(HttpDownloadAdmissionError.UNSUPPORTED)
+                204, 416 -> fail(HttpDownloadAdmissionError.UNSUPPORTED)
                 else -> fail(HttpDownloadAdmissionError.RESPONSE)
             }
         }

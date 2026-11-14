@@ -124,7 +124,7 @@
     <string name="http_download_redirect">This link redirects to another host or too many times. Enter the direct file link.</string>
     <string name="http_download_source_auth">This link requires sign-in or has expired.</string>
     <string name="http_download_not_found">The file was not found at this link.</string>
-    <string name="http_download_unsupported">The server does not provide the file size and information needed to resume safely.</string>
+    <string name="http_download_unsupported">The server did not give a usable file size or sent an unsupported response.</string>
     <string name="http_download_source_timeout">The server did not respond in time.</string>
     <string name="http_download_source_connect">Could not connect to the file server.</string>
     <string name="http_download_source_interrupted">The file download was interrupted.</string>
@@ -137,4 +137,9 @@
     <string name="http_download_added_paused">Download added on pause. Select Resume to start.</string>
     <string name="http_download_open">Open file</string>
     <string name="http_download_open_failed">Could not open the file. Check the drive and that an app can open this file type.</string>
+    <string name="http_download_restart_only_hint">This download cannot resume. If it stops, the partial file stays until you choose to restart and the server is ready to send the file.</string>
+    <string name="http_download_restart">Start over</string>
+    <string name="http_download_restart_confirm">Download from the beginning? The partial file will be replaced only after the server is ready to send the file. Cancel to keep what you have downloaded.</string>
+    <string name="http_download_restart_access_restored">Folder access restored. Choose Start over when you are ready.</string>
+    <string name="http_download_restart_access_check">Check the drive and file, then choose Start over.</string>
 </resources>

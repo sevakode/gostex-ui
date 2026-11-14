@@ -28,9 +28,18 @@ class Fixture(BaseHTTPRequestHandler):
             return self.reply(307, [('Location', '?private=final')])
         if target.path in ('/auth', '/gone', '/invalid'):
             return self.reply({'/auth': 403, '/gone': 410, '/invalid': 500}[target.path])
-        if target.path == '/unranged':
-            self.reply(200, [('Content-Length', '1048576')])
-            self.server.stall.wait(2)  # Unsupported is decided before a full-file body arrives.
+        if target.path in ('/unranged', '/unranged-chunked', '/unranged-no-size', '/unranged-zero', '/unranged-partial'):
+            headers = [('Content-Length', '1048576'), ('ETag', '"still-not-resumable"')]
+            if target.path == '/unranged-chunked':
+                headers.append(('Transfer-Encoding', 'chunked'))
+            elif target.path == '/unranged-no-size':
+                headers.pop(0)
+            elif target.path == '/unranged-zero':
+                headers[0] = ('Content-Length', '0')
+            elif target.path == '/unranged-partial':
+                headers.append(('Content-Range', 'bytes 0-0/1048576'))
+            self.reply(200, headers)
+            self.server.stall.wait(2)  # No body is sent; admitting the file must not wait for it.
             return
         if target.path == '/silent':
             self.server.stall.wait(2)
@@ -40,6 +49,8 @@ class Fixture(BaseHTTPRequestHandler):
             headers[-1] = ('ETag', 'W/"private-validator"')
         elif target.path == '/no-validator':
             headers.pop()
+        elif target.path == '/malformed-validator':
+            headers[-1] = ('ETag', 'not-an-entity-tag')
         elif target.path == '/duplicate':
             headers.append(('ETag', '"different"'))
         elif target.path == '/unknown-length':
@@ -102,17 +113,21 @@ fun main(args: Array<String>) {
     check(runCatching { HttpDownloadUrl.parse("https://example.invalid/file").redirect("http://example.invalid/file") }
         .exceptionOrNull() is HttpDownloadAdmissionException)
     for (unsafe in listOf("cross-origin", "fragment", "loop")) reject("$base/$unsafe?private=fixture", HttpDownloadAdmissionError.REDIRECT)
-    for (unsupported in listOf("weak", "no-validator", "unknown-length", "range-mismatch", "overflow", "overlong", "encoded", "chunked")) {
+    for (unsupported in listOf("malformed-validator", "unknown-length", "range-mismatch", "overflow", "overlong", "encoded", "chunked",
+        "unranged-no-size", "unranged-zero", "unranged-chunked", "unranged-partial")) {
         reject("$base/$unsupported?private=fixture", HttpDownloadAdmissionError.UNSUPPORTED)
     }
-    reject("$base/unranged?private=fixture", HttpDownloadAdmissionError.UNSUPPORTED, timeout = 500)
+    for (restartOnly in listOf("unranged", "weak", "no-validator")) {
+        val admitted = HttpDownloadAdmission.probe("$base/$restartOnly?private=fixture", true, timeoutMs = 500)
+        check(admitted.size == 1048576L && admitted.strongEtag == null && admitted.resourceKey == admitted.url.resourceKey())
+    }
     reject("$base/auth?private=fixture", HttpDownloadAdmissionError.AUTH)
     reject("$base/gone?private=fixture", HttpDownloadAdmissionError.NOT_FOUND)
     reject("$base/duplicate?private=fixture", HttpDownloadAdmissionError.RESPONSE)
     reject("$base/invalid?private=fixture", HttpDownloadAdmissionError.RESPONSE)
     reject("$base/truncated?private=fixture", HttpDownloadAdmissionError.RESPONSE)
     reject("$base/silent?private=fixture", HttpDownloadAdmissionError.TIMEOUT, timeout = 120)
-    println("PASS: byte-range admission, identity, private URL/validator, redirect and explicit failures")
+    println("PASS: resumable and known-length restart-only admission, private URL/validator, redirect and explicit failures")
 }
 '''
 

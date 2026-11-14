@@ -6,8 +6,8 @@ import android.content.Intent
 internal object TorrDownloadActions {
     /** Called from visible UI only: Android restricts starting data transfers in background. */
     fun start(context: Context, id: String) = startMany(context, listOf(id))
-    fun startMany(context: Context, ids: List<String>) {
-        TorrDownloadStore.queue(context, ids)
+    fun startMany(context: Context, ids: List<String>, restartId: String? = null) {
+        TorrDownloadStore.queue(context, ids, restartId)
         try {
             context.startForegroundService(Intent(context, TorrDownloadService::class.java).setAction(TorrDownloadService.ACTION_START))
         } catch (error: Exception) {

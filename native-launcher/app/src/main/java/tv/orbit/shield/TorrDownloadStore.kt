@@ -18,6 +18,8 @@ internal data class TorrDownloadJob(
     val prefetchMovieId: String = "",
     val http: HttpDownloadOrigin? = null,
 ) {
+    val requiresHttpRestart: Boolean get() = http != null && http.expectedEtag == null && offset > 0 && offset < total
+
     // Don't surface network validators or locators if a record is incidentally logged.
     override fun toString(): String = "TorrDownloadJob(id=$id, state=$state, offset=$offset, total=$total)"
 }
@@ -148,7 +150,10 @@ internal object TorrDownloadStore {
                 (it.tree == job.tree && it.parentId == job.parentId && it.finalName.equals(job.finalName, ignoreCase = true))
         })
         TorrDownloadJournalCodec.validate(listOf(job))
-        job.http?.let { requireNoHttpDuplicate(job.tree, it.resourceKey) }
+        job.http?.let {
+            require(it.expectedEtag != null || job.state != "done") // Restart-only files complete through finalization.
+            requireNoHttpDuplicate(job.tree, it.resourceKey)
+        }
         persist(mutable.value + job)
     }
 
@@ -174,6 +179,16 @@ internal object TorrDownloadStore {
         return updated
     }
 
+    /** Call only after the full HTTP response is accepted, before truncating the owned partial. */
+    @Synchronized fun resetHttpCheckpoint(context: Context, id: String): TorrDownloadJob {
+        init(context)
+        val old = mutable.value.firstOrNull { it.id == id } ?: throw IOException("Download not found")
+        require(id in activeJobs && old.state == "running" && old.requiresHttpRestart)
+        val updated = old.copy(offset = 0)
+        persist(mutable.value.map { if (it.id == id) updated else it })
+        return updated
+    }
+
     @Synchronized fun removeRecord(context: Context, id: String) {
         init(context)
         val current = mutable.value.firstOrNull { it.id == id } ?: return
@@ -191,11 +206,17 @@ internal object TorrDownloadStore {
         if (paused != mutable.value) persist(paused)
     }
 
-    @Synchronized fun queue(context: Context, ids: List<String>) {
+    @Synchronized fun queue(context: Context, ids: List<String>, restartId: String? = null) {
         init(context)
         require(ids.isNotEmpty() && ids.distinct().size == ids.size)
         val selected = mutable.value.filter { it.id in ids }
         require(selected.size == ids.size && selected.all { it.state in setOf("paused", "error", "queued") && canUseSource(it) && it.id !in discardingJobs })
+        // A paused worker can still commit its tail. An offset of zero may become
+        // nonzero before the next worker starts, invalidating an ordinary queue action.
+        require(selected.none { it.id in activeJobs && it.http?.let { source -> source.expectedEtag == null } == true })
+        // Discarding progress must be explicit for one partial, never a side effect of a batch start.
+        if (restartId == null) require(selected.none { it.requiresHttpRestart })
+        else require(selected.size == 1 && selected[0].id == restartId && selected[0].requiresHttpRestart)
         persist(mutable.value.map { if (it.id in ids) it.copy(state = "queued", error = "") else it })
     }
 

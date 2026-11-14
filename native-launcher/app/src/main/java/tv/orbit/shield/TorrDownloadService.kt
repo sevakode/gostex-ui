@@ -122,9 +122,15 @@ internal class TorrDownloadService : Service() {
                                             http, job.total, target, checkpoint, cancelled = cancelled,
                                             saveCheckpoint = save, spaceAllowance = space, beforeWrite = beforeWrite,
                                             reportProgress = progress, abort = transfer.http,
+                                            resetForRestart = if (job.requiresHttpRestart) ({
+                                                job = TorrDownloadStore.resetHttpCheckpoint(this, job.id)
+                                                TorrDownloadLiveProgress.clear(job.id)
+                                            }) else null,
                                         )
                                     } catch (error: TorrSourceFailure) {
                                         if (cancelled()) break
+                                        // A source that cannot resume must never silently start over.
+                                        if (job.http?.let { it.expectedEtag == null } == true) throw error
                                         val delay = torrRetryDelay(error.reason, retries, TorrDownloadRetryOptions.read(this)) ?: throw error
                                         retries++
                                         job = TorrDownloadStore.update(this, job.id) { if (it.state == "running") it.copy(error = "retrying") else it }
@@ -232,7 +238,8 @@ internal class TorrDownloadService : Service() {
         // was stopped. Never expose it as a completed ROM until checked again.
         if (job.offset != job.total) throw IOException("Incomplete checkpoint")
         TorrSafTarget.open(contentResolver, completed ?: Uri.parse(job.document)).use { target ->
-            TorrDownloadEngine.verifyCompleted(job.total, target, TorrDownloadCheckpoint(job.offset, job.etag))
+            TorrDownloadEngine.verifyCompleted(job.total, target, TorrDownloadCheckpoint(job.offset, job.etag),
+                requireStrongEtag = job.http?.let { it.expectedEtag != null } ?: true)
         }
         if (completed != null) return completed
         val result = DocumentsContract.renameDocument(contentResolver, Uri.parse(job.document), job.finalName)

@@ -124,7 +124,7 @@
     <string name="http_download_redirect">Ссылка перенаправляет на другой сервер или слишком много раз. Введите прямую ссылку на файл.</string>
     <string name="http_download_source_auth">Для доступа по ссылке нужен вход или срок её действия истёк.</string>
     <string name="http_download_not_found">Файл по этой ссылке не найден.</string>
-    <string name="http_download_unsupported">Сервер не сообщает размер файла и данные для безопасного продолжения загрузки.</string>
+    <string name="http_download_unsupported">Сервер не сообщил допустимый размер файла или прислал неподдерживаемый ответ.</string>
     <string name="http_download_source_timeout">Сервер не ответил вовремя.</string>
     <string name="http_download_source_connect">Не удалось подключиться к серверу файла.</string>
     <string name="http_download_source_interrupted">Загрузка файла прервалась.</string>
@@ -137,4 +137,9 @@
     <string name="http_download_added_paused">Загрузка добавлена на паузе. Чтобы начать, выберите «Продолжить».</string>
     <string name="http_download_open">Открыть файл</string>
     <string name="http_download_open_failed">Не удалось открыть файл. Проверьте накопитель и наличие приложения для файлов этого типа.</string>
+    <string name="http_download_restart_only_hint">Эту загрузку нельзя продолжить с места остановки. Частичный файл сохранится, пока вы не выберете «Начать заново» и сервер не будет готов отправить файл.</string>
+    <string name="http_download_restart">Начать заново</string>
+    <string name="http_download_restart_confirm">Скачать с начала? Частичный файл будет заменён, только когда сервер будет готов отправить файл. Отмените действие, чтобы сохранить скачанное.</string>
+    <string name="http_download_restart_access_restored">Доступ к папке восстановлен. Когда будете готовы, выберите «Начать заново».</string>
+    <string name="http_download_restart_access_check">Проверьте накопитель и файл, затем выберите «Начать заново».</string>
 </resources>

@@ -127,10 +127,10 @@ internal object TorrDownloadDocuments {
 
     /** Direct files use the same destination checks and durable queue as a torrent file. */
     @Synchronized fun enqueueHttp(context: Context, tree: Uri, admission: HttpDownloadAdmissionResult, name: String): TorrDownloadJob {
-        require(tree.scheme == "content" && admission.size > 0 && isStrongHttpEtag(admission.strongEtag))
+        require(tree.scheme == "content" && admission.size > 0 &&
+            (admission.strongEtag == null || isStrongHttpEtag(admission.strongEtag)))
         val finalName = validateHttpDownloadName(name)
         prepareTree(context, tree)
-        TorrDownloadStore.requireActiveCapacity(context, 1)
         TorrDownloadStore.requireHttpAdmission(context, tree.toString(), admission.resourceKey)
         val id = UUID.randomUUID().toString()
         val parentId = DocumentsContract.getTreeDocumentId(tree)

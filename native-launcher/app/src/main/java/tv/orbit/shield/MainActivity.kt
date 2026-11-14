@@ -141,14 +141,15 @@ class MainActivity : ComponentActivity() {
             ?: packageManager.getLaunchIntentForPackage("ru.yourok.torrserve")
         if (intent == null || runCatching { startActivity(intent) }.isFailure) torrDownloadMessage = getString(R.string.torr_download_unavailable)
     }
-    private var pendingTorrNotificationStart: List<String>? = null
+    private data class DownloadStart(val ids: List<String>, val restartId: String?)
+    private var pendingTorrNotificationStart: DownloadStart? = null
     private val torrNotificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
-        val ids = pendingTorrNotificationStart
+        val request = pendingTorrNotificationStart
         pendingTorrNotificationStart = null
-        if (ids != null) runCatching { TorrDownloadActions.startMany(this, ids) }
+        if (request != null) runCatching { TorrDownloadActions.startMany(this, request.ids, request.restartId) }
             .onFailure { torrDownloadMessage = getString(R.string.torr_download_failed) }
     }
-    internal fun startTorrDownload(id: String) = startTorrDownloads(listOf(id))
+    internal fun startTorrDownload(id: String, restartId: String? = null) = startTorrDownloads(listOf(id), restartId)
     private var torrGameImporting = false
     internal fun addDownloadedGame(job: TorrDownloadJob) {
         if (PortableMaintenance.running || torrGameImporting || job.state != "done") return
@@ -197,15 +198,15 @@ class MainActivity : ComponentActivity() {
             }
         }.setNegativeButton(R.string.cancel, null).show()
     }
-    internal fun startTorrDownloads(ids: List<String>) {
+    internal fun startTorrDownloads(ids: List<String>, restartId: String? = null) {
         val prefs = getSharedPreferences("orbit", MODE_PRIVATE)
         if (android.os.Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED &&
             !prefs.getBoolean("downloads.notificationPrompted", false)) {
-            pendingTorrNotificationStart = ids
+            pendingTorrNotificationStart = DownloadStart(ids, restartId)
             prefs.edit().putBoolean("downloads.notificationPrompted", true).apply()
             torrNotificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-        } else TorrDownloadActions.startMany(this, ids)
+        } else TorrDownloadActions.startMany(this, ids, restartId)
     }
     private sealed interface DownloadFolderRequest {
         data object ChangeDefault : DownloadFolderRequest

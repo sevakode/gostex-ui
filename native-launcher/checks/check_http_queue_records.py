@@ -14,6 +14,8 @@ import org.json.JSONObject
 private const val FILE = "https://example.invalid/record.bin?download=private-fixture"
 private const val ACTIVE_ID = "00000000-0000-4000-8000-000000000002"
 private const val DONE_ID = "00000000-0000-4000-8000-000000000003"
+private const val RESTART_ID = "00000000-0000-4000-8000-000000000005"
+private const val RESTART_DONE_ID = "00000000-0000-4000-8000-000000000006"
 private const val TREE = "content://provider/tree/downloads"
 private val tag = "\"strong-private-fixture\""
 private val legacyHash = "b".repeat(40)
@@ -25,17 +27,26 @@ fun main(args: Array<String>) {
         "$TREE/document/partial", "record.bin", http = origin)
     val finalize = pending.copy(id = DONE_ID, document = "$TREE/document/other-partial", name = "done.bin", finalName = "done.bin",
         http = origin.copy(url = HttpDownloadUrl.parse("https://example.invalid/done.bin?download=finish-fixture"), resourceKey = "c".repeat(64)))
+    val restart = pending.copy(id = RESTART_ID, document = "$TREE/document/restart-partial", name = "whole.bin", finalName = "whole.bin",
+        http = origin.copy(resourceKey = "e".repeat(64), expectedEtag = null))
+    val restartDone = restart.copy(id = RESTART_DONE_ID, document = "$TREE/document/whole-done", name = "whole-done.bin",
+        finalName = "whole-done.bin", state = "done", offset = restart.total,
+        http = restart.http!!.copy(url = null, resourceKey = "f".repeat(64)))
     fun encode(job: TorrDownloadJob) = TorrDownloadJournalCodec.encode(job)
     fun row(id: String) = TorrDownloadStore.jobs.value.single { it.id == id }
 
     if (args[0] == "reload") {
         TorrDownloadStore.recover(ctx)
         val jobs = TorrDownloadStore.jobs.value
-        check(jobs.size == 3 && jobs.first().hash == legacyHash && jobs.first().http == null)
+        check(jobs.size == 5 && jobs.first().hash == legacyHash && jobs.first().http == null)
         check(row(ACTIVE_ID) == pending.copy(offset = 17, etag = tag, state = "paused"))
         check(row(DONE_ID) == finalize.copy(offset = 1024, etag = tag, state = "done", document = "$TREE/document/done", http = finalize.http!!.copy(url = null)))
         check(!encode(row(DONE_ID)).contains("finish-fixture") && !encode(row(DONE_ID)).contains("example.invalid"))
         check(runCatching { TorrDownloadStore.requireHttpAdmission(ctx, TREE, row(DONE_ID).http!!.resourceKey) }.exceptionOrNull() is HttpDownloadDuplicate)
+        check(row(RESTART_ID) == restart.copy(offset = 31))
+        check(row(RESTART_ID).requiresHttpRestart)
+        check(row(RESTART_DONE_ID) == restartDone && !row(RESTART_DONE_ID).requiresHttpRestart)
+        check(FILE !in encode(row(RESTART_DONE_ID)))
         println("PASS: cold mixed queue reopen and pause recovery; completed URL stays removed")
         return
     }
@@ -48,15 +59,15 @@ fun main(args: Array<String>) {
 
     val httpWire = JSONObject(encode(pending))
     check(!httpWire.has("hash") && !httpWire.has("index")) // Old readers require both; can't mistake this for a torrent.
-    check(httpWire.getJSONObject("http").getString("url") == FILE)
+    check(httpWire.getJSONObject("http").let { it.getString("url") == FILE && it.getString("expectedEtag") == tag && !it.has("restartOnly") })
     check(TorrDownloadJournalCodec.decode(httpWire.toString()) == pending)
     check("private-fixture" !in pending.toString() && "private-fixture" !in pending.copy(etag = tag).toString())
     for (value in listOf(JSONArray().put(httpWire).toString(), JSONArray().put(legacyWire).put(httpWire).toString())) {
         check(runCatching { TorrDownloadJournalCodec.readLegacy(value, null) }.isFailure)
         check(runCatching { TorrDownloadJournalCodec.readLegacy("[]", value) }.isFailure)
     }
-    fun rejects(change: JSONObject.() -> Unit) {
-        val malformed = JSONObject(httpWire.toString()).apply(change)
+    fun rejects(base: JSONObject = httpWire, change: JSONObject.() -> Unit) {
+        val malformed = JSONObject(base.toString()).apply(change)
         val error = runCatching { TorrDownloadJournalCodec.decode(malformed.toString()) }.exceptionOrNull()
         check(error is IllegalArgumentException && error.cause == null && "private-fixture" !in error.toString())
     }
@@ -82,6 +93,25 @@ fun main(args: Array<String>) {
     rejects { put("state", "done"); put("offset", 1024); put("etag", tag) }
     check(TorrDownloadJournalCodec.decode(encode(pending.copy(etag = tag))) == pending.copy(etag = tag))
 
+    val restartWire = JSONObject(encode(restart.copy(offset = 31)))
+    val restartOriginWire = restartWire.getJSONObject("http")
+    check(restartOriginWire.opt("restartOnly") == true && !restartOriginWire.has("expectedEtag"))
+    check(!restartWire.has("hash") && !restartWire.has("index") && restartWire.isNull("etag"))
+    check(TorrDownloadJournalCodec.decode(restartWire.toString()) == restart.copy(offset = 31))
+    check(runCatching { TorrDownloadJournalCodec.readLegacy("[${restartWire}]", null) }.isFailure)
+    rejects(restartWire) { getJSONObject("http").put("expectedEtag", tag) }
+    rejects(restartWire) { getJSONObject("http").put("expectedEtag", JSONObject.NULL) }
+    rejects(restartWire) { getJSONObject("http").put("restartOnly", false) }
+    rejects(restartWire) { getJSONObject("http").put("restartOnly", "true") }
+    rejects(restartWire) { getJSONObject("http").put("restartOnly", JSONObject.NULL) }
+    rejects(restartWire) { getJSONObject("http").remove("restartOnly") }
+    rejects(restartWire) { put("etag", tag) }
+    rejects(restartWire) { put("offset", -1) }
+    rejects(restartWire) { put("offset", 1025) }
+    rejects(restartWire) { put("state", "finalizing") }
+    rejects(restartWire) { put("state", "done"); put("offset", 1024) }
+    check(TorrDownloadJournalCodec.decode(encode(restartDone)) == restartDone)
+
     check(ctx.prefs.edit().putString("downloads.folder", "unchanged").commit())
     TorrDownloadStore.add(ctx, legacy)
     TorrDownloadStore.requireHttpAdmission(ctx, TREE, origin.resourceKey)
@@ -101,6 +131,7 @@ fun main(args: Array<String>) {
     TorrDownloadStore.queue(ctx, listOf(pending.id, finalize.id))
     check(TorrDownloadStore.claimWorker(ctx, pending.id))
     TorrDownloadStore.update(ctx, pending.id) { it.copy(state = "running", offset = 17, etag = tag) }
+    check(runCatching { TorrDownloadStore.resetHttpCheckpoint(ctx, pending.id) }.isFailure)
     TorrDownloadStore.releaseWorker(pending.id)
     for (change in listOf<(TorrDownloadJob) -> TorrDownloadJob>(
         { it.copy(http = origin.copy(url = HttpDownloadUrl.parse("https://example.invalid/wrong"))) },
@@ -123,8 +154,59 @@ fun main(args: Array<String>) {
     check(row(finalize.id).http!!.url == null && "finish-fixture" !in ctx.journalFile.readText())
     check("private-fixture" in ctx.journalFile.readText()) // Unfinished direct source is still resumable.
     check(runCatching { TorrDownloadStore.update(ctx, finalize.id) { it.copy(state = "paused", http = finalize.http) } }.isFailure)
+    TorrDownloadStore.add(ctx, restart)
+    check(!row(RESTART_ID).requiresHttpRestart)
+    check(runCatching { TorrDownloadStore.queue(ctx, listOf(RESTART_ID), restartId = RESTART_ID) }.isFailure)
+    TorrDownloadStore.queue(ctx, listOf(RESTART_ID))
+    check(TorrDownloadStore.claimWorker(ctx, RESTART_ID))
+    TorrDownloadStore.update(ctx, RESTART_ID) { it.copy(state = "running") }
+    TorrDownloadStore.update(ctx, RESTART_ID) { it.copy(state = "paused") }
+    check(runCatching { TorrDownloadStore.queue(ctx, listOf(RESTART_ID)) }.isFailure) // Tail flush can turn zero into a partial.
+    TorrDownloadStore.update(ctx, RESTART_ID) { it.copy(offset = 64) }
+    check(runCatching { TorrDownloadStore.resetHttpCheckpoint(ctx, RESTART_ID) }.isFailure) // Pause wins the reset race.
+    TorrDownloadStore.releaseWorker(RESTART_ID)
+    val beforeQueue = ctx.journalFile.readText()
+    for (reject in listOf<() -> Unit>(
+        { TorrDownloadStore.queue(ctx, listOf(RESTART_ID)) },
+        { TorrDownloadStore.queue(ctx, listOf(RESTART_ID, legacy.id)) },
+        { TorrDownloadStore.queue(ctx, listOf(RESTART_ID, legacy.id), restartId = RESTART_ID) },
+        { TorrDownloadStore.queue(ctx, listOf(RESTART_ID), restartId = legacy.id) },
+        { TorrDownloadStore.queue(ctx, listOf(legacy.id), restartId = legacy.id) },
+    )) check(runCatching(reject).isFailure && ctx.journalFile.readText() == beforeQueue)
+    TorrDownloadStore.queue(ctx, listOf(RESTART_ID), restartId = RESTART_ID)
+    check(row(RESTART_ID) == restart.copy(offset = 64, state = "queued")) // Approval alone is not a reset.
+    check(runCatching { TorrDownloadStore.resetHttpCheckpoint(ctx, RESTART_ID) }.isFailure)
+    TorrDownloadStore.update(ctx, RESTART_ID) { it.copy(state = "running") }
+    check(runCatching { TorrDownloadStore.resetHttpCheckpoint(ctx, RESTART_ID) }.isFailure) // No worker owns it.
+    TorrDownloadStore.update(ctx, RESTART_ID) { it.copy(state = "paused") }
+    TorrDownloadStore.queue(ctx, listOf(RESTART_ID), restartId = RESTART_ID)
+    check(TorrDownloadStore.claimWorker(ctx, RESTART_ID))
+    TorrDownloadStore.update(ctx, RESTART_ID) { it.copy(state = "running") }
+    val old = row(RESTART_ID)
+    val beforeReset = ctx.journalFile.readText()
+    check(runCatching { TorrDownloadStore.update(ctx, RESTART_ID) { it.copy(offset = 0) } }.isFailure)
+    ctx.failWriteOnce = true
+    check(runCatching { TorrDownloadStore.resetHttpCheckpoint(ctx, RESTART_ID) }.isFailure)
+    check(row(RESTART_ID) == old && ctx.journalFile.readText() == beforeReset)
+    check(TorrDownloadStore.resetHttpCheckpoint(ctx, RESTART_ID) == old.copy(offset = 0))
+    check(row(RESTART_ID) == old.copy(offset = 0) && ctx.journalFile.readText() != beforeReset)
+    TorrDownloadStore.update(ctx, RESTART_ID) { it.copy(offset = 31) }
+    TorrDownloadStore.releaseWorker(RESTART_ID)
+
+    check(runCatching { TorrDownloadStore.add(ctx, restartDone) }.isFailure)
+    val ready = restartDone.copy(offset = 0, state = "paused", document = "$TREE/document/whole-done-partial",
+        http = restartDone.http!!.copy(url = restart.http!!.url))
+    TorrDownloadStore.add(ctx, ready)
+    check(runCatching { TorrDownloadStore.update(ctx, RESTART_DONE_ID) { restartDone } }.isFailure)
+    TorrDownloadStore.queue(ctx, listOf(RESTART_DONE_ID))
+    check(TorrDownloadStore.claimWorker(ctx, RESTART_DONE_ID))
+    TorrDownloadStore.update(ctx, RESTART_DONE_ID) { it.copy(offset = it.total, state = "running") }
+    check(!row(RESTART_DONE_ID).requiresHttpRestart && runCatching { TorrDownloadStore.resetHttpCheckpoint(ctx, RESTART_DONE_ID) }.isFailure)
+    TorrDownloadStore.update(ctx, RESTART_DONE_ID) { it.copy(state = "finalizing") }
+    check(TorrDownloadStore.update(ctx, RESTART_DONE_ID) { restartDone } == restartDone)
+    TorrDownloadStore.releaseWorker(RESTART_DONE_ID)
     check(ctx.prefs.getString("downloads.folder", null) == "unchanged")
-    println("PASS: typed encoding, malformed/legacy rejection, duplicate protection, immutable checkpoints and atomic URL removal")
+    println("PASS: typed encoding, malformed/legacy rejection, duplicate protection, immutable checkpoints, explicit durable restart and atomic URL removal")
 }
 '''
 

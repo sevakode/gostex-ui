@@ -24,7 +24,8 @@ internal object TorrDownloadJournalCodec {
         if (job.http == null) { put("hash", job.hash); put("index", job.index) }
         else put("http", JSONObject().apply {
             put("resourceKey", job.http.resourceKey)
-            put("expectedEtag", job.http.expectedEtag)
+            val validator = job.http.expectedEtag
+            if (validator == null) put("restartOnly", true) else put("expectedEtag", validator)
             if (job.state != "done") job.http.url?.let { put("url", it.serialized) }
         })
         put("total", job.total)
@@ -49,8 +50,11 @@ internal object TorrDownloadJournalCodec {
             require(obj.isNull("etag") || obj.opt("etag") is String)
             val payload = obj.opt("http") as? JSONObject ?: throw IllegalArgumentException()
             val key = payload.opt("resourceKey") as? String ?: throw IllegalArgumentException()
-            val etag = payload.opt("expectedEtag") as? String ?: throw IllegalArgumentException()
-            require(payload.keys().asSequence().all { it == "resourceKey" || it == "expectedEtag" || it == "url" })
+            require(payload.keys().asSequence().all { it == "resourceKey" || it == "expectedEtag" || it == "restartOnly" || it == "url" })
+            val etag = if (payload.has("restartOnly")) {
+                require(payload.opt("restartOnly") == true && !payload.has("expectedEtag"))
+                null
+            } else payload.opt("expectedEtag") as? String ?: throw IllegalArgumentException()
             val url = if (payload.has("url")) HttpDownloadUrl.parse(payload.opt("url") as? String ?: throw IllegalArgumentException()) else null
             decodeJob(obj, HttpDownloadOrigin(url, key, etag))
         } catch (_: Exception) { throw IllegalArgumentException("Invalid HTTP download record") }
@@ -108,9 +112,14 @@ internal object TorrDownloadJournalCodec {
         if (http == null) TorrDownloadSource(job.hash, job.index, job.total)
         else {
             require(job.hash.isEmpty() && job.index == 0 && job.total > 0 && !job.grouped && job.prefetchMovieId.isEmpty())
-            require(validHttpResourceKey(http.resourceKey) && isStrongHttpEtag(http.expectedEtag))
+            require(validHttpResourceKey(http.resourceKey))
             require(if (job.state == "done") http.url == null else http.url != null)
-            require(if (job.offset == 0L) job.etag == null || job.etag == http.expectedEtag else job.etag == http.expectedEtag)
+            val validator = http.expectedEtag
+            if (validator == null) require(job.etag == null)
+            else {
+                require(isStrongHttpEtag(validator))
+                require((job.offset == 0L && job.etag == null) || job.etag == validator)
+            }
             require(job.state !in setOf("finalizing", "done") || job.offset == job.total)
         }
         require(job.offset in 0..job.total && job.name.length in 1..512 && job.finalName.length in 1..255)

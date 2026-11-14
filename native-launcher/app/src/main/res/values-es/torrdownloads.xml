@@ -124,7 +124,7 @@
     <string name="http_download_redirect">El enlace redirige a otro servidor o demasiadas veces. Introduce el enlace directo al archivo.</string>
     <string name="http_download_source_auth">Este enlace requiere iniciar sesión o ha caducado.</string>
     <string name="http_download_not_found">No se encontró el archivo en este enlace.</string>
-    <string name="http_download_unsupported">El servidor no indica el tamaño y los datos necesarios para reanudar la descarga con seguridad.</string>
+    <string name="http_download_unsupported">El servidor no indicó un tamaño de archivo válido o envió una respuesta incompatible.</string>
     <string name="http_download_source_timeout">El servidor no respondió a tiempo.</string>
     <string name="http_download_source_connect">No se pudo conectar con el servidor del archivo.</string>
     <string name="http_download_source_interrupted">Se interrumpió la descarga del archivo.</string>
@@ -137,4 +137,9 @@
     <string name="http_download_added_paused">Descarga añadida en pausa. Selecciona Reanudar para empezar.</string>
     <string name="http_download_open">Abrir archivo</string>
     <string name="http_download_open_failed">No se pudo abrir el archivo. Comprueba la unidad y que haya una aplicación para este tipo de archivo.</string>
+    <string name="http_download_restart_only_hint">Esta descarga no se puede reanudar. Si se detiene, el archivo parcial se conserva hasta que decidas empezar de nuevo y el servidor pueda enviarlo.</string>
+    <string name="http_download_restart">Empezar de nuevo</string>
+    <string name="http_download_restart_confirm">¿Descargar desde el principio? El archivo parcial se reemplazará solo cuando el servidor pueda enviar el archivo. Cancela para conservar lo que ya se descargó.</string>
+    <string name="http_download_restart_access_restored">Acceso a la carpeta restablecido. Elige Empezar de nuevo cuando quieras.</string>
+    <string name="http_download_restart_access_check">Comprueba la unidad y el archivo. Luego elige Empezar de nuevo.</string>
 </resources>

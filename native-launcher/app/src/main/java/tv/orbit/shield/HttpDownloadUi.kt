@@ -134,6 +134,7 @@ internal fun HttpDownloadUi(activity: MainActivity, folderLabel: String?, onSubm
                     val label = folderLabel.orEmpty()
                     val summary = if (label.isBlank()) size else tr(R.string.http_download_save_to, size, label)
                     Text(summary, color = Color.LightGray, fontSize = 14.sp)
+                    if (verified.strongEtag == null) HttpDownloadFeedback(tr(R.string.http_download_restart_only_hint))
                     HttpDownloadField(name, { if (it.length <= 255) { name = it; destinationError = "" } },
                         tr(R.string.http_download_name), fieldFocus, KeyboardType.Text, ::finishTyping)
                     if (destinationError.isNotEmpty()) HttpDownloadFeedback(destinationError)
@@ -164,6 +165,26 @@ internal fun HttpDownloadUi(activity: MainActivity, folderLabel: String?, onSubm
                 else -> fieldFocus
             }
             runCatching { requester.requestFocus() }
+        }
+    }
+}
+
+@Composable
+internal fun ConfirmHttpDownloadRestart(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    val cancelFocus = remember { FocusRequester() }
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Column(
+            Modifier.widthIn(max = 580.dp).fillMaxWidth(0.9f).background(Color(0xFF161E24)).padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(tr(R.string.http_download_restart), color = Color.White, fontSize = 22.sp)
+            Text(tr(R.string.http_download_restart_confirm), color = Color.LightGray, fontSize = 14.sp)
+            SettingRow(tr(R.string.cancel), modifier = Modifier.focusRequester(cancelFocus), trailing = "", onClick = onDismiss)
+            SettingRow(tr(R.string.http_download_restart), trailing = "", onClick = onConfirm)
+        }
+        LaunchedEffect(Unit) {
+            withFrameNanos { }
+            runCatching { cancelFocus.requestFocus() }
         }
     }
 }

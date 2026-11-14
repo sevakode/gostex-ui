@@ -132,45 +132,67 @@ internal object TorrDownloadEngine {
         nowNanos: () -> Long = System::nanoTime,
         reportProgress: (Long) -> Unit = {},
         abort: HttpDownloadAbort? = null,
+        resetForRestart: (() -> Unit)? = null,
     ): TorrDownloadCheckpoint {
-        require(size > 0 && readTimeoutMs in 1..120000 && isStrongHttpEtag(source.expectedEtag))
+        val etag = source.expectedEtag
+        val canResume = etag != null
+        require(size > 0 && readTimeoutMs in 1..120000 && (!canResume || isStrongHttpEtag(etag)))
         val offset = checkpoint.offset
         require(offset in 0..size)
-        if ((offset > 0 || checkpoint.etag != null) && checkpoint.etag != source.expectedEtag) {
+        if ((offset > 0 || checkpoint.etag != null) && checkpoint.etag != etag) {
             throw IOException("Missing resume identity")
         }
         if (target.size() < offset) throw IOException("Destination is shorter than its checkpoint")
         if (offset == size) {
-            verifyCompleted(size, target, checkpoint)
+            verifyCompleted(size, target, checkpoint, requireStrongEtag = canResume)
             reportProgress(offset)
             return checkpoint
         }
+        if (!canResume && offset != 0L && resetForRestart == null) throw TorrSourceFailure("source_restart_required")
         val url = requireNotNull(source.url)
         val stopRequested = { abort?.cancelled == true || cancelled() || Thread.currentThread().isInterrupted }
+        var start = checkpoint
         return try {
             withHttpDownloadResponse(url, 5000, readTimeoutMs, stopRequested, abort, configure = {
-                setRequestProperty("Range", "bytes=$offset-")
-                setRequestProperty(if (offset == 0L) "If-Match" else "If-Range", source.expectedEtag)
+                if (canResume) {
+                    setRequestProperty("Range", "bytes=$offset-")
+                    setRequestProperty(if (offset == 0L) "If-Match" else "If-Range", etag)
+                }
             }) { effective, connection, status ->
                 fun header(name: String) = connection.singleDownloadHeader(name, HttpDownloadAdmissionError.RESPONSE)
                 if (status == 401 || status == 403 || status == 407) throw TorrSourceFailure("source_auth")
-                if (effective.resourceKey() != source.resourceKey || status in setOf(200, 412, 416)) {
+                if (effective.resourceKey() != source.resourceKey || (canResume && status in setOf(200, 412, 416))) {
                     throw TorrSourceFailure("source_changed")
                 }
-                if (status != 206) throw TorrSourceFailure("source_response")
-                if (header("ETag") != source.expectedEtag) throw TorrSourceFailure("source_changed")
+                if (status != if (canResume) 206 else 200) throw TorrSourceFailure("source_response")
+                if (canResume && header("ETag") != etag) throw TorrSourceFailure("source_changed")
                 val encoding = header("Content-Encoding")
                 if ((encoding != null && !encoding.equals("identity", ignoreCase = true)) ||
-                    header("Transfer-Encoding") != null || header("Content-Length") != (size - offset).toString() ||
-                    !header("Content-Range").equals("bytes $offset-${size - 1}/$size", ignoreCase = true)) {
+                    header("Transfer-Encoding") != null) {
                     throw TorrSourceFailure("source_response")
                 }
-                copyValidated(size, target, checkpoint, source.expectedEtag, { connection.inputStream },
+                if (canResume) {
+                    if (header("Content-Length") != (size - offset).toString() ||
+                        !header("Content-Range").equals("bytes $offset-${size - 1}/$size", ignoreCase = true)) {
+                        throw TorrSourceFailure("source_response")
+                    }
+                } else {
+                    if (header("Content-Length") != size.toString()) throw TorrSourceFailure("source_changed")
+                    if (header("Content-Range") != null) throw TorrSourceFailure("source_response")
+                    if (stopRequested()) throw CancellationException()
+                    if (offset != 0L) {
+                        // Persist zero before replacing any bytes. If the journal write fails,
+                        // the caller's old checkpoint and the full partial remain intact.
+                        requireNotNull(resetForRestart).invoke()
+                        start = TorrDownloadCheckpoint(0, null)
+                    }
+                }
+                copyValidated(size, target, start, etag, { connection.inputStream },
                     stopRequested, saveCheckpoint, spaceAllowance, beforeWrite, nowNanos, reportProgress,
                     abortable = true)
             }
         } catch (error: HttpDownloadAdmissionException) {
-            if (stopRequested()) { reportProgress(offset); return checkpoint }
+            if (stopRequested()) { reportProgress(start.offset); return start }
             throw TorrSourceFailure(when (error.reason) {
                 HttpDownloadAdmissionError.TIMEOUT -> "source_timeout"
                 HttpDownloadAdmissionError.NETWORK -> "source_io"
@@ -178,14 +200,16 @@ internal object TorrDownloadEngine {
             })
         } catch (error: CancellationException) {
             if (!stopRequested()) throw error
-            reportProgress(offset)
-            checkpoint
+            reportProgress(start.offset)
+            start
         }
     }
 
     /** Verify a durable, completed document without constructing or contacting a source. */
-    fun verifyCompleted(size: Long, target: TorrDownloadTarget, checkpoint: TorrDownloadCheckpoint) {
-        if (size < 0 || checkpoint.offset != size || target.size() != size || (size > 0 && !isStrongEtag(checkpoint.etag))) {
+    fun verifyCompleted(size: Long, target: TorrDownloadTarget, checkpoint: TorrDownloadCheckpoint,
+                        requireStrongEtag: Boolean = true) {
+        val invalidValidator = if (requireStrongEtag) size > 0 && !isStrongEtag(checkpoint.etag) else checkpoint.etag != null
+        if (size < 0 || checkpoint.offset != size || target.size() != size || invalidValidator) {
             throw IOException("Invalid completed checkpoint")
         }
     }
@@ -194,7 +218,7 @@ internal object TorrDownloadEngine {
         size: Long,
         target: TorrDownloadTarget,
         checkpoint: TorrDownloadCheckpoint,
-        etag: String,
+        etag: String?,
         openStream: () -> InputStream,
         cancelled: () -> Boolean,
         saveCheckpoint: (TorrDownloadCheckpoint) -> Unit,

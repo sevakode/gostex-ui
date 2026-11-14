@@ -37,6 +37,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -95,7 +96,9 @@ import kotlinx.coroutines.withContext
                 ++folderSnapshotGeneration[0]
                 folderGrants = result.grants
                 activity.torrDownloadMessage = activity.getString(when (result.outcome) {
-                    TorrDownloadFolderAccess.Outcome.RESTORED -> R.string.torr_folder_access_restored
+                    TorrDownloadFolderAccess.Outcome.RESTORED ->
+                        if (TorrDownloadStore.jobs.value.any { it.id == request?.id && it.requiresHttpRestart })
+                            R.string.http_download_restart_access_restored else R.string.torr_folder_access_restored
                     TorrDownloadFolderAccess.Outcome.CANCELLED -> R.string.torr_folder_access_cancelled
                     TorrDownloadFolderAccess.Outcome.DIFFERENT_FOLDER -> R.string.torr_folder_access_different
                     TorrDownloadFolderAccess.Outcome.STALE -> R.string.torr_folder_access_stale
@@ -549,9 +552,9 @@ import kotlinx.coroutines.withContext
             finishedFocusId = null
         }
     }
-    val pausedCount = activeJobs.count { it.state == "paused" }
+    val pausedCount = activeJobs.count { it.state == "paused" && !it.requiresHttpRestart }
     if (!showFinished && !journalLoading && !journalFailed && pausedCount > 1) SettingRow(tr(R.string.torr_download_resume_paused, pausedCount), onClick = {
-        val paused = TorrDownloadStore.jobs.value.filter { it.state == "paused" }.map { it.id }
+        val paused = TorrDownloadStore.jobs.value.filter { it.state == "paused" && !it.requiresHttpRestart }.map { it.id }
         if (paused.isNotEmpty()) runCatching { activity.startTorrDownloads(paused) }
             .onFailure { activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed) }
     })
@@ -560,8 +563,32 @@ import kotlinx.coroutines.withContext
     if (!journalLoading && !journalFailed && visibleJobs.isEmpty()) Text(tr(if (showFinished) R.string.torr_download_empty_finished else R.string.torr_download_empty_queue), color = Color.LightGray, fontSize = 13.sp)
     visibleJobs.drop(jobPage * 20).take(20).forEach { job ->
         val jobFocus = remember(job.id) { FocusRequester() }
+        var restartOffset by remember(job.id) { mutableStateOf<Long?>(null) }
         val restoreAccess = job.state == "error" && job.error == "storage" &&
             TorrDownloadFolderAccess.needsAccess(job.tree, folderGrants)
+        fun dismissRestart() {
+            restartOffset = null
+            scope.launch {
+                withFrameNanos { }
+                runCatching { jobFocus.requestFocus() }
+            }
+        }
+        restartOffset?.let { offset ->
+            ConfirmHttpDownloadRestart(onDismiss = ::dismissRestart, onConfirm = {
+                // A focus/queue refresh may have changed the row while the prompt was open.
+                val current = TorrDownloadStore.jobs.value.firstOrNull { it.id == job.id }
+                val confirmed = restartOffset == offset
+                dismissRestart()
+                if (confirmed && current != null && current.requiresHttpRestart && current.offset == offset &&
+                    current.state in setOf("paused", "error") &&
+                    !(current.error == "storage" && TorrDownloadFolderAccess.needsAccess(current.tree, folderGrants)) &&
+                    !PortableMaintenance.running &&
+                    !folderAccessBusy && folderAccessRequest == null && activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                    runCatching { activity.startTorrDownload(current.id, restartId = current.id) }
+                        .onFailure { activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed) }
+                }
+            })
+        }
         LaunchedEffect(folderAccessReturnFocus == job.id, folderAccessBusy) {
             if (folderAccessReturnFocus == job.id && !folderAccessBusy) {
                 withFrameNanos { }
@@ -593,7 +620,11 @@ import kotlinx.coroutines.withContext
         val percent = if (job.total == 0L) { if (job.state == "done") 100 else 0 } else (displayOffset.toDouble() / job.total * 100).toInt().coerceIn(0, 100)
         val action = when (job.state) {
             "queued", "running" -> tr(R.string.torr_download_pause)
-            "paused", "error" -> tr(if (restoreAccess) R.string.torr_folder_access_restore else R.string.torr_download_resume)
+            "paused", "error" -> tr(when {
+                restoreAccess -> R.string.torr_folder_access_restore
+                job.requiresHttpRestart -> R.string.http_download_restart
+                else -> R.string.torr_download_resume
+            })
             "done" -> if (job.http != null) tr(R.string.http_download_open) else ""
             else -> ""
         }
@@ -605,7 +636,7 @@ import kotlinx.coroutines.withContext
                 runCatching {
                     when (job.state) {
                         "queued", "running" -> TorrDownloadActions.pause(activity, job.id)
-                        "paused", "error" -> activity.startTorrDownload(job.id)
+                        "paused", "error" -> if (job.requiresHttpRestart) restartOffset = job.offset else activity.startTorrDownload(job.id)
                         "done" -> if (job.http != null && !openingHttp && !PortableMaintenance.running) {
                             openingHttp = true
                             scope.launch {
@@ -623,7 +654,11 @@ import kotlinx.coroutines.withContext
             if (job.state == "done") SettingRow("×", modifier = Modifier.width(72.dp).semantics { contentDescription = hideDescription }, trailing = "", onClick = { hideFinished(job) })
         }
         if (job.state == "error" && job.error == "storage") Text(
-            tr(if (restoreAccess) R.string.torr_folder_access_hint else R.string.torr_folder_access_check),
+            tr(when {
+                restoreAccess -> R.string.torr_folder_access_hint
+                job.requiresHttpRestart -> R.string.http_download_restart_access_check
+                else -> R.string.torr_folder_access_check
+            }),
             modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }, color = Color.LightGray, fontSize = 12.sp)
         if (job.state in setOf("running", "queued", "paused") && job.total > 0) {
             Box(Modifier.fillMaxWidth().height(3.dp).background(Color(0xFF38383C))) {

@@ -29,6 +29,18 @@ class Fixture(BaseHTTPRequestHandler):
             path = '/file' if route != '/moved' or range_ == 'bytes=0-0' else '/different'
             return self.reply(302, [('Location', path + '?private=effective')])
         size = len(PAYLOAD)
+        if route.startswith('/restart'):
+            assert self.headers.get('If-Match') is None and self.headers.get('If-Range') is None
+            if range_ == 'bytes=0-0':
+                return self.reply(200, declared=size)  # No data before the real whole-file request.
+            assert range_ is None, 'Restart-only stream must never send Range'
+            if route == '/restart-changed':
+                return self.reply(200, declared=size + 1)
+            if route == '/restart-framing':
+                return self.reply(200, [('Content-Range', f'bytes 0-{size - 1}/{size}')], declared=size)
+            if route == '/restart-partial':
+                return self.reply(206, [('Content-Range', f'bytes 0-{size - 1}/{size}')], declared=size)
+            return self.reply(200, body=PAYLOAD)
         if range_ == 'bytes=0-0':
             return self.reply(206, [('Content-Range', f'bytes 0-0/{size}'), ('ETag', ETAG)], PAYLOAD[:1])
         match = re.fullmatch(r'bytes=(\d+)-', range_ or '')
@@ -148,9 +160,72 @@ fun main(args: Array<String>) {
             worker.join(1800)
             check(!worker.isAlive && outcome.get().getOrThrow() == saved.get())
             check(raw.length() == saved.get().offset && raw.length() <= 8192L)
+
+            val (wholeFile, wholeSize) = origin("restart")
+            check(wholeFile.expectedEtag == null && wholeSize == bytes.size.toLong())
+            raw.setLength(0)
+            durable = initial
+            val restartPaused = TorrDownloadEngine.transfer(wholeFile, wholeSize, target, initial,
+                cancelled = { raw.length() >= 192 * 1024 }, saveCheckpoint = { durable = it })
+            check(restartPaused == durable && durable.offset in 192 * 1024L..(256 * 1024L) && durable.etag == null)
+            // Mark the whole old partial, including an uncommitted tail, so appending or
+            // truncating before the journal authorizes a restart is observable.
+            val oldPartial = ByteArray(durable.offset.toInt() + 19) { 17 }
+            raw.seek(0); raw.write(oldPartial)
+            val unauthorized = runCatching {
+                TorrDownloadEngine.transfer(wholeFile, wholeSize, target, restartPaused,
+                    saveCheckpoint = { error("Unexpected checkpoint") })
+            }.exceptionOrNull()
+            check(unauthorized is TorrSourceFailure && unauthorized.reason == "source_restart_required")
+            check(Files.readAllBytes(file).contentEquals(oldPartial))
+
+            for ((route, reason) in listOf("restart-changed" to "source_changed", "restart-framing" to "source_response",
+                "restart-partial" to "source_response")) {
+                val (candidate, admittedSize) = origin(route)
+                val failure = runCatching {
+                    TorrDownloadEngine.transfer(candidate, admittedSize, target, restartPaused,
+                        resetForRestart = { error("Reset before whole response validation") },
+                        saveCheckpoint = { error("Unexpected checkpoint") })
+                }.exceptionOrNull()
+                check(failure is TorrSourceFailure && failure.reason == reason)
+                check(Files.readAllBytes(file).contentEquals(oldPartial))
+            }
+
+            val failedCommit = IllegalStateException("Synthetic journal write failure")
+            check(runCatching {
+                TorrDownloadEngine.transfer(wholeFile, wholeSize, target, restartPaused,
+                    resetForRestart = {
+                        check(Files.readAllBytes(file).contentEquals(oldPartial))
+                        throw failedCommit
+                    }, saveCheckpoint = { error("Unexpected checkpoint") })
+            }.exceptionOrNull() === failedCommit)
+            check(Files.readAllBytes(file).contentEquals(oldPartial) && durable == restartPaused)
+
+            var cancelledAfterReset = false
+            check(TorrDownloadEngine.transfer(wholeFile, wholeSize, target, restartPaused,
+                cancelled = { cancelledAfterReset }, resetForRestart = { cancelledAfterReset = true },
+                saveCheckpoint = { error("Unexpected checkpoint") }) == initial)
+            check(Files.readAllBytes(file).contentEquals(oldPartial))
+
+            var resetCount = 0
+            val finished = TorrDownloadEngine.transfer(wholeFile, wholeSize, target, restartPaused,
+                resetForRestart = {
+                    check(durable == restartPaused && Files.readAllBytes(file).contentEquals(oldPartial))
+                    durable = initial
+                    resetCount++
+                }, saveCheckpoint = {
+                    check(resetCount == 1)
+                    durable = it
+                })
+            check(resetCount == 1 && finished == durable && finished.offset == wholeSize && finished.etag == null)
+            check(Files.readAllBytes(file).contentEquals(bytes))
+            check(TorrDownloadEngine.transfer(wholeFile.copy(url = null), wholeSize, target, finished,
+                saveCheckpoint = { error("Offline completion changed state") }) == finished)
+            TorrDownloadEngine.verifyCompleted(wholeSize, target, finished, requireStrongEtag = false)
+            check(runCatching { TorrDownloadEngine.verifyCompleted(wholeSize, target, finished) }.isFailure)
         }
     } finally { Files.deleteIfExists(file) }
-    println("PASS: direct HTTP start, pause and resume, redirect and strong identity checks before writes, durable tail, offline completion")
+    println("PASS: resumable and restart-only HTTP, validated journal reset before replacing bytes, durable pause and offline completion")
 }
 '''
 
@@ -178,6 +253,8 @@ with ThreadingHTTPServer(('127.0.0.1', 0), Fixture) as main, ThreadingHTTPServer
         assert ('/redirect?private=fixture', 'bytes=0-', ETAG, None) in main.requests
         assert any(path == '/file?private=effective' and if_range == ETAG for path, _, _, if_range in main.requests)
         assert len([req for req in main.requests if req[0].startswith('/slow')]) == 2, main.requests
+        assert [req[1:] for req in main.requests if req[0] == '/restart?private=fixture'] == [
+            ('bytes=0-0', None, None), (None, None, None), (None, None, None), (None, None, None), (None, None, None)]
         assert not other.requests
     finally:
         for server in (main, other):

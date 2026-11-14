@@ -307,6 +307,7 @@ internal object TorrDownloadEngine {
         }
         saveTail()
         report(force = true)
+        if (abortable && written == offset && cancelled()) return checkpoint
         return TorrDownloadCheckpoint(written, etag)
     }
 

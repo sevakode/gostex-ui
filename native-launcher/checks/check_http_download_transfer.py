@@ -144,6 +144,11 @@ fun main(args: Array<String>) {
             check(TorrDownloadEngine.transfer(slow, slowSize, target, durable, abort = stopped,
                 saveCheckpoint = { error("Pre-start abort changed state") }) == durable)
             check(raw.length() == 8192L)
+            val beforeFirstWrite = HttpDownloadAbort()
+            val cancelledAtWrite = TorrDownloadEngine.transfer(slow, slowSize, target, initial, abort = beforeFirstWrite,
+                beforeWrite = { beforeFirstWrite.cancel(); true },
+                saveCheckpoint = { error("No new bytes were committed") })
+            check(cancelledAtWrite == initial && raw.length() == 0L)
             val handle = HttpDownloadAbort()
             val acceptedBody = CountDownLatch(1)
             val saved = AtomicReference(initial)
@@ -252,7 +257,8 @@ with ThreadingHTTPServer(('127.0.0.1', 0), Fixture) as main, ThreadingHTTPServer
                             f'http://127.0.0.1:{main.server_port}'], check=True, timeout=20)
         assert ('/redirect?private=fixture', 'bytes=0-', ETAG, None) in main.requests
         assert any(path == '/file?private=effective' and if_range == ETAG for path, _, _, if_range in main.requests)
-        assert len([req for req in main.requests if req[0].startswith('/slow')]) == 2, main.requests
+        slow_ranges = [range_ for path, range_, _, _ in main.requests if path.startswith('/slow')]
+        assert slow_ranges == ['bytes=0-0', 'bytes=0-', 'bytes=0-'], slow_ranges
         assert [req[1:] for req in main.requests if req[0] == '/restart?private=fixture'] == [
             ('bytes=0-0', None, None), (None, None, None), (None, None, None), (None, None, None), (None, None, None)]
         assert not other.requests

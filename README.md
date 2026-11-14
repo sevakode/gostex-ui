@@ -1,10 +1,11 @@
 # GOSTEX UI
 
-GOSTEX UI is a TV launcher for Android TV and NVIDIA SHIELD. It brings installed apps and a user-managed game library together in a remote- and controller-friendly interface. A native Linux / Steam Deck prototype also lives in this repository; it is not part of the first Android release.
+GOSTEX UI is a launcher for Android TV and NVIDIA SHIELD. It brings installed apps, a user-managed game library, downloads, and a TV browser together in an interface for remote controls and gamepads. The repository also contains a native Linux and Steam Deck prototype.
 
-The project is being prepared for its first stable release. Existing GitHub development builds do not by themselves indicate production readiness or compatibility with every TV device. Current development targets Android TV 9 or later; NVIDIA SHIELD remains the main tested device, with Android 9 startup checked on an emulator.
+GitHub publishes Android development builds for ARM64. The Android application requires Android 9 or later. See the compatibility matrix for the hardware, virtual devices, and workflows tested so far.
 
 - [Android setup and development](native-launcher/README.md)
+- [Android compatibility and tested workflows](native-launcher/docs/compatibility.md)
 - [Updates and diagnostics](native-launcher/docs/updates.md)
 - [Desktop development](native-launcher/docs/desktop.md)
 - [Steam Deck prototype](native-launcher/docs/steam-deck.md)

@@ -710,7 +710,11 @@ import kotlinx.coroutines.withContext
         }
         val label = when (job.state) {
             "queued" -> R.string.torr_download_queued
-            "running" -> if (job.error == "retrying") R.string.torr_download_retrying else R.string.torr_download_running
+            "running" -> when (job.error) {
+                "retrying" -> R.string.torr_download_retrying
+                "waiting_network" -> R.string.torr_download_waiting_network
+                else -> R.string.torr_download_running
+            }
             "paused" -> R.string.torr_download_paused
             "done" -> R.string.torr_download_done
             "finalizing" -> R.string.torr_download_finalizing

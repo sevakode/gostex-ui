@@ -26,6 +26,7 @@ internal class TorrDownloadService : Service() {
     private inner class Transfer(val id: String, val http: HttpDownloadAbort?) {
         val pauseToken: String = UUID.randomUUID().toString()
         val paused = AtomicBoolean(false)
+        @Volatile var retryWait: TorrDownloadRetryWait? = null
         private val notificationPause = lazy(LazyThreadSafetyMode.NONE) {
             val identity = Uri.Builder().scheme("gostex-download").authority(packageName)
                 .appendPath(id).appendPath(pauseToken).build()
@@ -37,7 +38,11 @@ internal class TorrDownloadService : Service() {
                 getString(R.string.torr_download_pause), pending).build()
         }
 
-        fun pause() { paused.set(true); http?.cancel() }
+        fun pause() {
+            paused.set(true)
+            retryWait?.cancel()
+            http?.cancel()
+        }
         fun pauseAction(): Notification.Action = notificationPause.value
         fun clearPauseAction() {
             if (notificationPause.isInitialized()) runCatching { notificationPause.value.actionIntent?.cancel() }
@@ -127,15 +132,15 @@ internal class TorrDownloadService : Service() {
                         if (job.state != "running") continue
                         notificationUpdate(transfer, job)
                         if (job.offset < job.total) {
-                            phase = "storage"
-                            TorrDownloadDocuments.verifyPartial(this, job)
-                            TorrSafTarget.open(contentResolver, Uri.parse(job.document)).use { target ->
-                                val throttle = TorrDownloadThrottle({ TorrDownloadWriteRate.read(this) })
-                                phase = "transfer"
-                                var end: TorrDownloadCheckpoint? = null
-                                var retries = 0
-                                while (end == null && !cancelled()) {
-                                    try {
+                            val throttle = TorrDownloadThrottle({ TorrDownloadWriteRate.read(this) })
+                            var end: TorrDownloadCheckpoint? = null
+                            var retries = 0
+                            while (end == null && !cancelled()) {
+                                try {
+                                    phase = "storage"
+                                    TorrDownloadDocuments.verifyPartial(this, job)
+                                    end = TorrSafTarget.open(contentResolver, Uri.parse(job.document)).use { target ->
+                                        phase = "transfer"
                                         val checkpoint = TorrDownloadCheckpoint(job.offset, job.etag)
                                         val save: (TorrDownloadCheckpoint) -> Unit = { saved ->
                                             job = TorrDownloadStore.update(this, job.id) { it.copy(offset = saved.offset, etag = saved.etag) }
@@ -150,7 +155,7 @@ internal class TorrDownloadService : Service() {
                                             notificationUpdate(transfer, job, offset)
                                         }
                                         val http = job.http
-                                        end = if (http == null) TorrDownloadEngine.transfer(
+                                        if (http == null) TorrDownloadEngine.transfer(
                                             TorrDownloadSource(job.hash, job.index, job.total), target, checkpoint,
                                             cancelled = cancelled, saveCheckpoint = save, spaceAllowance = space,
                                             beforeWrite = beforeWrite, reportProgress = progress,
@@ -164,25 +169,40 @@ internal class TorrDownloadService : Service() {
                                             }) else null,
                                             session = if (http.sessionBound) TorrDownloadStore.sessionFor(job.id) else null,
                                         )
-                                    } catch (error: TorrSourceFailure) {
-                                        if (cancelled()) break
-                                        // A source that cannot resume must never silently start over.
-                                        if (job.http?.let { it.expectedEtag == null } == true) throw error
-                                        val delay = torrRetryDelay(error.reason, retries, TorrDownloadRetryOptions.read(this)) ?: throw error
-                                        retries++
-                                        job = TorrDownloadStore.update(this, job.id) { if (it.state == "running") it.copy(error = "retrying") else it }
-                                        if (job.state != "running" || !waitForRetry(delay, cancelled)) break
-                                        if (!TorrDownloadRetryOptions.read(this)) throw error
-                                        job = TorrDownloadStore.update(this, job.id) { if (it.state == "running") it.copy(error = "") else it }
-                                        if (job.state != "running") break
-                                    } catch (error: kotlinx.coroutines.CancellationException) {
-                                        if (cancelled()) break else throw error
                                     }
+                                } catch (error: TorrSourceFailure) {
+                                    if (cancelled()) break
+                                    // A source that cannot resume must never silently start over.
+                                    if (job.http?.let { it.expectedEtag == null } == true) throw error
+                                    val delay = torrRetryDelay(error.reason, retries, TorrDownloadRetryOptions.read(this)) ?: throw error
+                                    retries++
+                                    job = TorrDownloadStore.update(this, job.id) { if (it.state == "running") it.copy(error = "retrying") else it }
+                                    if (job.state != "running") break
+                                    notificationUpdate(transfer, job)
+                                    val wait = TorrDownloadRetryWait(this, cancelled)
+                                    transfer.retryWait = wait
+                                    val result = try {
+                                        wait.await(delay) {
+                                            job = TorrDownloadStore.update(this, job.id) {
+                                                if (it.state == "running") it.copy(error = "waiting_network") else it
+                                            }
+                                            notificationUpdate(transfer, job)
+                                        }
+                                    } finally {
+                                        transfer.retryWait = null
+                                    }
+                                    if (cancelled()) break
+                                    if (result != TorrDownloadRetryWait.Result.READY || !TorrDownloadRetryOptions.read(this)) throw error
+                                    job = TorrDownloadStore.update(this, job.id) { if (it.state == "running") it.copy(error = "") else it }
+                                    if (job.state != "running") break
+                                    notificationUpdate(transfer, job)
+                                } catch (error: kotlinx.coroutines.CancellationException) {
+                                    if (cancelled()) break else throw error
                                 }
-                                if (end?.offset != job.total || cancelled()) {
-                                    TorrDownloadStore.update(this, job.id) { if (it.state == "running") it.copy(state = "paused") else it }
-                                    continue
-                                }
+                            }
+                            if (end?.offset != job.total || cancelled()) {
+                                TorrDownloadStore.update(this, job.id) { if (it.state == "running") it.copy(state = "paused") else it }
+                                continue
                             }
                         }
                         if (cancelled()) {
@@ -228,17 +248,6 @@ internal class TorrDownloadService : Service() {
                 if (isDestroyedForMaintenance) unregisterParticipantOnMain()
             }
         }
-    }
-
-    private fun waitForRetry(delayMs: Long, cancelled: () -> Boolean): Boolean {
-        val deadline = android.os.SystemClock.elapsedRealtime() + delayMs
-        while (!cancelled()) {
-            val remaining = deadline - android.os.SystemClock.elapsedRealtime()
-            if (remaining <= 0) return true
-            try { Thread.sleep(minOf(remaining, 200L)) }
-            catch (_: InterruptedException) { Thread.currentThread().interrupt(); return false }
-        }
-        return false
     }
 
     private fun finalizeDocument(job: TorrDownloadJob): Uri {
@@ -306,18 +315,25 @@ internal class TorrDownloadService : Service() {
         .setVisibility(Notification.VISIBILITY_PRIVATE).setContentIntent(openDownloads)
         .apply { if (pause != null) addAction(pause) }.build()
     private val notificationLock = Any()
-    private var notifiedProgress: Triple<String, Int, Boolean>? = null
+    private data class NotificationProgress(val attempt: String, val percent: Int, val canPause: Boolean, val status: Int?)
+    private var notifiedProgress: NotificationProgress? = null
     private fun notificationUpdate(transfer: Transfer, job: TorrDownloadJob, offset: Long = job.offset) {
         val percent = if (job.total > 0) (offset.coerceIn(0L, job.total).toDouble() / job.total * 100).toInt().coerceIn(0, 100) else 0
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) return
         synchronized(notificationLock) {
             if (activeTransfer !== transfer) return
             val canPause = job.state == "running" && !transfer.paused.get()
-            val progress = Triple(transfer.pauseToken, percent, canPause)
+            val status = if (canPause) when (job.error) {
+                "waiting_network" -> R.string.torr_download_waiting_network
+                "retrying" -> R.string.torr_download_retrying
+                else -> null
+            } else null
+            val progress = NotificationProgress(transfer.pauseToken, percent, canPause, status)
             if (notifiedProgress == progress) return
             // Notification permission/system availability can change during a transfer.
             // A display failure must not abort a valid download or its durable checkpoint.
-            val body = if (job.http?.sessionBound == true) "$percent%" else "${job.name} · $percent%"
+            val progressText = if (job.http?.sessionBound == true) "$percent%" else "${job.name} · $percent%"
+            val body = if (status == null) progressText else "$progressText · ${getString(status)}"
             if (runCatching {
                     val pause = if (canPause) transfer.pauseAction() else null
                     getSystemService(NotificationManager::class.java).notify(NOTIFICATION, notification(body, pause))

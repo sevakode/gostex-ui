@@ -43,11 +43,14 @@ internal class TvBrowserActivity : ComponentActivity() {
     private lateinit var backButton: Button
     private lateinit var forwardButton: Button
     private lateinit var reloadButton: Button
+    private lateinit var pointerButton: Button
+    private lateinit var pointerHint: TextView
     private lateinit var tools: LinearLayout
     private lateinit var content: FrameLayout
     private lateinit var loadingBar: ProgressBar
     private lateinit var status: TextView
     private var page: WebView? = null
+    private var pointer: TvBrowserPointer? = null
     private var prompt: AlertDialog? = null
     private var active = false
     private var currentUrl: String? = null
@@ -96,11 +99,13 @@ internal class TvBrowserActivity : ComponentActivity() {
         reloadButton = control("↻", R.string.browser_reload) {
             if (page == null) currentUrl?.let(::openPage) else page?.reload()
         }
+        pointerButton = control("⌖", R.string.browser_pointer, ::togglePointer)
         tools = horizontalBar().apply {
             addControl(backButton)
             addControl(forwardButton)
             addControl(reloadButton)
             addControl(control("☆", R.string.browser_bookmarks, ::showBookmarks))
+            addControl(pointerButton)
             addControl(control("↓", R.string.browser_downloads, ::finish))
         }
         if (resources.configuration.screenWidthDp >= 640) {
@@ -125,11 +130,27 @@ internal class TvBrowserActivity : ComponentActivity() {
             visibility = View.GONE
         }
         layout.addView(status)
-        content = FrameLayout(this)
+        pointerHint = TextView(this).apply {
+            setText(R.string.browser_pointer_hint)
+            setTextColor(Color.LTGRAY)
+            setPadding(dp(8), dp(4), dp(8), dp(4))
+            visibility = View.GONE
+        }
+        layout.addView(pointerHint)
+        content = object : FrameLayout(this) {
+            override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+                if (active && pointer?.handleKey(event) == true) return true
+                return super.dispatchKeyEvent(event)
+            }
+        }
         layout.addView(content, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         setContentView(layout)
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
+                if (pointer != null) {
+                    stopPointer(restoreFocus = true)
+                    return
+                }
                 val web = page
                 if (web?.canGoBack() == true) web.goBack() else finish()
             }
@@ -176,6 +197,7 @@ internal class TvBrowserActivity : ComponentActivity() {
             isFocusable = true
             isFocusableInTouchMode = true
             nextFocusUpId = address.id
+            setOnFocusChangeListener { _, focused -> if (!focused) stopPointer() }
             setBackgroundColor(BACKGROUND)
             configure(settings)
             CookieManager.getInstance().setAcceptThirdPartyCookies(this, false)
@@ -323,6 +345,26 @@ internal class TvBrowserActivity : ComponentActivity() {
         backButton.isEnabled = page?.canGoBack() == true
         forwardButton.isEnabled = page?.canGoForward() == true
         reloadButton.isEnabled = currentUrl != null
+        pointerButton.isEnabled = page != null
+    }
+
+    private fun togglePointer() {
+        if (pointer != null) {
+            stopPointer(restoreFocus = true)
+            return
+        }
+        val web = page ?: return
+        if (!web.requestFocus()) return
+        pointer = TvBrowserPointer(content, web).also { it.show() }
+        pointerHint.visibility = View.VISIBLE
+    }
+
+    private fun stopPointer(restoreFocus: Boolean = false) {
+        val current = pointer ?: return
+        pointer = null
+        current.hide()
+        pointerHint.visibility = View.GONE
+        if (restoreFocus) pointerButton.requestFocusFromTouch()
     }
 
     override fun onResume() {
@@ -333,6 +375,7 @@ internal class TvBrowserActivity : ComponentActivity() {
 
     override fun onPause() {
         active = false
+        stopPointer()
         prompt?.dismiss()
         page?.onPause()
         super.onPause()
@@ -365,6 +408,7 @@ internal class TvBrowserActivity : ComponentActivity() {
 
     private fun releasePage(rendererGone: Boolean = false) {
         val web = page ?: return
+        stopPointer()
         page = null
         if (!rendererGone) web.stopLoading()
         web.setDownloadListener(null)

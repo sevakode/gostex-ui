@@ -20,4 +20,6 @@
     <string name="browser_error_download">Эту ссылку нельзя открыть в загрузках.</string>
     <string name="browser_download_title">Открыть в загрузках</string>
     <string name="browser_download_review">Проверьте ссылку в загрузках перед запуском.</string>
+    <string name="browser_pointer">Указатель</string>
+    <string name="browser_pointer_hint">Стрелки — движение · ОК — выбор · Назад — выход из режима</string>
 </resources>

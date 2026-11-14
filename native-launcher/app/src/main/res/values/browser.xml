@@ -20,4 +20,6 @@
     <string name="browser_error_download">This link cannot be opened in Downloads.</string>
     <string name="browser_download_title">Open in Downloads</string>
     <string name="browser_download_review">Review this link in Downloads before starting.</string>
+    <string name="browser_pointer">Pointer</string>
+    <string name="browser_pointer_hint">Arrows move · OK selects · Back exits pointer</string>
 </resources>

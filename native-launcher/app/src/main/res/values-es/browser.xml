@@ -20,4 +20,6 @@
     <string name="browser_error_download">Este enlace no se puede abrir en Descargas.</string>
     <string name="browser_download_title">Abrir en Descargas</string>
     <string name="browser_download_review">Revisa este enlace en Descargas antes de empezar.</string>
+    <string name="browser_pointer">Puntero</string>
+    <string name="browser_pointer_hint">Flechas para mover · OK para seleccionar · Atrás para salir del puntero</string>
 </resources>

@@ -31,10 +31,10 @@ internal class TorrDownloadService : Service() {
         if (PortableRestoreStartup.ready) {
             participantRegistered = PortableMaintenance.registerParticipant(this) {
                 stopping.set(true)
-                if (participantRegistered) runCatching { TorrDownloadStore.pauseAll(this) }
+                if (participantRegistered && TorrDownloadStartup.ready) runCatching { TorrDownloadStore.pauseAll(this) }
                 stopSelf()
             }
-            if (participantRegistered) storeAvailable = runCatching { TorrDownloadStore.recover(this) }.isSuccess
+            storeAvailable = participantRegistered
         }
     }
 
@@ -44,7 +44,9 @@ internal class TorrDownloadService : Service() {
             notifiedProgress = null
         }
         if (!storeAvailable) { stopSelf(); return START_NOT_STICKY }
-        if (intent?.action == ACTION_PAUSE) {
+        // Cold recovery pauses stale work on I/O; a late pause intent must not
+        // initialize/migrate the journal on the service's main thread.
+        if (intent?.action == ACTION_PAUSE && TorrDownloadStartup.ready) {
             val id = intent.getStringExtra("id")
             if (id != null) {
                 val paused = runCatching { TorrDownloadStore.update(this, id) { if (it.state == "running" || it.state == "queued") it.copy(state = "paused") else it } }.getOrNull()
@@ -58,7 +60,11 @@ internal class TorrDownloadService : Service() {
     @Synchronized private fun launchWorker() {
         if (!workerActive.compareAndSet(false, true)) return
         executor.execute {
+            var prepared = false
             try {
+                prepared = try { kotlinx.coroutines.runBlocking { TorrDownloadStartup.prepare(applicationContext) } }
+                    catch (_: kotlinx.coroutines.CancellationException) { false }
+                if (!prepared) return@execute
                 while (true) {
                     if (isDestroyedForMaintenance || PortableMaintenance.running) break
                     val next = TorrDownloadStore.jobs.value.firstOrNull { it.state == "queued" } ?: break
@@ -154,7 +160,7 @@ internal class TorrDownloadService : Service() {
                 synchronized(this@TorrDownloadService) {
                     workerActive.set(false)
                     // A new request cannot race with the idle decision.
-                    if (!isDestroyedForMaintenance && !PortableMaintenance.running && TorrDownloadStore.jobs.value.any { it.state == "queued" }) launchWorker()
+                    if (prepared && !isDestroyedForMaintenance && !PortableMaintenance.running && TorrDownloadStore.jobs.value.any { it.state == "queued" }) launchWorker()
                     else stopSelf()
                 }
                 if (isDestroyedForMaintenance) unregisterParticipantOnMain()

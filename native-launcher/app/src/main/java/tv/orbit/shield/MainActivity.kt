@@ -1189,7 +1189,7 @@ class MainActivity : ComponentActivity() {
             return
         }
         updates // Initialize bounded diagnostics and the preference listener once for this Activity.
-        importScope.launch { withContext(Dispatchers.IO) { runCatching { TorrDownloadStore.recover(applicationContext) } } }
+        importScope.launch { TorrDownloadStartup.prepare(applicationContext) }
         if (savedInstanceState == null) acceptTorrentIntent(intent)
         else incomingTorrentUri = savedInstanceState.getString("incomingTorrentUri")?.let(Uri::parse)
         importPlatform = savedInstanceState?.getString("importPlatform").orEmpty()

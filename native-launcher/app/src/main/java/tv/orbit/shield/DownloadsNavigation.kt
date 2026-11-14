@@ -53,10 +53,15 @@ internal object DownloadsNavigation {
 /** Uses the existing transfer state; no additional polling or background service. */
 @Composable internal fun DownloadsShortcut(active: Boolean, onClick: () -> Unit) {
     val jobs by TorrDownloadStore.jobs.collectAsState()
+    val journalState by TorrDownloadStartup.state.collectAsStateWithLifecycle()
     val liveProgress by TorrDownloadLiveProgress.current.collectAsStateWithLifecycle()
-    val state = remember(jobs, liveProgress) { downloadIndicator(jobs, liveProgress) }
+    val state = remember(jobs, liveProgress, journalState) {
+        downloadIndicator(if (journalState == TorrDownloadStartupState.READY) jobs else emptyList(), liveProgress)
+    }
     val progress = state.fraction
     val description = when {
+        journalState == TorrDownloadStartupState.FAILED -> tr(R.string.torr_download_failed)
+        journalState != TorrDownloadStartupState.READY -> tr(R.string.torr_download_loading)
         progress != null -> tr(R.string.downloads_indicator_progress, (progress * 100).toInt())
         state.running -> tr(R.string.downloads_indicator_active)
         state.queued -> tr(R.string.downloads_indicator_queued)

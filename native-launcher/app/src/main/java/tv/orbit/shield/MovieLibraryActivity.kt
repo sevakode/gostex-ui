@@ -86,7 +86,7 @@ class MovieLibraryActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (!PortableRestoreStartup.ready || PortableMaintenance.running) { finish(); return }
-        runCatching { TorrDownloadStore.init(this) }
+        lifecycleScope.launch { TorrDownloadStartup.prepare(applicationContext) }
         refresh()
         pendingFileId = savedInstanceState?.getString(STATE_PENDING_FILE_ID)
         pendingRestoreHash = savedInstanceState?.getString(STATE_PENDING_RESTORE_HASH)?.takeIf { it.matches(Regex("(?i)[0-9a-f]{40}")) }
@@ -726,6 +726,7 @@ class MovieLibraryActivity : ComponentActivity() {
 
     @Composable private fun MovieScreen() {
         val downloads by TorrDownloadStore.jobs.collectAsState()
+        val journalState by TorrDownloadStartup.state.collectAsStateWithLifecycle()
         val liveDownloadProgress by TorrDownloadLiveProgress.current.collectAsStateWithLifecycle()
         val savedFocus = remember { FocusRequester() }
         val lastEpisode = rememberLastEpisode(selected?.takeIf { it.mediaType == "series" }?.id)
@@ -734,6 +735,7 @@ class MovieLibraryActivity : ComponentActivity() {
         // Keep this outside LazyColumn: scrolling the title out of view must not restart discovery.
         LaunchedEffect(recoveryMovie?.id, recoverySources) {
             val movie = recoveryMovie ?: return@LaunchedEffect
+            if (!TorrDownloadStartup.prepare(applicationContext)) return@LaunchedEffect
             val hashes = recoverySources.orEmpty().mapNotNull { source ->
                 val uri = Uri.parse(source.uri)
                 uri.host?.takeIf { uri.scheme.equals("torrserver", true) && it.matches(Regex("(?i)[0-9a-f]{40}")) }
@@ -812,8 +814,16 @@ class MovieLibraryActivity : ComponentActivity() {
                             }
                             item { Text(listOf(movie.year, movie.description).filter { it.isNotBlank() }.joinToString(" · "), color = Color.LightGray, fontSize = 14.sp) }
                             val offlineEpisodes = downloads.filter { it.prefetchMovieId == movie.id && it.state == "done" }
-                            val partialEpisodes = downloads.filter { it.prefetchMovieId == movie.id && it.state != "done" }
-                            if (movie.mediaType == "series" && offlineEpisodes.isEmpty() && partialEpisodes.isEmpty()) item {
+                            val partialEpisodes = if (journalState == TorrDownloadStartupState.READY)
+                                downloads.filter { it.prefetchMovieId == movie.id && it.state != "done" } else emptyList()
+                            if (journalState != TorrDownloadStartupState.READY) item {
+                                if (journalState == TorrDownloadStartupState.FAILED) SettingRow(
+                                    tr(R.string.torr_download_failed), tr(R.string.torr_download_refresh), onClick = {
+                                        lifecycleScope.launch { TorrDownloadStartup.prepare(applicationContext) }
+                                    })
+                                else Text(tr(R.string.torr_download_loading), color = Color.LightGray, fontSize = 14.sp)
+                            }
+                            if (journalState == TorrDownloadStartupState.READY && movie.mediaType == "series" && offlineEpisodes.isEmpty() && partialEpisodes.isEmpty()) item {
                                 val message = when {
                                     TorrPrefetch.count(this@MovieLibraryActivity) == 0 -> R.string.prefetch_status_disabled
                                     !TorrPrefetch.destinationAvailable(this@MovieLibraryActivity) -> R.string.prefetch_status_folder

@@ -122,8 +122,7 @@ import kotlinx.coroutines.withContext
     LaunchedEffect(revision) {
         journalLoading = true
         journalFailed = try {
-            withContext(Dispatchers.IO) { TorrDownloadStore.recover(activity.applicationContext) }
-            false
+            !TorrDownloadStartup.prepare(activity.applicationContext)
         } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
         catch (_: Exception) { true }
         journalLoading = false

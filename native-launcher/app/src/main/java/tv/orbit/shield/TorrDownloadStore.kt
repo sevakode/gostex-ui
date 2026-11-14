@@ -1,11 +1,7 @@
 package tv.orbit.shield
 
 import android.content.Context
-import android.net.Uri
-import org.json.JSONArray
-import org.json.JSONObject
 import java.io.IOException
-import java.util.UUID
 import java.util.Locale
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,12 +17,9 @@ internal data class TorrDownloadJob(
 
 /** Download records are durable operational state, not a second settings store. */
 internal object TorrDownloadStore {
-    private const val KEY = "downloads.torrserver.jobs"
-    private const val COMPLETED_KEY = "downloads.torrserver.completed"
-    private const val MAX_ACTIVE_JOBS = 100
-    private const val MAX_RECORDS = 2000
-    private const val MAX_JOURNAL_BYTES = 8 * 1024 * 1024
-    private var splitJournal = false
+    private const val MAX_ACTIVE_JOBS = TorrDownloadJournalCodec.MAX_ACTIVE_JOBS
+    private const val MAX_RECORDS = TorrDownloadJournalCodec.MAX_RECORDS
+    private var journal: TorrDownloadJournal? = null
     private val mutable = MutableStateFlow<List<TorrDownloadJob>>(emptyList())
     val jobs: StateFlow<List<TorrDownloadJob>> = mutable
     private var initialized = false
@@ -63,13 +56,13 @@ internal object TorrDownloadStore {
     @Synchronized fun finishDeletePrefetch(context: Context, id: String) {
         init(context)
         require(id in discardingJobs && mutable.value.any { it.id == id && it.state == "done" && it.prefetchMovieId.isNotBlank() })
-        persist(context, mutable.value.filterNot { it.id == id })
+        persist(mutable.value.filterNot { it.id == id })
     }
 
     @Synchronized fun finishDiscard(context: Context, id: String) {
         init(context)
         require(id in discardingJobs && mutable.value.any { it.id == id && it.state in setOf("paused", "error") })
-        persist(context, mutable.value.filterNot { it.id == id })
+        persist(mutable.value.filterNot { it.id == id })
     }
 
     @Synchronized fun endDiscard(id: String) { discardingJobs.remove(id) }
@@ -88,32 +81,17 @@ internal object TorrDownloadStore {
 
     @Synchronized fun init(context: Context) {
         if (initialized) return
-        val prefs = context.getSharedPreferences("orbit", Context.MODE_PRIVATE)
+        var opened: TorrDownloadJournal? = null
         val parsed = try {
-            val activeRaw = prefs.getString(KEY, null)
-            val completedRaw = prefs.getString(COMPLETED_KEY, null)
-            fun read(raw: String?, limit: Int): List<TorrDownloadJob> {
-                if (raw == null) return emptyList()
-                require(raw.length <= MAX_JOURNAL_BYTES)
-                val array = JSONArray(raw)
-                require(array.length() <= limit)
-                return (0 until array.length()).map { decode(array.getJSONObject(it)) }
-            }
-            // Older installations keep both states in KEY. The first mutation migrates
-            // them together with the completed index in one SharedPreferences commit.
-            val active = read(activeRaw, if (completedRaw == null) MAX_RECORDS else MAX_ACTIVE_JOBS)
-            val completed = read(completedRaw, MAX_RECORDS)
-            if (completedRaw != null) require(active.none { it.state == "done" } && completed.all { it.state == "done" })
-            (active + completed).also { records ->
-                require(records.size <= MAX_RECORDS && records.count { it.state != "done" } <= MAX_ACTIVE_JOBS)
-                require(records.map { it.id }.distinct().size == records.size)
-                require(records.map { it.document }.distinct().size == records.size)
-            }.also { splitJournal = completedRaw != null }
+            opened = TorrDownloadSqliteJournal.open(context)
+            opened.read().also(TorrDownloadJournalCodec::validate)
         } catch (e: Exception) {
-            // Neither a damaged active journal nor a damaged completed index may be
-            // reinterpreted as empty: media still depends on those document references.
+            // Failed migration/open never becomes an empty queue. A retry must use
+            // a fresh handle; existing media references and preferences stay intact.
+            runCatching { opened?.close() }
             throw IOException("Cannot read download queue", e)
         }
+        journal = opened
         mutable.value = parsed
         initialized = true
     }
@@ -130,7 +108,7 @@ internal object TorrDownloadStore {
                 else -> it
             }
         }
-        if (recovered != mutable.value) persist(context, recovered)
+        if (recovered != mutable.value) persist(recovered)
         this.recovered = true
     }
 
@@ -149,8 +127,8 @@ internal object TorrDownloadStore {
             it.id == job.id || it.document == job.document ||
                 (it.tree == job.tree && it.parentId == job.parentId && it.finalName.equals(job.finalName, ignoreCase = true))
         })
-        decode(encode(job))
-        persist(context, mutable.value + job)
+        TorrDownloadJournalCodec.validate(listOf(job))
+        persist(mutable.value + job)
     }
 
     @Synchronized fun update(context: Context, id: String, transform: (TorrDownloadJob) -> TorrDownloadJob): TorrDownloadJob {
@@ -160,8 +138,8 @@ internal object TorrDownloadStore {
         if (updated == old) return old
         require(updated.id == old.id && updated.hash == old.hash && updated.index == old.index && updated.total == old.total &&
             updated.tree == old.tree && updated.parentId == old.parentId && updated.grouped == old.grouped && updated.finalName == old.finalName && updated.prefetchMovieId == old.prefetchMovieId)
-        decode(encode(updated))
-        persist(context, mutable.value.map { if (it.id == id) updated else it })
+        TorrDownloadJournalCodec.validate(listOf(updated))
+        persist(mutable.value.map { if (it.id == id) updated else it })
         return updated
     }
 
@@ -173,13 +151,13 @@ internal object TorrDownloadStore {
         // visibility may hide it; only explicit saved-file deletion may remove it.
         require(current.state != "done" || current.prefetchMovieId.isBlank())
         // Removing an ordinary queue record never deletes the user document.
-        persist(context, mutable.value.filterNot { it.id == id })
+        persist(mutable.value.filterNot { it.id == id })
     }
 
     @Synchronized fun pauseAll(context: Context) {
         init(context)
         val paused = mutable.value.map { if (it.state == "running" || it.state == "queued") it.copy(state = "paused") else it }
-        if (paused != mutable.value) persist(context, paused)
+        if (paused != mutable.value) persist(paused)
     }
 
     @Synchronized fun queue(context: Context, ids: List<String>) {
@@ -187,62 +165,17 @@ internal object TorrDownloadStore {
         require(ids.isNotEmpty() && ids.distinct().size == ids.size)
         val selected = mutable.value.filter { it.id in ids }
         require(selected.size == ids.size && selected.all { it.state in setOf("paused", "error", "queued") && it.hash.lowercase(Locale.ROOT) !in removingTorrents && it.id !in discardingJobs })
-        persist(context, mutable.value.map { if (it.id in ids) it.copy(state = "queued", error = "") else it })
+        persist(mutable.value.map { if (it.id in ids) it.copy(state = "queued", error = "") else it })
     }
 
-    private fun persist(context: Context, jobs: List<TorrDownloadJob>) {
-        if (splitJournal && jobs == mutable.value) return
-        val active = jobs.filter { it.state != "done" }
-        val completed = jobs.filter { it.state == "done" }
-        require(jobs.size <= MAX_RECORDS && active.size <= MAX_ACTIVE_JOBS)
-        fun encodeJournal(records: List<TorrDownloadJob>): String {
-            val array = JSONArray(); records.forEach { array.put(encode(it)) }
-            return array.toString().also { require(it.length <= MAX_JOURNAL_BYTES) }
-        }
-        val prefs = context.getSharedPreferences("orbit", Context.MODE_PRIVATE)
-        val previousActive = prefs.getString(KEY, null)
-        val previousCompleted = prefs.getString(COMPLETED_KEY, null)
-        val editor = prefs.edit()
-        // Re-encode only the short active queue on a progress checkpoint. Android
-        // still writes the shared preferences XML; this avoids repeated JSON encoding,
-        // not the underlying file write. A dedicated journal needs a separate migration.
-        if (!splitJournal || active != mutable.value.filter { it.state != "done" })
-            editor.putString(KEY, encodeJournal(active))
-        if (!splitJournal || completed != mutable.value.filter { it.state == "done" })
-            editor.putString(COMPLETED_KEY, encodeJournal(completed))
-        if (!editor.commit()) {
-            // Android updates the in-memory preferences before disk commit returns.
-            // Restore the previous pair as well as keeping the published flow unchanged.
-            val rollback = prefs.edit()
-            if (previousActive == null) rollback.remove(KEY) else rollback.putString(KEY, previousActive)
-            if (previousCompleted == null) rollback.remove(COMPLETED_KEY) else rollback.putString(COMPLETED_KEY, previousCompleted)
-            rollback.commit()
-            throw IOException("Cannot save download queue")
-        }
-        splitJournal = true
+    private fun persist(jobs: List<TorrDownloadJob>) {
+        val previous = mutable.value
+        if (jobs == previous) return
+        TorrDownloadJournalCodec.validateStructure(jobs)
+        val currentJournal = journal ?: throw IOException("Download queue is not initialized")
+        // The backend commits all changed records and their order atomically.
+        // A failed transaction leaves the observable queue exactly as it was.
+        currentJournal.write(previous, jobs)
         mutable.value = jobs
-    }
-
-    private fun encode(job: TorrDownloadJob) = JSONObject().apply {
-        put("id", job.id); put("hash", job.hash); put("index", job.index); put("total", job.total)
-        put("name", job.name); put("tree", job.tree); put("document", job.document); put("finalName", job.finalName)
-        put("offset", job.offset); put("etag", job.etag ?: JSONObject.NULL); put("state", job.state); put("error", job.error)
-        put("parentId", job.parentId); put("grouped", job.grouped); put("prefetchMovieId", job.prefetchMovieId)
-    }
-
-    private fun decode(obj: JSONObject): TorrDownloadJob {
-        val job = TorrDownloadJob(obj.getString("id"), obj.getString("hash"), obj.getInt("index"), obj.getLong("total"),
-            obj.getString("name"), obj.getString("tree"), obj.getString("document"), obj.getString("finalName"),
-            obj.getLong("offset"), if (obj.isNull("etag")) null else obj.getString("etag"), obj.getString("state"), obj.optString("error", ""),
-            obj.optString("parentId", ""), obj.optBoolean("grouped", false), obj.optString("prefetchMovieId", ""))
-        UUID.fromString(job.id)
-        TorrDownloadSource(job.hash, job.index, job.total)
-        require(job.offset in 0..job.total && job.name.length in 1..512 && job.finalName.length in 1..255)
-        require(Uri.parse(job.tree).scheme == "content" && Uri.parse(job.document).scheme == "content")
-        require(job.state in setOf("queued", "running", "paused", "done", "error", "finalizing"))
-        require(job.error.length <= 128 && (job.etag == null || job.etag.length <= 8192))
-        require(job.parentId.length <= 4096 && (!job.grouped || job.parentId.isNotBlank()))
-        require(job.prefetchMovieId.length <= 256 && job.prefetchMovieId.none { it.isISOControl() })
-        return job
     }
 }

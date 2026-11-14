@@ -1,4 +1,4 @@
-"""Run the production queue store under controlled concurrent add/remove operations."""
+"""Run the production facade with a file-backed fake under concurrent add/remove operations."""
 from pathlib import Path
 import subprocess
 import tempfile
@@ -8,42 +8,15 @@ compiler = COMPILER
 json_candidates = list((CACHE / 'org.json/json').glob('*/*/*.jar'))
 json_candidates += list((Path.home()/'.gradle/caches/modules-2/files-2.1/org.json/json').glob('*/*/*.jar'))
 jsonjar = next(p for p in json_candidates if not p.name.endswith(('-sources.jar', '-javadoc.jar')))
-context = '''package android.content
-open class Context {
-  companion object { const val MODE_PRIVATE=0 }
-  private val prefs=SharedPreferences()
-  fun getSharedPreferences(name:String, mode:Int)=prefs
-}
-class SharedPreferences {
-  private val values=mutableMapOf<String,String>()
-  fun getString(key:String, fallback:String?)=values[key] ?: fallback
-  fun edit()=Editor(values)
-  class Editor(private val values:MutableMap<String,String>) {
-    private var key=""; private var value=""
-    fun putString(k:String,v:String):Editor { key=k;value=v;return this }
-    fun remove(k:String):Editor { values.remove(k);return this }
-    fun commit():Boolean { values[key]=value;return true }
-  }
-}
-'''
-uri = '''package android.net
-class Uri private constructor(val scheme:String?) {
- companion object { fun parse(value:String)=Uri(value.substringBefore(":", "")) }
-}
-'''
-source = '''package tv.orbit.shield
-class TorrDownloadSource(hash:String,index:Int,size:Long) {
- init { require(hash.matches(Regex("[0-9a-fA-F]{40}")) && index>0 && size>=0) }
-}
-'''
+from check_torr_completed_store import context, uri, source, journal
 checks = '''package tv.orbit.shield
 import android.content.Context
 import java.util.UUID
 import java.util.concurrent.CyclicBarrier
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
-fun main() {
- val ctx=Context()
+fun main(args: Array<String>) {
+ val ctx=Context(args[0])
  fun job(hash:String, state:String="paused")=TorrDownloadJob(UUID.randomUUID().toString(),hash,1,1024,
    "game.bin","content://tree","content://document/"+UUID.randomUUID(),"game.bin",state=state,parentId=UUID.randomUUID().toString(),grouped=true)
  val a="a".repeat(40);val b="b".repeat(40)
@@ -117,12 +90,13 @@ fun main() {
 '''
 with tempfile.TemporaryDirectory(prefix='gostex-store-race-') as td:
     folder=Path(td)
-    for name,body in [('Context.kt',context),('Uri.kt',uri),('Source.kt',source),('Checks.kt',checks)]: (folder/name).write_text(body)
+    for name,body in [('Context.kt',context),('Uri.kt',uri),('Source.kt',source),('Journal.kt',journal),('Checks.kt',checks)]: (folder/name).write_text(body)
     cp=':'.join(map(str,[compiler[1],compiler[4],jsonjar]))
-    src=ROOT/'native-launcher/app/src/main/java/tv/orbit/shield/TorrDownloadStore.kt'
+    base=ROOT/'native-launcher/app/src/main/java/tv/orbit/shield'
+    sources=[base/name for name in ('TorrDownloadStore.kt','TorrDownloadJournal.kt','TorrDownloadJournalCodec.kt')]
     result=subprocess.run([str(JAVA),'-cp',':'.join(map(str,compiler)),'org.jetbrains.kotlin.cli.jvm.K2JVMCompiler',
-        '-no-stdlib','-no-reflect','-classpath',cp,'-d',str(folder/'classes'),str(src),*[str(folder/n) for n in ('Context.kt','Uri.kt','Source.kt','Checks.kt')]],capture_output=True,text=True)
+        '-no-stdlib','-no-reflect','-classpath',cp,'-d',str(folder/'classes'),*map(str,sources),*[str(folder/n) for n in ('Context.kt','Uri.kt','Source.kt','Journal.kt','Checks.kt')]],capture_output=True,text=True)
     if result.returncode: raise SystemExit(result.stderr)
-    result=subprocess.run([str(JAVA),'-cp',f'{folder/"classes"}:{cp}','tv.orbit.shield.ChecksKt'],capture_output=True,text=True)
+    result=subprocess.run([str(JAVA),'-cp',f'{folder/"classes"}:{cp}','tv.orbit.shield.ChecksKt',str(folder/'queue.properties')],capture_output=True,text=True)
     print(result.stdout,end='')
     if result.returncode: raise SystemExit(result.stderr)

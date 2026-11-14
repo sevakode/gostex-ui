@@ -27,6 +27,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -56,6 +57,14 @@ import kotlinx.coroutines.withContext
     var page by remember { mutableStateOf(0) }
     var filePage by remember { mutableStateOf(0) }
     var jobPage by remember { mutableStateOf(0) }
+    var showFinished by remember { mutableStateOf(false) }
+    var hiddenFinished by remember(activity) { mutableStateOf(TorrDownloadHistory.read(activity)) }
+    DisposableEffect(activity) {
+        val stopObserving = TorrDownloadHistory.observe(activity) { hiddenFinished = it }
+        onDispose { stopObserving() }
+    }
+    val finishedTabFocus = remember { FocusRequester() }
+    var finishedFocusId by remember { mutableStateOf<String?>(null) }
     var chosenFiles by remember { mutableStateOf<Set<Int>>(emptySet()) }
     var showOptions by remember { mutableStateOf(false) }
     var showMagnet by remember { mutableStateOf(false) }
@@ -118,14 +127,35 @@ import kotlinx.coroutines.withContext
         journalLoading = false
         refresh()
     }
-    fun removeJobRecord(id: String) {
+    fun removeJobRecord(id: String, finished: Boolean = false) {
         if (journalLoading || journalFailed || removingJobId != null) return
         removingJobId = id
         scope.launch {
             try {
                 withContext(Dispatchers.IO) { TorrDownloadStore.removeRecord(activity.applicationContext, id) }
+                if (finished) finishedFocusId = id
             } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
             catch (_: Exception) { activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed) }
+            finally { removingJobId = null }
+        }
+    }
+    fun hideFinished(job: TorrDownloadJob) {
+        if (journalLoading || journalFailed || removingJobId != null) return
+        if (job.prefetchMovieId.isBlank()) { removeJobRecord(job.id, finished = true); return }
+        removingJobId = job.id
+        finishedFocusId = job.id
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO) { TorrDownloadHistory.hide(activity.applicationContext, job.id) }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) {
+                finishedFocusId = null
+                activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed)
+                if (showFinished && selected == null) {
+                    withFrameNanos { }
+                    runCatching { finishedTabFocus.requestFocus() }
+                }
+            }
             finally { removingJobId = null }
         }
     }
@@ -395,16 +425,34 @@ import kotlinx.coroutines.withContext
         SettingRow(tr(R.string.torr_download_open), onClick = activity::openTorrServer)
     }
     Text(tr(R.string.torr_download_queue), color = Color.White, fontSize = 16.sp)
-    val visibleJobs = if (journalLoading || journalFailed) emptyList() else jobs
-    val pausedCount = visibleJobs.count { it.state == "paused" }
-    if (!journalLoading && !journalFailed && pausedCount > 1) SettingRow(tr(R.string.torr_download_resume_paused, pausedCount), onClick = {
+    val availableJobs = if (journalLoading || journalFailed) emptyList() else jobs
+    val activeJobs = availableJobs.filter { it.state != "done" }
+    val finishedJobs = TorrDownloadHistory.completed(availableJobs, hiddenFinished)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        SettingRow((if (!showFinished) "✓ " else "") + tr(R.string.torr_download_active_tab, activeJobs.size), modifier = Modifier.weight(1f), isSelected = !showFinished, onClick = { showFinished = false; jobPage = 0 })
+        SettingRow((if (showFinished) "✓ " else "") + tr(R.string.torr_download_finished_tab, finishedJobs.size), modifier = Modifier.weight(1f).focusRequester(finishedTabFocus), isSelected = showFinished, onClick = { showFinished = true; jobPage = 0 })
+    }
+    val visibleJobs = if (showFinished) finishedJobs else activeJobs
+    LaunchedEffect(visibleJobs.size, showFinished, finishedFocusId) {
+        jobPage = torrDownloadHistoryPage(jobPage, visibleJobs.size)
+        val removed = finishedFocusId
+        if (!showFinished) finishedFocusId = null
+        else if (removed != null && visibleJobs.none { it.id == removed }) {
+            // The clicked control disappeared. A stable D-pad target also handles an empty last page.
+            withFrameNanos { }
+            runCatching { finishedTabFocus.requestFocus() }
+            finishedFocusId = null
+        }
+    }
+    val pausedCount = activeJobs.count { it.state == "paused" }
+    if (!showFinished && !journalLoading && !journalFailed && pausedCount > 1) SettingRow(tr(R.string.torr_download_resume_paused, pausedCount), onClick = {
         val paused = TorrDownloadStore.jobs.value.filter { it.state == "paused" }.map { it.id }
         if (paused.isNotEmpty()) runCatching { activity.startTorrDownloads(paused) }
             .onFailure { activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed) }
     })
     if (journalFailed) Text(tr(R.string.torr_download_failed), color = Color.LightGray, fontSize = 13.sp)
     if (journalLoading) Text(tr(R.string.torr_download_loading), color = Color.LightGray, fontSize = 13.sp)
-    if (!journalLoading && !journalFailed && jobs.isEmpty()) Text(tr(R.string.torr_download_empty_queue), color = Color.LightGray, fontSize = 13.sp)
+    if (!journalLoading && !journalFailed && visibleJobs.isEmpty()) Text(tr(if (showFinished) R.string.torr_download_empty_finished else R.string.torr_download_empty_queue), color = Color.LightGray, fontSize = 13.sp)
     visibleJobs.drop(jobPage * 20).take(20).forEach { job ->
         val label = when (job.state) {
             "queued" -> R.string.torr_download_queued
@@ -433,14 +481,18 @@ import kotlinx.coroutines.withContext
             else -> ""
         }
         val summary = "${tr(label)} · $percent%" + if (action.isNotEmpty()) " · $action" else ""
-        SettingRow(job.name, summary, onClick = {
-            runCatching {
-                when (job.state) {
-                    "queued", "running" -> TorrDownloadActions.pause(activity, job.id)
-                    "paused", "error" -> activity.startTorrDownload(job.id)
-                }
-            }.onFailure { activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed) }
-        })
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            SettingRow(job.name, summary, modifier = Modifier.weight(1f), onClick = {
+                runCatching {
+                    when (job.state) {
+                        "queued", "running" -> TorrDownloadActions.pause(activity, job.id)
+                        "paused", "error" -> activity.startTorrDownload(job.id)
+                    }
+                }.onFailure { activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed) }
+            })
+            val hideDescription = tr(R.string.torr_download_hide_finished)
+            if (job.state == "done") SettingRow("×", modifier = Modifier.width(72.dp).semantics { contentDescription = hideDescription }, trailing = "", onClick = { hideFinished(job) })
+        }
         if (job.state in setOf("running", "queued", "paused") && job.total > 0) {
             Box(Modifier.fillMaxWidth().height(3.dp).background(Color(0xFF38383C))) {
                 Box(Modifier.fillMaxWidth(percent / 100f).height(3.dp).background(Color(0xFFCCFF00)))
@@ -448,9 +500,6 @@ import kotlinx.coroutines.withContext
         }
         if (job.state == "done" && PlatformRegistry.all.any { it.accepts(job.finalName) })
             SettingRow(tr(R.string.torr_game_add), onClick = { activity.addDownloadedGame(job) })
-        if (job.state == "done") SettingRow(tr(R.string.torr_download_remove), tr(R.string.torr_download_keep_file), onClick = {
-            removeJobRecord(job.id)
-        })
         if (job.state == "paused" || job.state == "error") SettingRow(
             tr(R.string.torr_download_remove), tr(R.string.torr_download_keep_partial), onClick = {
                 android.app.AlertDialog.Builder(activity)

@@ -3,6 +3,8 @@ package tv.orbit.shield
 import android.content.Context
 import android.net.Uri
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
 /** Uses the existing user-selected download folder and the same single transfer worker. */
@@ -20,6 +22,48 @@ internal object TorrPrefetch {
         val folder = context.getSharedPreferences("orbit", 0).getString("downloads.folder", "").orEmpty()
         val tree = runCatching { Uri.parse(folder) }.getOrNull() ?: return false
         return tree.scheme == "content" && context.contentResolver.persistedUriPermissions.any { it.uri == tree && it.isReadPermission && it.isWritePermission }
+    }
+
+    /** Reconnect previously saved files whose queue records were removed, without starting transfers. */
+    suspend fun recoverSaved(context: Context, movieId: String, hashes: List<String>) {
+        currentCoroutineContext().ensureActive()
+        if (PortableMaintenance.running || !destinationAvailable(context)) return
+        val tree = Uri.parse(context.getSharedPreferences("orbit", 0).getString("downloads.folder", ""))
+        // Validate the durable journal before any discovery; never replace a damaged journal.
+        TorrDownloadStore.recover(context)
+        for (hash in hashes.map { it.lowercase(java.util.Locale.ROOT) }.distinct().take(10)) {
+            currentCoroutineContext().ensureActive()
+            if (PortableMaintenance.running) return
+            val managed = runCatching { TorrDownloadGroups.hasRecord(context, tree, hash) }.getOrDefault(false)
+            if (!managed) continue
+            // action=get reads the server's cached metadata. /stream would open the torrent and contact peers.
+            val entry = try { TorrServerCatalog.status(hash, timeoutMs = 1000) }
+                catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                catch (_: Exception) { continue }
+            recoverEntry(context, movieId, entry)
+        }
+    }
+
+    suspend fun recoverEntry(context: Context, movieId: String, entry: TorrCatalogEntry) {
+        currentCoroutineContext().ensureActive()
+        if (PortableMaintenance.running || !destinationAvailable(context)) return
+        val tree = Uri.parse(context.getSharedPreferences("orbit", 0).getString("downloads.folder", ""))
+        TorrDownloadStore.recover(context)
+        val existing = TorrDownloadStore.jobs.value.filter { it.tree == tree.toString() && it.hash.equals(entry.hash, true) }.map { it.index }.toSet()
+        val files = entry.files.filter { TorrPlayback.isVideo(it.path) && it.size > 0 && it.id !in existing }.take(100)
+        if (files.isEmpty()) return
+        val coroutine = currentCoroutineContext()
+        try {
+            TorrDownloadDocuments.recoverCompletedFiles(context, tree, entry, files, movieId) {
+                coroutine.ensureActive()
+                if (PortableMaintenance.running || context.getSharedPreferences("orbit", 0).getString("downloads.folder", "") != tree.toString())
+                    throw kotlinx.coroutines.CancellationException("Download discovery no longer active")
+            }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // Missing or inaccessible folders are left untouched; playback still works.
+        }
     }
 
     /** The caller is a visible activity and starts its player after this method returns. */

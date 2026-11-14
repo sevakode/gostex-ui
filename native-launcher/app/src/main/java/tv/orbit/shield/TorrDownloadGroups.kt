@@ -13,11 +13,13 @@ internal object TorrDownloadGroups {
     private const val KEY = "downloads.torrserver.groups"
     private data class Child(val id: String, val name: String, val mime: String)
 
-    private fun children(context: Context, tree: Uri, parent: String): List<Child> {
+    private fun children(context: Context, tree: Uri, parent: String, checkActive: () -> Unit = {}): List<Child> {
+        checkActive()
         val columns = arrayOf(Docs.Document.COLUMN_DOCUMENT_ID, Docs.Document.COLUMN_DISPLAY_NAME, Docs.Document.COLUMN_MIME_TYPE)
         return context.contentResolver.query(Docs.buildChildDocumentsUriUsingTree(tree, parent), columns, null, null, null)?.use { c ->
             buildList {
                 while (c.moveToNext()) {
+                    checkActive()
                     if (size >= 10000) throw IOException("Too many documents")
                     add(Child(c.getString(0) ?: throw IOException("Missing document ID"), c.getString(1) ?: "", c.getString(2) ?: ""))
                 }
@@ -38,6 +40,57 @@ internal object TorrDownloadGroups {
             throw IOException("Ambiguous directory")
         }
         return id
+    }
+
+    private fun records(context: Context, tree: Uri, hash: String): List<JSONObject> {
+        val groups = JSONArray(context.getSharedPreferences("orbit", Context.MODE_PRIVATE).getString(KEY, "[]"))
+        if (groups.length() > 1000) throw IOException("Too many download groups")
+        return (0 until groups.length()).map { groups.getJSONObject(it) }.filter {
+            it.optString("tree") == tree.toString() && it.optString("hash").equals(hash, true)
+        }
+    }
+
+    /** A local metadata check; do not open a torrent just to discover there is no managed folder. */
+    @Synchronized fun hasRecord(context: Context, tree: Uri, hash: String): Boolean = records(context, tree, hash).size == 1
+
+    /** The caller already has a bounded, unambiguous direct-child listing for this parent. */
+    private fun listedChildAccessible(context: Context, tree: Uri, parent: String, child: String): Boolean {
+        if (child.isBlank() || child == parent) return false
+        val uri = Docs.buildDocumentUriUsingTree(tree, child)
+        val accessible = context.contentResolver.query(uri, arrayOf(Docs.Document.COLUMN_DOCUMENT_ID), null, null, null)?.use {
+            it.moveToFirst() && it.getString(0) == child && !it.moveToNext()
+        } ?: false
+        return accessible && (android.os.Build.VERSION.SDK_INT < 29 ||
+            Docs.isChildDocument(context.contentResolver, Docs.buildDocumentUriUsingTree(tree, parent), uri))
+    }
+
+    /** Resolve each existing parent once per recovery pass, without creating any directories. */
+    @Synchronized fun existingParents(context: Context, tree: Uri, entry: TorrCatalogEntry,
+                                     paths: List<List<String>>, checkActive: () -> Unit = {}): Map<List<String>, String> {
+        checkActive()
+        val record = records(context, tree, entry.hash).singleOrNull() ?: return emptyMap()
+        val cachedChildren = mutableMapOf<String, List<Child>>()
+        fun list(parent: String) = cachedChildren.getOrPut(parent) { children(context, tree, parent, checkActive) }
+        val root = Docs.getTreeDocumentId(tree)
+        val group = list(root).singleOrNull {
+            it.id == record.optString("id") && it.name == record.optString("name") && it.mime == Docs.Document.MIME_TYPE_DIR
+        } ?: return emptyMap()
+        if (!listedChildAccessible(context, tree, root, group.id)) return emptyMap()
+        val resolved = mutableMapOf<List<String>, String?>(emptyList<String>() to group.id)
+        for (parts in paths.filter { it.isNotEmpty() }.map { it.dropLast(1) }.distinct()) {
+            checkActive()
+            var parent: String? = group.id
+            for (length in 1..parts.size) {
+                val prefix = parts.take(length)
+                if (prefix in resolved) { parent = resolved[prefix]; continue }
+                val parentId = parent ?: break
+                val child = list(parentId).singleOrNull { it.name == parts[length - 1] && it.mime == Docs.Document.MIME_TYPE_DIR }
+                parent = child?.takeIf { listedChildAccessible(context, tree, parentId, it.id) }?.id
+                resolved[prefix] = parent
+            }
+            resolved[parts] = parent
+        }
+        return resolved.mapNotNull { (path, id) -> id?.let { path to it } }.toMap()
     }
 
     /** Returns the document ID of the parent directory for the torrent file. */

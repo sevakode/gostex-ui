@@ -105,4 +105,8 @@
     <string name="torr_media_check_failed">No se pudieron comprobar los vínculos. No se puede eliminar del servidor hasta leer la biblioteca.</string>
     <string name="torr_media_hide_action">Ocultar medios en descargas</string>
     <string name="torr_media_all_hidden">Las fuentes están ocultas aquí y siguen en tu biblioteca multimedia.</string>
+    <string name="torr_download_active_tab">Activas (%1$d)</string>
+    <string name="torr_download_finished_tab">Completadas (%1$d)</string>
+    <string name="torr_download_empty_finished">No hay descargas completadas</string>
+    <string name="torr_download_hide_finished">Ocultar de la lista</string>
 </resources>

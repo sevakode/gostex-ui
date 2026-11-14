@@ -22,7 +22,11 @@ internal data class TorrDownloadJob(
 /** Download records are durable operational state, not a second settings store. */
 internal object TorrDownloadStore {
     private const val KEY = "downloads.torrserver.jobs"
-    private const val MAX_JOBS = 100
+    private const val COMPLETED_KEY = "downloads.torrserver.completed"
+    private const val MAX_ACTIVE_JOBS = 100
+    private const val MAX_RECORDS = 2000
+    private const val MAX_JOURNAL_BYTES = 8 * 1024 * 1024
+    private var splitJournal = false
     private val mutable = MutableStateFlow<List<TorrDownloadJob>>(emptyList())
     val jobs: StateFlow<List<TorrDownloadJob>> = mutable
     private var initialized = false
@@ -84,13 +88,30 @@ internal object TorrDownloadStore {
 
     @Synchronized fun init(context: Context) {
         if (initialized) return
-        val raw = context.getSharedPreferences("orbit", Context.MODE_PRIVATE).getString(KEY, null)
-        val parsed = if (raw == null) emptyList() else try {
-            val array = JSONArray(raw)
-            if (array.length() > MAX_JOBS) throw IOException("Download queue is too large")
-            (0 until array.length()).map { decode(array.getJSONObject(it)) }
+        val prefs = context.getSharedPreferences("orbit", Context.MODE_PRIVATE)
+        val parsed = try {
+            val activeRaw = prefs.getString(KEY, null)
+            val completedRaw = prefs.getString(COMPLETED_KEY, null)
+            fun read(raw: String?, limit: Int): List<TorrDownloadJob> {
+                if (raw == null) return emptyList()
+                require(raw.length <= MAX_JOURNAL_BYTES)
+                val array = JSONArray(raw)
+                require(array.length() <= limit)
+                return (0 until array.length()).map { decode(array.getJSONObject(it)) }
+            }
+            // Older installations keep both states in KEY. The first mutation migrates
+            // them together with the completed index in one SharedPreferences commit.
+            val active = read(activeRaw, if (completedRaw == null) MAX_RECORDS else MAX_ACTIVE_JOBS)
+            val completed = read(completedRaw, MAX_RECORDS)
+            if (completedRaw != null) require(active.none { it.state == "done" } && completed.all { it.state == "done" })
+            (active + completed).also { records ->
+                require(records.size <= MAX_RECORDS && records.count { it.state != "done" } <= MAX_ACTIVE_JOBS)
+                require(records.map { it.id }.distinct().size == records.size)
+                require(records.map { it.document }.distinct().size == records.size)
+            }.also { splitJournal = completedRaw != null }
         } catch (e: Exception) {
-            // Never overwrite an unreadable journal with an empty list.
+            // Neither a damaged active journal nor a damaged completed index may be
+            // reinterpreted as empty: media still depends on those document references.
             throw IOException("Cannot read download queue", e)
         }
         mutable.value = parsed
@@ -113,9 +134,18 @@ internal object TorrDownloadStore {
         this.recovered = true
     }
 
+    /** Check batch admission against pending work, independently of saved media. */
+    @Synchronized fun requireActiveCapacity(context: Context, additional: Int) {
+        init(context)
+        require(additional >= 0 && additional <= MAX_ACTIVE_JOBS)
+        require(mutable.value.count { it.state != "done" } <= MAX_ACTIVE_JOBS - additional &&
+            mutable.value.size <= MAX_RECORDS - additional)
+    }
+
     @Synchronized fun add(context: Context, job: TorrDownloadJob) {
         init(context)
-        require(job.hash.lowercase(Locale.ROOT) !in removingTorrents && mutable.value.size < MAX_JOBS && mutable.value.none {
+        require(job.hash.lowercase(Locale.ROOT) !in removingTorrents && mutable.value.size < MAX_RECORDS &&
+            (job.state == "done" || mutable.value.count { it.state != "done" } < MAX_ACTIVE_JOBS) && mutable.value.none {
             it.id == job.id || it.document == job.document ||
                 (it.tree == job.tree && it.parentId == job.parentId && it.finalName.equals(job.finalName, ignoreCase = true))
         })
@@ -138,7 +168,10 @@ internal object TorrDownloadStore {
         init(context)
         val current = mutable.value.firstOrNull { it.id == id } ?: return
         require(current.state != "running" && current.state != "queued" && current.state != "finalizing" && id !in activeJobs && id !in discardingJobs)
-        // Removing a record never deletes the corresponding user document.
+        // A completed media record is also the library's offline reference. History
+        // visibility may hide it; only explicit saved-file deletion may remove it.
+        require(current.state != "done" || current.prefetchMovieId.isBlank())
+        // Removing an ordinary queue record never deletes the user document.
         persist(context, mutable.value.filterNot { it.id == id })
     }
 
@@ -157,10 +190,34 @@ internal object TorrDownloadStore {
     }
 
     private fun persist(context: Context, jobs: List<TorrDownloadJob>) {
-        val array = JSONArray(); jobs.forEach { array.put(encode(it)) }
-        if (!context.getSharedPreferences("orbit", Context.MODE_PRIVATE).edit().putString(KEY, array.toString()).commit()) {
+        val active = jobs.filter { it.state != "done" }
+        val completed = jobs.filter { it.state == "done" }
+        require(jobs.size <= MAX_RECORDS && active.size <= MAX_ACTIVE_JOBS)
+        fun encodeJournal(records: List<TorrDownloadJob>): String {
+            val array = JSONArray(); records.forEach { array.put(encode(it)) }
+            return array.toString().also { require(it.length <= MAX_JOURNAL_BYTES) }
+        }
+        val prefs = context.getSharedPreferences("orbit", Context.MODE_PRIVATE)
+        val previousActive = prefs.getString(KEY, null)
+        val previousCompleted = prefs.getString(COMPLETED_KEY, null)
+        val editor = prefs.edit()
+        // Re-encode only the short active queue on a progress checkpoint. Android
+        // still writes the shared preferences XML; this avoids repeated JSON encoding,
+        // not the underlying file write. A dedicated journal needs a separate migration.
+        if (!splitJournal || active != mutable.value.filter { it.state != "done" })
+            editor.putString(KEY, encodeJournal(active))
+        if (!splitJournal || completed != mutable.value.filter { it.state == "done" })
+            editor.putString(COMPLETED_KEY, encodeJournal(completed))
+        if (!editor.commit()) {
+            // Android updates the in-memory preferences before disk commit returns.
+            // Restore the previous pair as well as keeping the published flow unchanged.
+            val rollback = prefs.edit()
+            if (previousActive == null) rollback.remove(KEY) else rollback.putString(KEY, previousActive)
+            if (previousCompleted == null) rollback.remove(COMPLETED_KEY) else rollback.putString(COMPLETED_KEY, previousCompleted)
+            rollback.commit()
             throw IOException("Cannot save download queue")
         }
+        splitJournal = true
         mutable.value = jobs
     }
 

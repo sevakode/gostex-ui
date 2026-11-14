@@ -3,15 +3,11 @@ from pathlib import Path
 import subprocess
 import tempfile
 
-ROOT = Path(__file__).resolve().parents[2]
-CACHE = ROOT / '.tools/native/gradle-cache/caches/modules-2/files-2.1'
-JAVA = ROOT / '.tools/native/jdk/jdk-21.0.13+9/Contents/Home/bin/java'
-def jar(group, artifact, version): return next((CACHE / group / artifact / version).glob('*/*.jar'))
-compiler = [jar('org.jetbrains.kotlin', a, v) for a, v in [
-    ('kotlin-compiler-embeddable', '2.4.21'), ('kotlin-stdlib', '2.4.21'),
-    ('kotlin-script-runtime', '2.4.21'), ('kotlin-reflect', '1.6.10'),
-]] + [jar('org.jetbrains.kotlinx', 'kotlinx-coroutines-core-jvm', '1.9.0'), jar('org.jetbrains', 'annotations', '13.0')]
-jsonjar = next((Path.home()/'.gradle/caches/modules-2/files-2.1/org.json/json/20180813').glob('*/*.jar'))
+from kotlin_toolchain import ROOT, JAVA, COMPILER, CACHE
+compiler = COMPILER
+json_candidates = list((CACHE / 'org.json/json').glob('*/*/*.jar'))
+json_candidates += list((Path.home()/'.gradle/caches/modules-2/files-2.1/org.json/json').glob('*/*/*.jar'))
+jsonjar = next(p for p in json_candidates if not p.name.endswith(('-sources.jar', '-javadoc.jar')))
 context = '''package android.content
 open class Context {
   companion object { const val MODE_PRIVATE=0 }
@@ -25,6 +21,7 @@ class SharedPreferences {
   class Editor(private val values:MutableMap<String,String>) {
     private var key=""; private var value=""
     fun putString(k:String,v:String):Editor { key=k;value=v;return this }
+    fun remove(k:String):Editor { values.remove(k);return this }
     fun commit():Boolean { values[key]=value;return true }
   }
 }

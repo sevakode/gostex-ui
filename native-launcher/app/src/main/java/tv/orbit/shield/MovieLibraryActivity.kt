@@ -525,6 +525,12 @@ class MovieLibraryActivity : ComponentActivity() {
                 val paths = videos.map { it.path }
                 val movieId = selected?.id
                 val seriesId = selected?.takeIf { it.mediaType == "series" }?.id
+                if (seriesId != null) withContext(Dispatchers.IO) {
+                    try { TorrPrefetch.recoverEntry(applicationContext, seriesId, entry) }
+                    catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                    catch (_: Exception) { /* Optional discovery must not block streaming. */ }
+                }
+                if (generation != requestGeneration || isFinishing || isDestroyed) return@launch
                 val canQueue = if (seriesId != null && TorrPlaybackPreferences.autoNext(this@MovieLibraryActivity) && orderedEpisodeFiles(paths)) {
                     try { withContext(Dispatchers.IO) { TorrServerCatalog.playlistMatchesVideos(entry, videos) } }
                     catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
@@ -721,6 +727,23 @@ class MovieLibraryActivity : ComponentActivity() {
         val downloads by TorrDownloadStore.jobs.collectAsState()
         val savedFocus = remember { FocusRequester() }
         val lastEpisode = rememberLastEpisode(selected?.takeIf { it.mediaType == "series" }?.id)
+        val recoveryMovie = selected?.takeIf { page == "detail" }
+        val recoverySources = saved.firstOrNull { it.id == recoveryMovie?.id }?.sources
+        // Keep this outside LazyColumn: scrolling the title out of view must not restart discovery.
+        LaunchedEffect(recoveryMovie?.id, recoverySources) {
+            val movie = recoveryMovie ?: return@LaunchedEffect
+            val hashes = recoverySources.orEmpty().mapNotNull { source ->
+                val uri = Uri.parse(source.uri)
+                uri.host?.takeIf { uri.scheme.equals("torrserver", true) && it.matches(Regex("(?i)[0-9a-f]{40}")) }
+            }
+            if (hashes.isNotEmpty()) try {
+                withContext(Dispatchers.IO) { TorrPrefetch.recoverSaved(applicationContext, movie.id, hashes) }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // Discovery is optional; an unreadable journal or unavailable server must not close the card.
+            }
+        }
         LaunchedEffect(sourceRemovalVersion) {
             if (sourceRemovalVersion > 0) {
                 withFrameNanos { }

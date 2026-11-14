@@ -49,7 +49,7 @@ internal object TorrDownloadDocuments {
         val paths = files.map { TorrDownloadPaths.components(it.path).joinToString("/").lowercase() }
         require(paths.distinct().size == paths.size)
         TorrDownloadStore.recover(context)
-        require(TorrDownloadStore.jobs.value.size + files.size <= 100)
+        TorrDownloadStore.requireActiveCapacity(context, files.size)
         // If a provider fails part way through, already recorded items stay paused;
         // no existing file is deleted and the user can resume them explicitly.
         // Publish disc descriptors after their tracks and playlists last. This
@@ -144,29 +144,73 @@ internal object TorrDownloadDocuments {
 
     /** Recover a matching completed file in this torrent's managed folder without changing it. */
     @Synchronized fun recoverCompleted(context: Context, tree: Uri, entry: TorrCatalogEntry, file: TorrCatalogFile, movieId: String): TorrDownloadJob {
-        require(file in entry.files && file.size > 0 && movieId.isNotBlank() && tree.scheme == "content")
+        return recoverCompletedFiles(context, tree, entry, listOf(file), movieId).singleOrNull()
+            ?: throw IOException("Completed file unavailable")
+    }
+
+    /** Directory listings live only for this pass; one slow/missing file must not hide its siblings. */
+    @Synchronized fun recoverCompletedFiles(context: Context, tree: Uri, entry: TorrCatalogEntry,
+                                           files: List<TorrCatalogFile>, movieId: String,
+                                           checkActive: () -> Unit = {}): List<TorrDownloadJob> {
+        require(files.size <= 100 && files.all { it in entry.files && it.size > 0 } && movieId.isNotBlank() && tree.scheme == "content")
+        checkActive()
         TorrDownloadStore.recover(context)
-        val parts = TorrDownloadPaths.components(file.path)
-        val parentId = TorrDownloadGroups.parent(context, tree, entry, parts)
-        val parent = DocumentsContract.buildChildDocumentsUriUsingTree(tree, parentId)
+        val existing = TorrDownloadStore.jobs.value.filter { it.tree == tree.toString() && it.hash.equals(entry.hash, true) }.map { it.index }.toSet()
+        val paths = files.filter { it.id !in existing }.mapNotNull { file ->
+            runCatching { file to TorrDownloadPaths.components(file.path) }.getOrNull()
+        }.toMap()
+        if (paths.isEmpty()) return emptyList()
+        val parents = TorrDownloadGroups.existingParents(context, tree, entry, paths.values.toList(), checkActive)
+        data class Child(val id: String, val name: String, val size: Long?, val mime: String)
         val columns = arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME,
             DocumentsContract.Document.COLUMN_SIZE, DocumentsContract.Document.COLUMN_MIME_TYPE)
-        val matches = context.contentResolver.query(parent, columns, null, null, null)?.use { cursor ->
-            buildList<String> {
-                while (cursor.moveToNext()) {
-                    if (cursor.getString(1) == parts.last() && !cursor.isNull(2) && cursor.getLong(2) == file.size &&
-                        cursor.getString(3) != DocumentsContract.Document.MIME_TYPE_DIR) add(cursor.getString(0) ?: throw IOException("Missing document ID"))
-                    if (size > 1) throw IOException("Ambiguous completed file")
-                }
+        val children = mutableMapOf<String, Result<List<Child>>>()
+        fun list(parentId: String): List<Child> = children.getOrPut(parentId) {
+            runCatching {
+                val uri = DocumentsContract.buildChildDocumentsUriUsingTree(tree, parentId)
+                context.contentResolver.query(uri, columns, null, null, null)?.use { cursor ->
+                    buildList {
+                        while (cursor.moveToNext()) {
+                            checkActive()
+                            if (size >= 10000) throw IOException("Too many destination documents")
+                            add(Child(cursor.getString(0) ?: throw IOException("Missing document ID"), cursor.getString(1) ?: "",
+                                if (cursor.isNull(2)) null else cursor.getLong(2), cursor.getString(3) ?: ""))
+                        }
+                    }.also { list -> if (list.map { it.id }.distinct().size != list.size) throw IOException("Ambiguous document IDs") }
+                } ?: throw IOException("Cannot inspect completed files")
             }
-        } ?: throw IOException("Cannot inspect completed file")
-        val documentId = matches.singleOrNull() ?: throw IOException("Completed file unavailable")
-        if (!portableSafDirectChild(context.contentResolver, tree, parentId, documentId)) throw IOException("File is outside selected folder")
-        val document = DocumentsContract.buildDocumentUriUsingTree(tree, documentId)
-        context.contentResolver.openAssetFileDescriptor(document, "r")?.use { } ?: throw IOException("Cannot read completed file")
-        val job = TorrDownloadJob(UUID.randomUUID().toString(), entry.hash, file.id, file.size, parts.last(), tree.toString(),
-            document.toString(), parts.last(), offset = file.size, state = "done", parentId = parentId, grouped = true, prefetchMovieId = movieId)
-        TorrDownloadStore.add(context, job)
-        return job
+        }.getOrThrow()
+        val recovered = mutableListOf<TorrDownloadJob>()
+        for ((file, parts) in paths) {
+            checkActive()
+            // Another visible request may have recovered the same document while this pass waited for its lock.
+            if (TorrDownloadStore.jobs.value.any { it.tree == tree.toString() && it.hash.equals(entry.hash, true) && it.index == file.id }) continue
+            try {
+                val parentId = parents[parts.dropLast(1)] ?: continue
+                val child = list(parentId).singleOrNull { it.name == parts.last() && it.size == file.size && it.mime != DocumentsContract.Document.MIME_TYPE_DIR }
+                    ?: continue
+                if (child.id.isBlank() || child.id == parentId) continue
+                val document = DocumentsContract.buildDocumentUriUsingTree(tree, child.id)
+                // Direct membership was checked in the cached, unique parent listing. Verify tree access
+                // and current identity without enumerating that parent again for every episode.
+                val matches = context.contentResolver.query(document, columns, null, null, null)?.use { cursor ->
+                    cursor.moveToFirst() && cursor.getString(0) == child.id && cursor.getString(1) == parts.last() &&
+                        !cursor.isNull(2) && cursor.getLong(2) == file.size && cursor.getString(3) != DocumentsContract.Document.MIME_TYPE_DIR && !cursor.moveToNext()
+                } ?: false
+                if (!matches || android.os.Build.VERSION.SDK_INT >= 29 && !DocumentsContract.isChildDocument(context.contentResolver,
+                        DocumentsContract.buildDocumentUriUsingTree(tree, parentId), document)) continue
+                context.contentResolver.openAssetFileDescriptor(document, "r")?.use { } ?: continue
+                checkActive()
+                val job = TorrDownloadJob(UUID.randomUUID().toString(), entry.hash, file.id, file.size, parts.last(), tree.toString(),
+                    document.toString(), parts.last(), offset = file.size, state = "done", parentId = parentId, grouped = true, prefetchMovieId = movieId)
+                TorrDownloadStore.add(context, job)
+                recovered += job
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // Missing, inaccessible or concurrently registered documents are left untouched.
+            }
+        }
+        return recovered
     }
 }

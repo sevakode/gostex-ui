@@ -24,6 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Text
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -725,6 +726,7 @@ class MovieLibraryActivity : ComponentActivity() {
 
     @Composable private fun MovieScreen() {
         val downloads by TorrDownloadStore.jobs.collectAsState()
+        val liveDownloadProgress by TorrDownloadLiveProgress.current.collectAsStateWithLifecycle()
         val savedFocus = remember { FocusRequester() }
         val lastEpisode = rememberLastEpisode(selected?.takeIf { it.mediaType == "series" }?.id)
         val recoveryMovie = selected?.takeIf { page == "detail" }
@@ -821,7 +823,8 @@ class MovieLibraryActivity : ComponentActivity() {
                             }
                             if (partialEpisodes.isNotEmpty()) item { Text(tr(R.string.prefetch_in_progress), color = Color.LightGray, fontSize = 14.sp) }
                             items(partialEpisodes, key = { "offline-partial:${it.id}" }) { job ->
-                                val percent = if (job.total > 0) (job.offset.toDouble() * 100 / job.total).toInt().coerceIn(0, 100) else 0
+                                val displayOffset = downloadDisplayOffset(job, liveDownloadProgress)
+                                val percent = if (job.total > 0) (displayOffset.toDouble() * 100 / job.total).toInt().coerceIn(0, 100) else 0
                                 val status = when (job.state) {
                                     "queued" -> R.string.torr_download_queued
                                     "running" -> R.string.torr_download_running
@@ -839,7 +842,7 @@ class MovieLibraryActivity : ComponentActivity() {
                                     }
                                 }
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    val downloadedSize = android.text.format.Formatter.formatShortFileSize(this@MovieLibraryActivity, job.offset)
+                                    val downloadedSize = android.text.format.Formatter.formatShortFileSize(this@MovieLibraryActivity, displayOffset)
                                     val totalSize = android.text.format.Formatter.formatShortFileSize(this@MovieLibraryActivity, job.total)
                                     SettingRow(job.name, "${tr(status)} · $downloadedSize / $totalSize · $percent%", modifier = Modifier.weight(1f), onClick = {
                                         runCatching {

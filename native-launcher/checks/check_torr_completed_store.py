@@ -94,6 +94,13 @@ fun main(args: Array<String>) {
             check(TorrDownloadStore.jobs.value.count { it.state == "done" } == 111)
             val savedWrites = ctx.prefs.writes[SAVED]
             val savedBytes = ctx.prefs.getString(SAVED, null)
+            val previousWrites = ctx.prefs.writes.toMap()
+            repeat(32) { TorrDownloadStore.update(ctx, pending.id) { it.copy(offset = 8) } }
+            check(ctx.prefs.writes == previousWrites)
+            TorrDownloadStore.queue(ctx, listOf(pending.id))
+            val queuedWrites = ctx.prefs.writes.toMap()
+            repeat(32) { TorrDownloadStore.queue(ctx, listOf(pending.id)) }
+            check(ctx.prefs.writes == queuedWrites)
             TorrDownloadStore.update(ctx, pending.id) { it.copy(offset = 16) }
             check(ctx.prefs.writes[SAVED] == savedWrites && ctx.prefs.getString(SAVED, null) == savedBytes)
             // Clearing history cannot discard a media document reference.

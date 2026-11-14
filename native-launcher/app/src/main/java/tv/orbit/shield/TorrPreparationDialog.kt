@@ -6,11 +6,13 @@ import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.withContext
 
 /** Shared preparation UI for the media library and direct torrent playback. */
@@ -25,17 +27,21 @@ internal object TorrPreparationDialog {
         var monitor: Job? = null
         var preload: Job? = null
         var downloadMonitor: Job? = null
+        var preparationCompletion: kotlinx.coroutines.DisposableHandle? = null
         var lastStatus = ""
         var preloadMessage = ""
         var downloadMessage = if (trackDownload) activity.getString(R.string.prefetch_preparing) else ""
         fun updateMessage() {
             if (dialog.isShowing) dialog.setMessage(listOf(lastStatus, downloadMessage, preloadMessage).filter { it.isNotEmpty() }.joinToString("\n\n"))
         }
-        dialog.setOnDismissListener { monitor?.cancel(); preload?.cancel(); downloadMonitor?.cancel(); onDismiss() }
+        dialog.setOnDismissListener {
+            monitor?.cancel(); preload?.cancel(); downloadMonitor?.cancel(); preparationCompletion?.dispose(); onDismiss()
+        }
         dialog.show()
         if (trackDownload) {
-            fun updateDownload() {
-                val job = TorrDownloadStore.jobs.value.firstOrNull { it.hash.equals(hash, true) && it.index == fileId }
+            fun updateDownload(jobs: List<TorrDownloadJob> = TorrDownloadStore.jobs.value,
+                progress: TorrDownloadProgress? = TorrDownloadLiveProgress.current.value) {
+                val job = jobs.firstOrNull { it.hash.equals(hash, true) && it.index == fileId }
                 downloadMessage = if (job == null) {
                     activity.getString(when {
                         downloadPreparation?.isActive == true -> R.string.prefetch_preparing
@@ -52,19 +58,26 @@ internal object TorrPreparationDialog {
                         "done" -> R.string.prefetch_ready
                         else -> R.string.torr_download_error
                     }
-                    val downloaded = android.text.format.Formatter.formatShortFileSize(activity, job.offset)
+                    val displayOffset = downloadDisplayOffset(job, progress)
+                    val downloaded = android.text.format.Formatter.formatShortFileSize(activity, displayOffset)
                     val total = android.text.format.Formatter.formatShortFileSize(activity, job.total)
-                    val percent = if (job.total > 0) (job.offset.toDouble() * 100 / job.total).toInt().coerceIn(0, 100) else 0
+                    val percent = if (job.total > 0) (displayOffset.toDouble() * 100 / job.total).toInt().coerceIn(0, 100) else 0
                     activity.getString(R.string.prefetch_buffer_progress, activity.getString(status), downloaded, total, percent)
                 }
                 updateMessage()
             }
             updateDownload()
             downloadMonitor = activity.lifecycleScope.launch {
-                TorrDownloadStore.jobs.collect { updateDownload() }
+                activity.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                    combine(TorrDownloadStore.jobs, TorrDownloadLiveProgress.current) { jobs, progress ->
+                        jobs to progress
+                    }.collect { (jobs, progress) -> updateDownload(jobs, progress) }
+                }
             }
-            downloadPreparation?.invokeOnCompletion {
-                activity.lifecycleScope.launch { if (dialog.isShowing) updateDownload() }
+            preparationCompletion = downloadPreparation?.invokeOnCompletion {
+                activity.lifecycleScope.launch {
+                    if (dialog.isShowing && activity.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) updateDownload()
+                }
             }
         }
         var opened = false

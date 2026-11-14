@@ -34,6 +34,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
@@ -42,6 +43,7 @@ import kotlinx.coroutines.withContext
 @Composable internal fun TorrDownloadUi(activity: MainActivity, initialFocus: FocusRequester, wide: Boolean = false) {
     val scope = rememberCoroutineScope()
     val jobs by TorrDownloadStore.jobs.collectAsState()
+    val liveProgress by TorrDownloadLiveProgress.current.collectAsStateWithLifecycle()
     var entries by remember { mutableStateOf<List<TorrCatalogEntry>>(emptyList()) }
     var selected by remember { mutableStateOf<TorrCatalogEntry?>(null) }
     var magnet by remember { mutableStateOf("") }
@@ -474,7 +476,8 @@ import kotlinx.coroutines.withContext
                 else -> R.string.torr_download_error
             }
         }
-        val percent = if (job.total == 0L) { if (job.state == "done") 100 else 0 } else (job.offset.toDouble() / job.total * 100).toInt().coerceIn(0, 100)
+        val displayOffset = downloadDisplayOffset(job, liveProgress)
+        val percent = if (job.total == 0L) { if (job.state == "done") 100 else 0 } else (displayOffset.toDouble() / job.total * 100).toInt().coerceIn(0, 100)
         val action = when (job.state) {
             "queued", "running" -> tr(R.string.torr_download_pause)
             "paused", "error" -> tr(R.string.torr_download_resume)

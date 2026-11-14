@@ -13,11 +13,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 internal data class DownloadIndicator(val running: Boolean, val queued: Boolean, val fraction: Float?)
-internal fun downloadIndicator(jobs: List<TorrDownloadJob>): DownloadIndicator {
+internal fun downloadIndicator(jobs: List<TorrDownloadJob>, progress: TorrDownloadProgress? = null): DownloadIndicator {
     val running = jobs.firstOrNull { it.state == "running" }
-    val fraction = running?.takeIf { it.total > 0 }?.let { (it.offset.toDouble() / it.total).coerceIn(0.0, 1.0).toFloat() }
+    val fraction = running?.takeIf { it.total > 0 }?.let { (downloadDisplayOffset(it, progress).toDouble() / it.total).toFloat() }
     return DownloadIndicator(running != null, jobs.any { it.state == "queued" }, fraction)
 }
 
@@ -52,7 +53,8 @@ internal object DownloadsNavigation {
 /** Uses the existing transfer state; no additional polling or background service. */
 @Composable internal fun DownloadsShortcut(active: Boolean, onClick: () -> Unit) {
     val jobs by TorrDownloadStore.jobs.collectAsState()
-    val state = remember(jobs) { downloadIndicator(jobs) }
+    val liveProgress by TorrDownloadLiveProgress.current.collectAsStateWithLifecycle()
+    val state = remember(jobs, liveProgress) { downloadIndicator(jobs, liveProgress) }
     val progress = state.fraction
     val description = when {
         progress != null -> tr(R.string.downloads_indicator_progress, (progress * 100).toInt())

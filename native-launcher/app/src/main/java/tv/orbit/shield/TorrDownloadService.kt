@@ -39,7 +39,10 @@ internal class TorrDownloadService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForeground(NOTIFICATION, notification(getString(R.string.torr_download_preparing)))
+        synchronized(notificationLock) {
+            startForeground(NOTIFICATION, notification(getString(R.string.torr_download_preparing)))
+            notifiedProgress = null
+        }
         if (!storeAvailable) { stopSelf(); return START_NOT_STICKY }
         if (intent?.action == ACTION_PAUSE) {
             val id = intent.getStringExtra("id")
@@ -92,13 +95,16 @@ internal class TorrDownloadService : Service() {
                                             cancelled = { stopping.get() || Thread.currentThread().isInterrupted },
                                             saveCheckpoint = { checkpoint ->
                                                 job = TorrDownloadStore.update(this, job.id) { it.copy(offset = checkpoint.offset, etag = checkpoint.etag) }
-                                                notificationUpdate(job)
                                             },
                                             spaceAllowance = {
                                                 val reserve = TorrDownloadSpace.read(this).toLong() * 1024 * 1024
                                                 if (reserve == 0L) null else (target.availableBytes() - reserve).coerceAtLeast(0L)
                                             },
                                             beforeWrite = { count -> throttle.beforeWrite(count) { stopping.get() } },
+                                            reportProgress = { offset ->
+                                                TorrDownloadLiveProgress.report(job.id, offset)
+                                                notificationUpdate(job, offset)
+                                            },
                                         )
                                     } catch (error: TorrSourceFailure) {
                                         val delay = torrRetryDelay(error.reason, retries, TorrDownloadRetryOptions.read(this)) ?: throw error
@@ -139,6 +145,7 @@ internal class TorrDownloadService : Service() {
                         }
                         runCatching { TorrDownloadStore.update(this, next.id) { if (it.state == "running" || it.state == "finalizing") it.copy(state = "error", error = reason) else it } }
                     } finally {
+                        TorrDownloadLiveProgress.clear(next.id)
                         activeId = null
                         TorrDownloadStore.releaseWorker(next.id)
                     }
@@ -225,10 +232,19 @@ internal class TorrDownloadService : Service() {
         .setSmallIcon(android.R.drawable.stat_sys_download)
         .setContentTitle(getString(R.string.torr_download_channel))
         .setContentText(text).setOnlyAlertOnce(true).setOngoing(true).build()
-    private fun notificationUpdate(job: TorrDownloadJob) {
-        val percent = if (job.total > 0) (job.offset.toDouble() / job.total * 100).toInt().coerceIn(0, 100) else 0
+    private val notificationLock = Any()
+    private var notifiedProgress: Pair<String, Int>? = null
+    private fun notificationUpdate(job: TorrDownloadJob, offset: Long = job.offset) {
+        val percent = if (job.total > 0) (offset.coerceIn(0L, job.total).toDouble() / job.total * 100).toInt().coerceIn(0, 100) else 0
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) return
-        getSystemService(NotificationManager::class.java).notify(NOTIFICATION, notification("${job.name} · $percent%"))
+        val progress = job.id to percent
+        synchronized(notificationLock) {
+            if (notifiedProgress == progress) return
+            // Notification permission/system availability can change during a transfer.
+            // A display failure must not abort a valid download or its durable checkpoint.
+            if (runCatching { getSystemService(NotificationManager::class.java).notify(NOTIFICATION, notification("${job.name} · $percent%")) }.isSuccess)
+                notifiedProgress = progress
+        }
     }
 
     override fun onTimeout(startId: Int, fgsType: Int) { stopping.set(true); stopSelf() }

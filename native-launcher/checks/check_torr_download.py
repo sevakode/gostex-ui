@@ -10,6 +10,8 @@ from kotlin_toolchain import JAVA, COMPILER, ROOT
 
 compiler = COMPILER
 DATA = bytes(range(256)) * 4096
+LARGE_SIZE = 40 * 1024 * 1024 + 12345
+BROKEN_SIZE = 18 * 1024 * 1024 + 123
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args): pass
     def do_GET(self):
@@ -20,6 +22,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(401 if mode == '7' else 403); self.send_header('Content-Length', '0'); self.end_headers(); return
         if mode == '4':
             self.send_response(302); self.send_header('Location', 'http://example.com/'); self.end_headers(); return
+        size = LARGE_SIZE if mode in ('a', 'b') else len(DATA)
         start = int(self.headers.get('Range', 'bytes=0-')[6:-1])
         if start and mode == '1':
             self.send_response(200)  # server ignored range
@@ -27,18 +30,42 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(206 if start else 200)
         tag = '"' + 'a' * 310 + '"' if mode == '9' else ('"changed"' if start and mode == '2' else '"original"')
         self.send_header('ETag', tag)
-        self.send_header('Content-Length', str(len(DATA) - start))
+        self.send_header('Content-Length', str(size - start))
         if start:
-            self.send_header('Content-Range', f'bytes {start + (1 if mode == "3" else 0)}-{len(DATA)-1}/{len(DATA)}')
+            self.send_header('Content-Range', f'bytes {start + (1 if mode == "3" else 0)}-{size-1}/{size}')
         self.end_headers()
         if mode == '5': time.sleep(0.6)
-        try: self.wfile.write(DATA[start:] if mode != '6' else DATA[start:start+128])
+        try:
+            end = BROKEN_SIZE if mode == 'b' else size
+            if mode == '6': end = min(size, start + 128)
+            position = start
+            while position < end:
+                chunk = DATA[position % len(DATA):min(len(DATA), position % len(DATA) + end - position)]
+                self.wfile.write(chunk)
+                position += len(chunk)
         except (BrokenPipeError, ConnectionResetError): pass
 
 checks = r'''package tv.orbit.shield
 import java.io.RandomAccessFile
 import java.io.IOException
 import java.nio.file.Files
+private class ObservedTarget(private val file: RandomAccessFile) : TorrDownloadTarget {
+    var syncs = 0
+    var failSyncAt = Int.MAX_VALUE
+    var lastSynced = -1L
+    val syncOffsets = mutableListOf<Long>()
+    override fun size() = file.length()
+    override fun truncate(size: Long) = file.setLength(size)
+    override fun seek(offset: Long) = file.seek(offset)
+    override fun write(buffer: ByteArray, count: Int) = file.write(buffer, 0, count)
+    override fun sync() {
+        syncs++
+        if (syncs == failSyncAt) throw IOException("controlled sync failure")
+        file.fd.sync()
+        lastSynced = file.filePointer
+        syncOffsets += lastSynced
+    }
+}
 fun main(args: Array<String>) {
     val port = args[0].toInt()
     val path = Files.createTempFile("gostex-test", ".part")
@@ -113,8 +140,143 @@ fun main(args: Array<String>) {
         val afterSpace = TorrDownloadEngine.transfer(src(0), target, limited, port, saveCheckpoint = { limited = it }, spaceAllowance = { 1048576L })
         check(afterSpace.offset == 1048576L)
         file.seek(0); file.readFully(actual); check(actual.indices.all { actual[it] == (it % 256).toByte() })
+        val largeSize = 40L * 1024 * 1024 + 12345
+        val brokenSize = 18L * 1024 * 1024 + 123
+        val hardBytes = 16L * 1024 * 1024
+        val spaceBytes = 4L * 1024 * 1024
+        fun large(mode: Char = 'a') = TorrDownloadSource("0".repeat(39) + mode, 1, largeSize)
+        // Fast input must never sync for every space check. A hard boundary remains
+        // even if no virtual time elapses; every persisted offset follows a real sync.
+        file.setLength(0)
+        val fast = ObservedTarget(file)
+        val fastSaved = mutableListOf<Long>()
+        val fastProgress = mutableListOf<Long>()
+        var spaceChecks = 0
+        val fastDone = TorrDownloadEngine.transfer(large(), fast, TorrDownloadCheckpoint(0, null), port,
+            saveCheckpoint = {
+                check(fast.lastSynced == it.offset)
+                fastSaved += it.offset
+            }, spaceAllowance = { spaceChecks++; Long.MAX_VALUE },
+            nowNanos = { 0 }, reportProgress = { fastProgress += it })
+        check(fastDone.offset == largeSize)
+        check(fastSaved == listOf(hardBytes, hardBytes * 2, largeSize))
+        check(fast.syncOffsets == fastSaved && spaceChecks == 11)
+        check(fastProgress == listOf(0L, largeSize))
+        // Slower input reaches the soft byte+time boundary; progress is independent
+        // and bounded to 500ms, except the initial/final reports.
+        file.setLength(0)
+        val timed = ObservedTarget(file)
+        var clock = 0L
+        val timedSaved = mutableListOf<Pair<Long, Long>>()
+        val timedProgress = mutableListOf<Pair<Long, Long>>()
+        TorrDownloadEngine.transfer(large(), timed, TorrDownloadCheckpoint(0, null), port,
+            saveCheckpoint = {
+                check(timed.lastSynced == it.offset)
+                timedSaved += it.offset to clock
+            }, beforeWrite = { count -> clock += count * 500L; true }, nowNanos = { clock },
+            reportProgress = { timedProgress += it to clock })
+        check(timedSaved.last().first == largeSize && timedSaved.size >= 10)
+        var previousOffset = 0L
+        var previousTime = 0L
+        for ((offsetAtSave, timeAtSave) in timedSaved.dropLast(1)) {
+            val delta = offsetAtSave - previousOffset
+            check(delta in spaceBytes..hardBytes)
+            check(delta == hardBytes || timeAtSave - previousTime >= 2_000_000_000L)
+            previousOffset = offsetAtSave; previousTime = timeAtSave
+        }
+        check(timedProgress.first().first == 0L && timedProgress.last().first == largeSize)
+        check(timedProgress.size > timedSaved.size && timedProgress.size <= 45)
+        check(timedProgress.dropLast(1).zipWithNext().all { (a, b) -> b.second - a.second >= 500_000_000L })
+        // An explicit pause saves a non-aligned tail below the first checkpoint.
+        file.setLength(0)
+        val pauseTarget = ObservedTarget(file)
+        var pauseBytes = 0L
+        var pauseSaved = TorrDownloadCheckpoint(0, null)
+        val largePaused = TorrDownloadEngine.transfer(large(), pauseTarget, pauseSaved, port,
+            cancelled = { pauseBytes >= 3L * 1024 * 1024 },
+            saveCheckpoint = { check(pauseTarget.lastSynced == it.offset); pauseSaved = it },
+            beforeWrite = { count -> pauseBytes += count; true }, nowNanos = { 0 })
+        check(largePaused == pauseSaved && largePaused.offset in 1 until spaceBytes)
+        check(pauseTarget.syncs == 1)
+        // The low-space path still saves the tail even when its allowance is much
+        // smaller than the checkpoint threshold.
+        file.setLength(0)
+        val spaceTarget = ObservedTarget(file)
+        var smallAllowance = 0
+        var spaceSaved = TorrDownloadCheckpoint(0, null)
+        val lowSpace = runCatching {
+            TorrDownloadEngine.transfer(large(), spaceTarget, spaceSaved, port,
+                saveCheckpoint = { check(spaceTarget.lastSynced == it.offset); spaceSaved = it },
+                spaceAllowance = { if (smallAllowance++ == 0) 1234567L else 0L }, nowNanos = { 0 })
+        }.exceptionOrNull()
+        check(lowSpace is TorrDownloadLowSpace && spaceSaved.offset == 1234567L && spaceTarget.syncs == 1)
+        // A validated response ending early persists its received tail before retry;
+        // the successful Range request then continues from exactly that checkpoint.
+        file.setLength(0)
+        val brokenTarget = ObservedTarget(file)
+        var brokenSaved = TorrDownloadCheckpoint(0, null)
+        val broken = runCatching {
+            TorrDownloadEngine.transfer(large('b'), brokenTarget, brokenSaved, port,
+                saveCheckpoint = { check(brokenTarget.lastSynced == it.offset); brokenSaved = it }, nowNanos = { 0 })
+        }.exceptionOrNull()
+        check(broken is TorrSourceFailure && broken.reason in setOf("source_incomplete", "source_io"))
+        check(brokenSaved.offset == brokenSize && brokenTarget.syncOffsets == listOf(hardBytes, brokenSize))
+        val resumedOffsets = mutableListOf(brokenSize)
+        val resumedLarge = TorrDownloadEngine.transfer(large(), brokenTarget, brokenSaved, port,
+            saveCheckpoint = { check(brokenTarget.lastSynced == it.offset); resumedOffsets += it.offset; brokenSaved = it }, nowNanos = { 0 })
+        check(resumedLarge.offset == largeSize && file.length() == largeSize)
+        check(resumedOffsets[1] == brokenSize + hardBytes && resumedOffsets.zipWithNext().all { (a, b) -> b - a in 1..hardBytes })
+        file.seek(0)
+        val verify = ByteArray(65536)
+        var verified = 0L
+        while (verified < largeSize) {
+            val count = file.read(verify, 0, minOf(verify.size.toLong(), largeSize - verified).toInt())
+            check(count > 0 && (0 until count).all { verify[it] == ((verified + it) % 256).toByte() })
+            verified += count
+        }
+        // Neither a failed target sync nor a failed journal write can advance the
+        // durable checkpoint; source-error tail flushing must not swallow either.
+        file.setLength(0)
+        val syncFailureTarget = ObservedTarget(file).apply { failSyncAt = 1 }
+        var savedAfterSyncFailure = false
+        val syncFailure = runCatching {
+            TorrDownloadEngine.transfer(large(), syncFailureTarget, TorrDownloadCheckpoint(0, null), port,
+                saveCheckpoint = { savedAfterSyncFailure = true }, nowNanos = { 0 })
+        }.exceptionOrNull()
+        check(syncFailure is IOException && syncFailure !is TorrSourceFailure && !savedAfterSyncFailure)
+        check(file.length() == hardBytes)
+        file.setLength(0)
+        val saveFailureTarget = ObservedTarget(file)
+        var saveAttempts = 0
+        val saveFailure = runCatching {
+            TorrDownloadEngine.transfer(large(), saveFailureTarget, TorrDownloadCheckpoint(0, null), port,
+                saveCheckpoint = { check(saveFailureTarget.lastSynced == it.offset); saveAttempts++; throw IOException("controlled journal failure") },
+                nowNanos = { 0 })
+        }.exceptionOrNull()
+        check(saveFailure is IOException && saveFailure !is TorrSourceFailure && saveAttempts == 1 && saveFailureTarget.syncs == 1)
+        file.setLength(0)
+        val brokenFlushTarget = ObservedTarget(file).apply { failSyncAt = 2 }
+        var beforeBrokenFlush = TorrDownloadCheckpoint(0, null)
+        val brokenFlush = runCatching {
+            TorrDownloadEngine.transfer(large('b'), brokenFlushTarget, beforeBrokenFlush, port,
+                saveCheckpoint = { beforeBrokenFlush = it }, nowNanos = { 0 })
+        }.exceptionOrNull()
+        check(brokenFlush is IOException && brokenFlush !is TorrSourceFailure && beforeBrokenFlush.offset == hardBytes)
+        file.setLength(0)
+        val brokenSaveTarget = ObservedTarget(file)
+        var beforeBrokenSave = TorrDownloadCheckpoint(0, null)
+        var brokenSaveAttempts = 0
+        val brokenSave = runCatching {
+            TorrDownloadEngine.transfer(large('b'), brokenSaveTarget, beforeBrokenSave, port,
+                saveCheckpoint = {
+                    check(brokenSaveTarget.lastSynced == it.offset)
+                    if (++brokenSaveAttempts == 2) throw IOException("controlled tail journal failure")
+                    beforeBrokenSave = it
+                }, nowNanos = { 0 })
+        }.exceptionOrNull()
+        check(brokenSave is IOException && brokenSave !is TorrSourceFailure && beforeBrokenSave.offset == hardBytes && brokenSaveAttempts == 2)
         check(runCatching { TorrDownloadSource("invalid", 1, 1) }.isFailure)
-        println("PASS: pause, resume, crash tail, range/identity, completion size, empty file and space reserve")
+        println("PASS: pause/resume, range/identity, crash tail, bounded checkpoint cadence, independent progress/space checks, source-tail recovery and sync/save failures")
       }
     } finally { Files.deleteIfExists(path) }
 }

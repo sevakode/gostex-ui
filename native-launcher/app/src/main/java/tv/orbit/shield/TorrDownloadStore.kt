@@ -157,6 +157,7 @@ internal object TorrDownloadStore {
         init(context)
         val old = mutable.value.firstOrNull { it.id == id } ?: throw IOException("Download not found")
         val updated = transform(old)
+        if (updated == old) return old
         require(updated.id == old.id && updated.hash == old.hash && updated.index == old.index && updated.total == old.total &&
             updated.tree == old.tree && updated.parentId == old.parentId && updated.grouped == old.grouped && updated.finalName == old.finalName && updated.prefetchMovieId == old.prefetchMovieId)
         decode(encode(updated))
@@ -190,6 +191,7 @@ internal object TorrDownloadStore {
     }
 
     private fun persist(context: Context, jobs: List<TorrDownloadJob>) {
+        if (splitJournal && jobs == mutable.value) return
         val active = jobs.filter { it.state != "done" }
         val completed = jobs.filter { it.state == "done" }
         require(jobs.size <= MAX_RECORDS && active.size <= MAX_ACTIVE_JOBS)

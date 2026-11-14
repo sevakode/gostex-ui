@@ -46,10 +46,16 @@ internal data class TorrDownloadSource(val hash: String, val index: Int, val siz
 /**
  * Copies one selected torrent file from the local server. The caller owns the
  * fresh destination and persists checkpoints atomically only after sync().
+ * Progress is transient; only saveCheckpoint supplies a durable resume offset.
+ * Time checks occur between reads, while the byte bound also limits read size.
  * This class does not create jobs, grant access, or silently restart a download.
  */
 internal object TorrDownloadEngine {
-    private const val CHECKPOINT_BYTES = 4L * 1024 * 1024
+    private const val SPACE_CHECK_BYTES = 4L * 1024 * 1024
+    private const val SOFT_CHECKPOINT_BYTES = 4L * 1024 * 1024
+    private const val HARD_CHECKPOINT_BYTES = 16L * 1024 * 1024
+    private const val CHECKPOINT_NANOS = 2_000_000_000L
+    private const val PROGRESS_NANOS = 500_000_000L
     private const val BUFFER_BYTES = 64 * 1024
 
     fun transfer(
@@ -62,6 +68,8 @@ internal object TorrDownloadEngine {
         spaceAllowance: () -> Long? = { null },
         readTimeoutMs: Int = 30000,
         beforeWrite: (Int) -> Boolean = { true },
+        nowNanos: () -> Long = System::nanoTime,
+        reportProgress: (Long) -> Unit = {},
     ): TorrDownloadCheckpoint {
         require(port in 1..65535 && readTimeoutMs in 1..120000)
         val offset = checkpoint.offset
@@ -69,10 +77,11 @@ internal object TorrDownloadEngine {
         if (target.size() < offset) throw IOException("Destination is shorter than its checkpoint")
         if (offset == source.size) {
             if (target.size() != source.size || (source.size > 0 && !isStrongEtag(checkpoint.etag))) throw IOException("Invalid completed checkpoint")
+            reportProgress(offset)
             return checkpoint
         }
         if (offset > 0 && !isStrongEtag(checkpoint.etag)) throw IOException("Missing resume identity")
-        if (cancelled()) return checkpoint
+        if (cancelled()) { reportProgress(offset); return checkpoint }
         val url = URL("http://127.0.0.1:$port/stream?link=${source.hash}&index=${source.index}&play=1")
         val connection = url.openConnection(Proxy.NO_PROXY) as HttpURLConnection
         try {
@@ -104,36 +113,65 @@ internal object TorrDownloadEngine {
             var written = offset
             var committed = offset
             var allowance = 0L
-            sourceIo { connection.inputStream }.use { input ->
-                val buffer = ByteArray(BUFFER_BYTES)
-                while (written < source.size && !cancelled()) {
-                    if (allowance <= 0) {
-                        if (written != committed) {
-                            target.sync()
-                            saveCheckpoint(TorrDownloadCheckpoint(written, etag))
-                            committed = written
-                        }
-                        allowance = minOf(spaceAllowance() ?: CHECKPOINT_BYTES, CHECKPOINT_BYTES)
-                        if (allowance <= 0) throw TorrDownloadLowSpace()
-                    }
-                    val count = sourceIo { input.read(buffer, 0, minOf(buffer.size.toLong(), source.size - written, allowance).toInt()) }
-                    if (count < 0) throw TorrSourceFailure("source_incomplete")
-                    if (count == 0) continue
-                    if (!beforeWrite(count) || cancelled()) break
-                    target.write(buffer, count)
-                    written += count
-                    allowance -= count
-                    if (written - committed >= CHECKPOINT_BYTES) {
-                        target.sync()
-                        saveCheckpoint(TorrDownloadCheckpoint(written, etag))
-                        committed = written
-                    }
-                }
-            }
-            if (written != committed) {
+            var lastCheckpointNanos = nowNanos()
+            var lastProgressNanos = lastCheckpointNanos
+            fun saveTail() {
+                if (written == committed) return
                 target.sync()
                 saveCheckpoint(TorrDownloadCheckpoint(written, etag))
+                committed = written
+                lastCheckpointNanos = nowNanos()
             }
+            fun report(force: Boolean = false) {
+                val now = nowNanos()
+                if (force || now - lastProgressNanos >= PROGRESS_NANOS) {
+                    reportProgress(written)
+                    lastProgressNanos = now
+                }
+            }
+            report(force = true)
+            try {
+                sourceIo { connection.inputStream }.use { input ->
+                    val buffer = ByteArray(BUFFER_BYTES)
+                    while (written < source.size && !cancelled()) {
+                        if (allowance <= 0) {
+                            // Keep the free-space guard independent of durable checkpoint cadence.
+                            allowance = minOf(spaceAllowance() ?: SPACE_CHECK_BYTES, SPACE_CHECK_BYTES)
+                            if (allowance <= 0) {
+                                saveTail()
+                                report(force = true)
+                                throw TorrDownloadLowSpace()
+                            }
+                        }
+                        val count = sourceIo { input.read(buffer, 0, minOf(
+                            buffer.size.toLong(), source.size - written, allowance,
+                            HARD_CHECKPOINT_BYTES - (written - committed),
+                        ).toInt()) }
+                        if (count < 0) throw TorrSourceFailure("source_incomplete")
+                        if (count == 0) continue
+                        if (!beforeWrite(count) || cancelled()) break
+                        target.write(buffer, count)
+                        written += count
+                        allowance -= count
+                        val delta = written - committed
+                        if (delta >= HARD_CHECKPOINT_BYTES ||
+                            (delta >= SOFT_CHECKPOINT_BYTES && nowNanos() - lastCheckpointNanos >= CHECKPOINT_NANOS)) saveTail()
+                        report()
+                    }
+                }
+            } catch (error: TorrSourceFailure) {
+                // These bytes came from the validated response. Retain them before retrying;
+                // a failed sync/save must instead propagate as a storage/journal failure.
+                saveTail()
+                report(force = true)
+                throw error
+            } catch (error: TorrDownloadSpaceUnavailable) {
+                saveTail()
+                report(force = true)
+                throw error
+            }
+            saveTail()
+            report(force = true)
             return TorrDownloadCheckpoint(written, etag)
         } finally {
             connection.disconnect()

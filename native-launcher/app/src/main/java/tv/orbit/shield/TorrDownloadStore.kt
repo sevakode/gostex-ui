@@ -38,6 +38,7 @@ internal object TorrDownloadStore {
     val jobs: StateFlow<List<TorrDownloadJob>> = mutable
     private var initialized = false
     private var recovered = false
+    private var recoveredQueue = emptySet<String>()
     private val removingTorrents = mutableSetOf<String>()
     private val activeJobs = mutableSetOf<String>()
     private val discardingJobs = mutableSetOf<String>()
@@ -115,18 +116,50 @@ internal object TorrDownloadStore {
     @Synchronized fun recover(context: Context) {
         init(context)
         if (recovered) return
-        // Android can kill the service; never claim it is still running or start
-        // data-sync work from a background boot receiver on recent Android.
-        val recovered = mutable.value.map {
-            when (it.state) {
-                "running", "queued" -> it.copy(state = "paused")
-                "finalizing" -> it.copy(state = "error", error = "finalizing")
-                else -> it
+        val resumeInterrupted = TorrDownloadResumeOptions.read(context)
+        val ready = mutableSetOf<String>()
+        val restored = mutable.value.map { job ->
+            if (job.id in activeJobs) return@map job
+            when (job.state) {
+                "running", "queued" -> if (resumeInterrupted && resumableAfterRestart(job)) {
+                    ready += job.id
+                    job.copy(state = "queued", error = "")
+                } else job.copy(state = "paused")
+                "finalizing" -> job.copy(state = "error", error = "finalizing")
+                else -> job
             }
         }
-        if (recovered != mutable.value) persist(recovered)
-        this.recovered = true
+        persist(restored)
+        recoveredQueue = ready
+        recovered = true
     }
+
+    private fun resumableAfterRestart(job: TorrDownloadJob): Boolean {
+        if (job.total <= 0 || job.prefetchMovieId.isNotBlank()) return false
+        val http = job.http
+        return if (http == null) job.offset == 0L || isStrongHttpEtag(job.etag)
+        else !http.sessionBound && isStrongHttpEtag(http.expectedEtag)
+    }
+
+    /** The visible launcher consumes only interrupted rows still available to a new worker. */
+    @Synchronized fun takeRecoveredQueue(): List<String> {
+        if (recoveredQueue.isEmpty()) return emptyList()
+        val queued = mutable.value.filter { it.id in recoveredQueue && canStartRecovered(it) }.map { it.id }
+        recoveredQueue = emptySet()
+        return queued
+    }
+
+    @Synchronized fun pauseRecovered(context: Context, ids: List<String>) {
+        if (ids.isEmpty()) return
+        init(context)
+        val requested = ids.toSet()
+        persist(mutable.value.map {
+            if (it.id in requested && canStartRecovered(it)) it.copy(state = "paused") else it
+        })
+    }
+
+    private fun canStartRecovered(job: TorrDownloadJob): Boolean =
+        job.state == "queued" && job.id !in activeJobs && job.id !in discardingJobs && canUseSource(job)
 
     /** Check batch admission against pending work, independently of saved media. */
     @Synchronized fun requireActiveCapacity(context: Context, additional: Int) {

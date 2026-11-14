@@ -93,7 +93,7 @@ with tempfile.TemporaryDirectory(prefix='gostex-store-race-') as td:
     for name,body in [('Context.kt',context),('Uri.kt',uri),('Source.kt',source),('Journal.kt',journal),('Checks.kt',checks)]: (folder/name).write_text(body)
     cp=':'.join(map(str,[compiler[1],compiler[4],jsonjar]))
     base=ROOT/'native-launcher/app/src/main/java/tv/orbit/shield'
-    sources=[base/name for name in ('TorrDownloadStore.kt','TorrDownloadJournal.kt','TorrDownloadJournalCodec.kt','HttpDownloadAdmission.kt')]
+    sources=[base/name for name in ('TorrDownloadStore.kt','TorrDownloadResumeOptions.kt','TorrDownloadJournal.kt','TorrDownloadJournalCodec.kt','HttpDownloadAdmission.kt')]
     result=subprocess.run([str(JAVA),'-cp',':'.join(map(str,compiler)),'org.jetbrains.kotlin.cli.jvm.K2JVMCompiler',
         '-no-stdlib','-no-reflect','-classpath',cp,'-d',str(folder/'classes'),*map(str,sources),*[str(folder/n) for n in ('Context.kt','Uri.kt','Source.kt','Journal.kt','Checks.kt')]],capture_output=True,text=True)
     if result.returncode: raise SystemExit(result.stderr)

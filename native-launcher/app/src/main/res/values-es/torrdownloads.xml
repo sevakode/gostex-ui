@@ -18,6 +18,8 @@
     <string name="torr_download_reserve">Mantener libre en el disco</string>
     <string name="torr_download_reserve_off">Desactivado</string>
     <string name="torr_download_auto_retry">Reintentar errores temporales de conexión</string>
+    <string name="torr_download_resume_on_open">Continuar las descargas al abrir GOSTEX</string>
+    <string name="torr_download_resume_on_open_hint">Reanuda las descargas compatibles que estaban activas al interrumpirse. Las pausas manuales se mantienen.</string>
     <string name="torr_download_retrying">Esperando para reintentar</string>
     <string name="torr_download_low_space">Se alcanzó la reserva de espacio</string>
     <string name="torr_download_space_unknown">No se puede comprobar el espacio libre</string>

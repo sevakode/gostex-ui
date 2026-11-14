@@ -768,6 +768,8 @@ class MainActivity : ComponentActivity() {
     private var importJob: Job? = null
     private var mediaReceiverRegistered = false
     private var mediaRefreshJob: Job? = null
+    private var recoveredDownloadStart: Job? = null
+    private var recoveredDownloadsHandled = false
     private val mediaReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: android.content.Context, intent: Intent) {
             if (intent.action != Intent.ACTION_MEDIA_MOUNTED || isInitialStickyBroadcast || !libraryVisible) return
@@ -787,6 +789,26 @@ class MainActivity : ComponentActivity() {
         mediaReceiverRegistered = runCatching { registerReceiver(mediaReceiver, filter); true }.getOrDefault(false)
     }
     override fun onResume() { super.onResume(); if (!PortableRestoreStartup.ready || PortableMaintenance.running) return; AgentStateHooks.attach(this); updates.onResume(); libraryVisible = true; watchMountedMedia(); resumeVersion++; refreshLibrary(); startCoverSync() }
+    override fun onPostResume() {
+        super.onPostResume()
+        resumeInterruptedDownloads()
+    }
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) resumeInterruptedDownloads()
+    }
+    private fun resumeInterruptedDownloads() {
+        if (recoveredDownloadsHandled || recoveredDownloadStart?.isActive == true || !canResumeDownloads()) return
+        recoveredDownloadStart = importScope.launch {
+            if (!TorrDownloadStartup.prepare(applicationContext) || !canResumeDownloads()) return@launch
+            recoveredDownloadsHandled = true
+            runCatching { TorrDownloadActions.startRecovered(this@MainActivity) }
+                .onFailure { torrDownloadMessage = getString(R.string.torr_download_failed) }
+        }
+    }
+    private fun canResumeDownloads(): Boolean = !isFinishing && !isDestroyed && hasWindowFocus() &&
+        PortableRestoreStartup.ready && !PortableMaintenance.running &&
+        lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
     override fun onPause() { AndroidDiagnostics.event("launcher.pause"); super.onPause() }
     override fun onStop() {
         torrentPlaybackDialog?.dismiss()

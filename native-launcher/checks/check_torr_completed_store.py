@@ -28,10 +28,12 @@ class SharedPreferences(private val file: File) {
     val writes = mutableMapOf<String, Int>()
     var failNextCommit = false
     fun getString(key: String, fallback: String?): String? = values.getProperty(key) ?: fallback
+    fun getBoolean(key: String, fallback: Boolean): Boolean = values.getProperty(key)?.toBooleanStrict() ?: fallback
     fun edit() = Editor()
     inner class Editor {
         private val pending = mutableMapOf<String, String?>()
         fun putString(key: String, value: String): Editor { pending[key] = value; return this }
+        fun putBoolean(key: String, value: Boolean): Editor = putString(key, value.toString())
         fun remove(key: String): Editor { pending[key] = null; return this }
         fun commit(): Boolean {
             for ((key, value) in pending) {
@@ -221,7 +223,7 @@ if __name__ == "__main__":
             (folder / name).write_text(body)
         cp = ':'.join(map(str, [COMPILER[1], COMPILER[4], jsonjar]))
         base = ROOT / 'native-launcher/app/src/main/java/tv/orbit/shield'
-        production = [base / name for name in ('TorrDownloadStore.kt', 'TorrDownloadJournal.kt', 'TorrDownloadJournalCodec.kt', 'HttpDownloadAdmission.kt')]
+        production = [base / name for name in ('TorrDownloadStore.kt', 'TorrDownloadResumeOptions.kt', 'TorrDownloadJournal.kt', 'TorrDownloadJournalCodec.kt', 'HttpDownloadAdmission.kt')]
         compile_result = subprocess.run([str(JAVA), '-cp', ':'.join(map(str, COMPILER)),
             'org.jetbrains.kotlin.cli.jvm.K2JVMCompiler', '-no-stdlib', '-no-reflect', '-classpath', cp,
             '-d', str(folder / 'classes'), *map(str, production), *map(str, folder.glob('*.kt'))], capture_output=True, text=True)

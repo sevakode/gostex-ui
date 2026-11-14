@@ -553,6 +553,34 @@ import kotlinx.coroutines.withContext
             .onSuccess { autoRetry = next }
             .onFailure { activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed) }
     })
+    val resumePrefs = remember(activity) { activity.getSharedPreferences("orbit", android.content.Context.MODE_PRIVATE) }
+    var resumeInterrupted by remember(activity) { mutableStateOf(TorrDownloadResumeOptions.read(activity)) }
+    var savingResumeOption by remember { mutableStateOf(false) }
+    DisposableEffect(activity, resumePrefs) {
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == null || key == TorrDownloadResumeOptions.KEY) resumeInterrupted = TorrDownloadResumeOptions.read(activity)
+        }
+        resumePrefs.registerOnSharedPreferenceChangeListener(listener)
+        resumeInterrupted = TorrDownloadResumeOptions.read(activity)
+        onDispose { resumePrefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+    SettingRow(tr(R.string.torr_download_resume_on_open), tr(if (resumeInterrupted) R.string.enabled else R.string.disabled), onClick = {
+        if (savingResumeOption) return@SettingRow
+        val enabled = !resumeInterrupted
+        savingResumeOption = true
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO) { TorrDownloadResumeOptions.write(activity.applicationContext, enabled) }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed)
+            } finally {
+                savingResumeOption = false
+            }
+        }
+    })
+    Text(tr(R.string.torr_download_resume_on_open_hint), color = Color.LightGray, fontSize = 12.sp)
     SettingRow(tr(R.string.torr_media_show_setting), tr(if (showMediaTorrents) R.string.enabled else R.string.disabled), onClick = {
         TorrMediaVisibility.write(activity, !showMediaTorrents)
     })

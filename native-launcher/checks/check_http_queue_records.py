@@ -65,12 +65,54 @@ fun main(args: Array<String>) {
         TorrDownloadStore.queue(ctx, listOf(SESSION_FULL_ID)) // Finalization needs only the verified local partial.
         check(row(SESSION_FULL_ID).state == "queued")
         check(SESSION_URL !in ctx.journalFile.readText() && SESSION_COOKIE !in ctx.journalFile.readText())
+        check(TorrDownloadStore.takeRecoveredQueue().isEmpty())
         println("PASS: cold mixed queue reopen and pause recovery; completed URL stays removed")
         return
     }
 
     val legacy = pending.copy(id = "00000000-0000-4000-8000-000000000001", hash = legacyHash, index = 3,
         document = "$TREE/document/torrent", name = "torrent.bin", finalName = "torrent.bin", http = null, grouped = true, parentId = "group")
+
+    if (args[0].startsWith("resume-")) {
+        fun torrent(suffix: String) = legacy.copy(id = "00000000-0000-4000-8000-0000000000$suffix", index = suffix.toInt(),
+            name = "$suffix.bin", finalName = "$suffix.bin", document = "$TREE/document/$suffix")
+        val interruptedHttp = pending.copy(offset = 5, etag = tag, state = "running", error = "retrying")
+        val interruptedTorrent = legacy.copy(offset = 7, etag = tag, state = "queued")
+        val manuallyPaused = torrent("09").copy(offset = 3, etag = tag)
+        val failed = torrent("10").copy(state = "error", error = "storage")
+        val prefetch = torrent("11").copy(state = "queued", prefetchMovieId = "movie:one")
+        val noValidator = torrent("12").copy(offset = 1, state = "running")
+        val finalizing = finalize.copy(state = "finalizing", offset = finalize.total, etag = tag)
+        if (args[0] == "resume-create") {
+            check(!TorrDownloadResumeOptions.read(ctx))
+            TorrDownloadResumeOptions.write(ctx, true)
+            listOf(interruptedHttp, interruptedTorrent, manuallyPaused, failed, prefetch, noValidator, finalizing,
+                restart.copy(state = "running")).forEach { TorrDownloadStore.add(ctx, it) }
+            TorrDownloadStore.add(ctx, sessionJob, admitted)
+            TorrDownloadStore.queue(ctx, listOf(SESSION_ID))
+            check(TorrDownloadStore.takeRecoveredQueue().isEmpty())
+            return
+        }
+        TorrDownloadStore.recover(ctx)
+        check(row(ACTIVE_ID) == interruptedHttp.copy(state = "queued", error = ""))
+        check(row(legacy.id) == interruptedTorrent)
+        check(row(manuallyPaused.id) == manuallyPaused && row(failed.id) == failed)
+        check(row(prefetch.id) == prefetch.copy(state = "paused"))
+        check(row(noValidator.id) == noValidator.copy(state = "paused"))
+        check(row(finalizing.id) == finalizing.copy(state = "error", error = "finalizing"))
+        check(row(RESTART_ID) == restart && row(SESSION_ID) == sessionJob)
+        check(TorrDownloadStore.claimWorker(ctx, legacy.id))
+        val recoveredIds = TorrDownloadStore.takeRecoveredQueue()
+        check(recoveredIds == listOf(ACTIVE_ID))
+        TorrDownloadStore.pauseRecovered(ctx, recoveredIds + legacy.id)
+        check(row(ACTIVE_ID) == interruptedHttp.copy(state = "paused", error = ""))
+        check(row(legacy.id) == interruptedTorrent)
+        TorrDownloadStore.recover(ctx)
+        check(TorrDownloadStore.takeRecoveredQueue().isEmpty())
+        println("PASS: opt-in cold recovery queues resumable work once, preserves checkpoints and excludes manual pauses, errors, unsafe or claimed work")
+        return
+    }
+
     val legacyWire = JSONObject(encode(legacy))
     check(legacyWire.getString("hash") == legacyHash && legacyWire.getInt("index") == 3 && !legacyWire.has("http"))
     check(TorrDownloadJournalCodec.readLegacy(JSONArray().put(legacyWire).toString(), "[]") == listOf(legacy))
@@ -265,7 +307,7 @@ fun main(args: Array<String>) {
 '''
 
 base = ROOT / 'native-launcher/app/src/main/java/tv/orbit/shield'
-production = [base / name for name in ('TorrDownloadStore.kt', 'TorrDownloadJournal.kt', 'TorrDownloadJournalCodec.kt', 'HttpDownloadAdmission.kt')]
+production = [base / name for name in ('TorrDownloadStore.kt', 'TorrDownloadResumeOptions.kt', 'TorrDownloadJournal.kt', 'TorrDownloadJournalCodec.kt', 'HttpDownloadAdmission.kt')]
 cp = ':'.join(map(str, [COMPILER[1], COMPILER[4], jsonjar]))
 with tempfile.TemporaryDirectory(prefix='gostex-http-queue-') as td:
     folder = Path(td)
@@ -277,9 +319,10 @@ with tempfile.TemporaryDirectory(prefix='gostex-http-queue-') as td:
     result = subprocess.run(compile_cmd, capture_output=True, text=True, timeout=60)
     if result.returncode:
         raise SystemExit(result.stderr)
-    for phase in ('create', 'reload'):
+    for phase in ('create', 'reload', 'resume-create', 'resume-reload'):
+        prefs = folder / ('resume.properties' if phase.startswith('resume-') else 'queue.properties')
         result = subprocess.run([str(JAVA), '-cp', f'{folder / "classes"}:{cp}', 'tv.orbit.shield.ChecksKt', phase,
-                                 str(folder / 'queue.properties')], capture_output=True, text=True, timeout=15)
+                                 str(prefs)], capture_output=True, text=True, timeout=15)
         print(result.stdout, end='')
         if result.returncode:
             raise SystemExit(result.stderr)

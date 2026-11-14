@@ -1,0 +1,23 @@
+<resources>
+    <string name="browser_title">Browser</string>
+    <string name="browser_address">Address or search</string>
+    <string name="browser_go">Go</string>
+    <string name="browser_back">Back</string>
+    <string name="browser_forward">Forward</string>
+    <string name="browser_reload">Reload</string>
+    <string name="browser_bookmarks">Bookmarks</string>
+    <string name="browser_bookmark_add">Bookmark this page</string>
+    <string name="browser_bookmark_remove">Remove bookmark</string>
+    <string name="browser_no_bookmarks">No bookmarks yet</string>
+    <string name="browser_bookmark_limit">The bookmark list is full.</string>
+    <string name="browser_downloads">Downloads</string>
+    <string name="browser_download_entry">Browse the web</string>
+    <string name="browser_import_torrent">Add torrent to TorrServer</string>
+    <string name="browser_settings_search_engine">Browser search engine</string>
+    <string name="browser_error_webview">Android System WebView is unavailable.</string>
+    <string name="browser_error_page">Could not open this page.</string>
+    <string name="browser_error_address">Enter a web address or search terms.</string>
+    <string name="browser_error_download">This link cannot be opened in Downloads.</string>
+    <string name="browser_download_title">Open in Downloads</string>
+    <string name="browser_download_review">Review this link in Downloads before starting.</string>
+</resources>

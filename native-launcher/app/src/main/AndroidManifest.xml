@@ -63,6 +63,7 @@
         <activity android:name=".PixelArtPreviewActivity" android:exported="false" android:screenOrientation="landscape" />
         <activity android:name=".GrafanaPreviewActivity" android:exported="false" android:screenOrientation="landscape" />
         <activity android:name=".MovieLibraryActivity" android:exported="false" />
+        <activity android:name=".TvBrowserActivity" android:exported="false" android:label="@string/browser_title" />
         <receiver android:name=".MoviePlaybackReceipt" android:exported="false" />
         <receiver android:name=".RemoteBootReceiver" android:exported="false">
             <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /><action android:name="android.intent.action.MY_PACKAGE_REPLACED" /></intent-filter>

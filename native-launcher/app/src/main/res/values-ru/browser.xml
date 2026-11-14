@@ -1,0 +1,23 @@
+<resources>
+    <string name="browser_title">Браузер</string>
+    <string name="browser_address">Адрес или поиск</string>
+    <string name="browser_go">Перейти</string>
+    <string name="browser_back">Назад</string>
+    <string name="browser_forward">Вперёд</string>
+    <string name="browser_reload">Обновить страницу</string>
+    <string name="browser_bookmarks">Закладки</string>
+    <string name="browser_bookmark_add">Добавить в закладки</string>
+    <string name="browser_bookmark_remove">Удалить закладку</string>
+    <string name="browser_no_bookmarks">Закладок пока нет</string>
+    <string name="browser_bookmark_limit">Список закладок заполнен.</string>
+    <string name="browser_downloads">Загрузки</string>
+    <string name="browser_download_entry">Открыть браузер</string>
+    <string name="browser_import_torrent">Добавить торрент в TorrServer</string>
+    <string name="browser_settings_search_engine">Поисковая система браузера</string>
+    <string name="browser_error_webview">Android System WebView недоступен.</string>
+    <string name="browser_error_page">Не удалось открыть страницу.</string>
+    <string name="browser_error_address">Введите адрес сайта или поисковый запрос.</string>
+    <string name="browser_error_download">Эту ссылку нельзя открыть в загрузках.</string>
+    <string name="browser_download_title">Открыть в загрузках</string>
+    <string name="browser_download_review">Проверьте ссылку в загрузках перед запуском.</string>
+</resources>

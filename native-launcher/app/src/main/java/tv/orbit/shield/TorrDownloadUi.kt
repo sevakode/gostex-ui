@@ -1,5 +1,7 @@
 package tv.orbit.shield
 
+import android.app.Activity
+import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -65,6 +67,7 @@ import kotlinx.coroutines.withContext
     var jobPage by rememberSaveable { mutableStateOf(0) }
     var showFinished by rememberSaveable { mutableStateOf(false) }
     var showHttpDownload by remember { mutableStateOf(false) }
+    var httpInitialAddress by remember { mutableStateOf("") }
     var returnToHttpLink by remember { mutableStateOf(false) }
     var openingHttp by remember { mutableStateOf(false) }
     val httpLinkFocus = remember { FocusRequester() }
@@ -143,6 +146,37 @@ import kotlinx.coroutines.withContext
     var chosenFiles by remember { mutableStateOf<Set<Int>>(emptySet()) }
     var showOptions by remember { mutableStateOf(false) }
     var showMagnet by remember { mutableStateOf(false) }
+    var focusBrowserMagnet by remember { mutableStateOf(false) }
+    val magnetSubmitFocus = remember { FocusRequester() }
+    val browser = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK && !PortableMaintenance.running) {
+            val link = result.data?.getStringExtra(TvBrowserActivity.RESULT_LINK).orEmpty()
+            val magnetLink = TvBrowserOptions.magnet(link)
+            val webLink = TvBrowserOptions.webUrl(link)
+            when {
+                magnetLink != null -> {
+                    magnet = magnetLink
+                    showMagnet = true
+                    focusBrowserMagnet = true
+                }
+                webLink != null -> {
+                    httpInitialAddress = webLink.substringBefore('#')
+                    showHttpDownload = true
+                }
+            }
+        }
+    }
+    fun openBrowser() {
+        if (PortableMaintenance.running) return
+        runCatching { browser.launch(Intent(activity, TvBrowserActivity::class.java)) }
+            .onFailure { activity.torrDownloadMessage = activity.getString(R.string.browser_error_download) }
+    }
+    LaunchedEffect(focusBrowserMagnet, showMagnet, activity.resumeVersion) {
+        if (focusBrowserMagnet && showMagnet && activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+            withFrameNanos { }
+            if (runCatching { magnetSubmitFocus.requestFocus() }.getOrDefault(false)) focusBrowserMagnet = false
+        }
+    }
     var reserveMiB by remember { mutableStateOf(TorrDownloadSpace.read(activity)) }
     var writeRateKiB by remember { mutableStateOf(TorrDownloadWriteRate.read(activity)) }
     var prefetchCount by remember { mutableIntStateOf(TorrPrefetch.count(activity)) }
@@ -405,11 +439,12 @@ import kotlinx.coroutines.withContext
         val folderLabel = savedFolder?.takeIf { folderGrants?.contains(it) == true }?.documentId?.let {
             it.substringAfterLast('/').substringAfter(':').ifBlank { it }
         }
-        HttpDownloadUi(activity, folderLabel, onSubmit = {
+        HttpDownloadUi(activity, folderLabel, httpInitialAddress, onSubmit = {
             showFinished = false
             jobPage = 0
         }, onDismiss = {
             showHttpDownload = false
+            httpInitialAddress = ""
             returnToHttpLink = true
         })
     }
@@ -421,12 +456,14 @@ import kotlinx.coroutines.withContext
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             SettingRow(tr(R.string.torr_download_add_file), modifier = Modifier.weight(1f).focusRequester(initialFocus), onClick = activity::chooseTorrFile)
             SettingRow(tr(R.string.http_download_add_link), modifier = Modifier.weight(1f).focusRequester(httpLinkFocus), onClick = ::addHttpLink)
+            SettingRow(tr(R.string.browser_download_entry), modifier = Modifier.weight(1f), onClick = ::openBrowser)
             SettingRow(tr(if (showMagnet) R.string.downloads_magnet_hide else R.string.downloads_magnet_show), modifier = Modifier.weight(1f), onClick = { showMagnet = !showMagnet })
             SettingRow(tr(if (showOptions) R.string.downloads_options_hide else R.string.downloads_options_show), modifier = Modifier.weight(1f), onClick = { showOptions = !showOptions })
         }
     } else {
         SettingRow(tr(R.string.torr_download_add_file), modifier = Modifier.focusRequester(initialFocus), onClick = activity::chooseTorrFile)
         SettingRow(tr(R.string.http_download_add_link), modifier = Modifier.focusRequester(httpLinkFocus), onClick = ::addHttpLink)
+        SettingRow(tr(R.string.browser_download_entry), onClick = ::openBrowser)
         SettingRow(tr(if (showMagnet) R.string.downloads_magnet_hide else R.string.downloads_magnet_show), onClick = { showMagnet = !showMagnet })
         SettingRow(tr(if (showOptions) R.string.downloads_options_hide else R.string.downloads_options_show), onClick = { showOptions = !showOptions })
     }
@@ -505,7 +542,7 @@ import kotlinx.coroutines.withContext
     Text(tr(R.string.torr_download_magnet), color = Color.LightGray, fontSize = 13.sp)
     BasicTextField(magnet, { if (it.length <= 8192) magnet = it }, modifier = Modifier.fillMaxWidth().background(Color(0xFF29292B)).padding(10.dp),
         singleLine = true, textStyle = TextStyle(color = Color.White, fontSize = 14.sp))
-    SettingRow(tr(R.string.torr_download_add_magnet), onClick = {
+    SettingRow(tr(R.string.torr_download_add_magnet), modifier = Modifier.focusRequester(magnetSubmitFocus), onClick = {
         if (!busy && magnet.isNotBlank()) {
             busy = true
             activity.torrDownloadMessage = ""
@@ -618,6 +655,7 @@ import kotlinx.coroutines.withContext
         }
         val displayOffset = downloadDisplayOffset(job, liveProgress)
         val percent = if (job.total == 0L) { if (job.state == "done") 100 else 0 } else (displayOffset.toDouble() / job.total * 100).toInt().coerceIn(0, 100)
+        val httpTorrent = job.http != null && job.finalName.endsWith(".torrent", ignoreCase = true)
         val action = when (job.state) {
             "queued", "running" -> tr(R.string.torr_download_pause)
             "paused", "error" -> tr(when {
@@ -625,7 +663,11 @@ import kotlinx.coroutines.withContext
                 job.requiresHttpRestart -> R.string.http_download_restart
                 else -> R.string.torr_download_resume
             })
-            "done" -> if (job.http != null) tr(R.string.http_download_open) else ""
+            "done" -> when {
+                httpTorrent -> tr(R.string.browser_import_torrent)
+                job.http != null -> tr(R.string.http_download_open)
+                else -> ""
+            }
             else -> ""
         }
         val summary = "${tr(label)} · $percent%" + if (action.isNotEmpty()) " · $action" else ""
@@ -640,7 +682,12 @@ import kotlinx.coroutines.withContext
                         "done" -> if (job.http != null && !openingHttp && !PortableMaintenance.running) {
                             openingHttp = true
                             scope.launch {
-                                try { openCompletedHttpDownload(activity, job) }
+                                try {
+                                    if (httpTorrent) {
+                                        val document = withContext(Dispatchers.IO) { TorrDownloadDocuments.verifyCompletedHttp(activity, job) }
+                                        activity.importTorrentUri(document)
+                                    } else openCompletedHttpDownload(activity, job)
+                                }
                                 catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
                                 catch (_: Exception) { activity.torrDownloadMessage = activity.getString(R.string.http_download_open_failed) }
                                 finally { openingHttp = false }

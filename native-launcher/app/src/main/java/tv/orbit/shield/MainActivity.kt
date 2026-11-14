@@ -2168,7 +2168,7 @@ private fun settingsTitle(section: String): Int = when {
         "libraryGroup" -> (if (activity.legacyRecoveryPending) listOf("legacyRecovery") else emptyList()) +
             listOf("addGames", "rescanGames", "folders", "portableCopy", "covers", "ndsEmulator", "androidGames", "groupVersions", "libraryTab", "appsTab")
         "localeGroup" -> listOf("language", "clock")
-        "systemGroup" -> listOf("network", "defaultHome", "shield", "services", "remote")
+        "systemGroup" -> listOf("network", "browserSearch", "defaultHome", "shield", "services", "remote")
         "services" -> listOf("vlcGostex", "torrServer", "torrServeInstall", "revancedManager")
         "portableCopy" -> listOf("copyAction", "portablePreview")
         else -> emptyList()
@@ -2241,6 +2241,19 @@ private fun settingsTitle(section: String): Int = when {
                 SettingRow(tr(R.string.clock_title), modifier = rowFocus("clock"), onClick = { onSection("clock") })
             } else if (section == "systemGroup") {
                 SettingRow(tr(R.string.network_settings), modifier = rowFocus("network"), onClick = { activity.openNetworkSettings() })
+                var browserSearch by remember(activity) { mutableStateOf(TvBrowserOptions.searchProvider(activity)) }
+                SettingRow(tr(R.string.browser_settings_search_engine), browserSearch.displayName, rowFocus("browserSearch"), onClick = {
+                    val providers = BrowserSearchProvider.entries
+                    android.app.AlertDialog.Builder(activity)
+                        .setTitle(R.string.browser_settings_search_engine)
+                        .setSingleChoiceItems(providers.map { it.displayName }.toTypedArray(), providers.indexOf(browserSearch)) { dialog, index ->
+                            browserSearch = providers[index]
+                            TvBrowserOptions.setSearchProvider(activity, browserSearch)
+                            dialog.dismiss()
+                        }
+                        .setNegativeButton(R.string.cancel, null)
+                        .show()
+                })
                 DefaultHomeSetting(activity, rowFocus("defaultHome"))
                 SettingRow(tr(R.string.settings_device_title), modifier = rowFocus("shield"), onClick = { activity.openSettings() })
                 SettingRow(tr(R.string.settings_services_title), tr(R.string.settings_services_summary), rowFocus("services"), onClick = { onSection("services") })

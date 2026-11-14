@@ -52,9 +52,9 @@ import kotlinx.coroutines.launch
 private val DownloadFieldText = TextStyle(color = Color.White, fontSize = 15.sp)
 
 @Composable
-internal fun HttpDownloadUi(activity: MainActivity, folderLabel: String?, onSubmit: () -> Unit, onDismiss: () -> Unit) {
+internal fun HttpDownloadUi(activity: MainActivity, folderLabel: String?, initialAddress: String, onSubmit: () -> Unit, onDismiss: () -> Unit) {
     // Keep the link and its cleartext consent in memory only, scoped to this dialog.
-    var address by remember { mutableStateOf("") }
+    var address by remember { mutableStateOf(initialAddress) }
     var check by remember { mutableStateOf<Job?>(null) }
     var admission by remember { mutableStateOf<HttpDownloadAdmissionResult?>(null) }
     var name by remember { mutableStateOf("") }

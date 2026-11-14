@@ -1,5 +1,9 @@
 package tv.orbit.shield
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
@@ -11,6 +15,7 @@ import java.net.Proxy
 import java.net.SocketTimeoutException
 import java.net.URL
 import java.util.UUID
+import kotlin.coroutines.EmptyCoroutineContext
 
 internal data class TorrCatalogFile(val id: Int, val path: String, val size: Long)
 internal class TorrMetadataTimeout : IOException("Torrent metadata request timed out")
@@ -110,7 +115,7 @@ internal object TorrServerCatalog {
     }
 
     /** Explicitly starts server preloading for the selected file; this call can wait for peers. */
-    fun preload(hash: String, fileId: Int, port: Int = 8090): TorrCatalogEntry {
+    suspend fun preload(hash: String, fileId: Int, port: Int = 8090): TorrCatalogEntry = withContext(Dispatchers.IO) {
         require(HASH.matches(hash) && fileId > 0 && port in 1..65535)
         val connection = URL("http://127.0.0.1:$port/stream?link=$hash&index=$fileId&preload&stat").openConnection(Proxy.NO_PROXY) as HttpURLConnection
         try {
@@ -118,10 +123,23 @@ internal object TorrServerCatalog {
             connection.readTimeout = 120000
             connection.instanceFollowRedirects = false
             connection.useCaches = false
-            if (connection.responseCode != 200) throw IOException("Cannot prepare torrent")
-            if (connection.contentLengthLong > MAX_RESPONSE) throw IOException("Server response too large")
-            return parseEntry(JSONObject(connection.inputStream.use { String(readLimited(it, MAX_RESPONSE), Charsets.UTF_8) })).also {
-                if (!it.hash.equals(hash, ignoreCase = true)) throw IOException("Unexpected torrent identity")
+            connection.setRequestProperty("Connection", "close")
+            ensureActive()
+            // On Android, disconnect before connect is a no-op. Finish the bounded
+            // loopback connect first; waiting for headers/body below is cancellable.
+            connection.connect()
+            suspendCancellableCoroutine { continuation ->
+                continuation.invokeOnCancellation {
+                    // Never run a transport operation on the cancelling thread (often Main).
+                    Dispatchers.IO.dispatch(EmptyCoroutineContext) { runCatching { connection.disconnect() } }
+                }
+                if (continuation.isActive) continuation.resumeWith(runCatching {
+                    if (connection.responseCode != 200) throw IOException("Cannot prepare torrent")
+                    if (connection.contentLengthLong > MAX_RESPONSE) throw IOException("Server response too large")
+                    parseEntry(JSONObject(connection.inputStream.use { String(readLimited(it, MAX_RESPONSE), Charsets.UTF_8) })).also {
+                        if (!it.hash.equals(hash, ignoreCase = true)) throw IOException("Unexpected torrent identity")
+                    }
+                })
             }
         } finally { connection.disconnect() }
     }

@@ -7,6 +7,7 @@ import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -137,9 +138,10 @@ internal object TorrPreparationDialog {
             }
         }
         if (startPreload) preload = activity.lifecycleScope.launch {
-            val result = runCatching { withContext(Dispatchers.IO) { TorrServerCatalog.preload(hash, fileId) } }
+            val entry = try { TorrServerCatalog.preload(hash, fileId) }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { null }
             if (!isActive || !dialog.isShowing) return@launch
-            val entry = result.getOrNull()
             // TorrServer can return HTTP 200 after an aborted preload. Require its
             // reported cache threshold as well; it does not guarantee future throughput.
             preloadCandidate = completedSelectedPreload(entry?.serverState,

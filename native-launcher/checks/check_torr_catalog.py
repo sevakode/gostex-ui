@@ -8,16 +8,11 @@ import sys
 import tempfile
 import time
 from urllib.parse import parse_qs, urlparse
+from kotlin_toolchain import CACHE, COMPILER, JAVA, ROOT
 
-ROOT = Path(__file__).resolve().parents[2]
-CACHE = ROOT / '.tools/native/gradle-cache/caches/modules-2/files-2.1'
-JAVA = ROOT / '.tools/native/jdk/jdk-21.0.13+9/Contents/Home/bin/java'
-def jar(group, artifact, version): return next((CACHE / group / artifact / version).glob('*/*.jar'))
-compiler = [jar('org.jetbrains.kotlin', a, v) for a, v in [
-    ('kotlin-compiler-embeddable', '2.4.21'), ('kotlin-stdlib', '2.4.21'),
-    ('kotlin-script-runtime', '2.4.21'), ('kotlin-reflect', '1.6.10'),
-]] + [jar('org.jetbrains.kotlinx', 'kotlinx-coroutines-core-jvm', '1.9.0'), jar('org.jetbrains', 'annotations', '13.0')]
-json_jar = next((Path.home() / '.gradle/caches/modules-2/files-2.1/org.json/json/20180813').glob('*/*.jar'))
+json_candidates = list((CACHE / 'org.json/json').glob('*/*/*.jar'))
+json_candidates += list((Path.home() / '.gradle/caches/modules-2/files-2.1/org.json/json').glob('*/*/*.jar'))
+json_jar = next(p for p in json_candidates if not p.name.endswith(('-sources.jar', '-javadoc.jar')))
 ENTRY = {'hash':'a'*40, 'title':'test', 'file_stats':[{'id':1,'path':'dir/game.bin','length':4096}], 'download_speed':259364.74951573115, 'connected_seeders':3, 'preloaded_bytes':4194304, 'preload_size':33554432, 'stat':2}
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args): pass
@@ -36,10 +31,22 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(b'x' * (3 if index == 10 else end-start+1))
             self.close_connection = True
             return
-        if self.path == '/stream?link=' + 'a'*40 + '&index=2&preload&stat':
-            payload = json.dumps(ENTRY).encode()
-            self.send_response(200); self.send_header('Content-Length', str(len(payload))); self.end_headers(); self.wfile.write(payload)
+        if parsed.path == '/stream' and '&preload&stat' in self.path:
+            index = int(query['index'][0])
+            assert query['link'] == ['a'*40] and self.headers['Connection'] == 'close'
+            if index == 3:
+                self.send_response(302)
+                self.send_header('Location', '/unexpected-redirect')
+                self.end_headers()
+                return
+            payload = json.dumps(dict(ENTRY, hash='f'*40) if index == 4 else ENTRY).encode()
+            self.send_response(200); self.send_header('Content-Length', str(3*1024*1024 if index == 5 else len(payload)))
+            self.end_headers()
+            if index != 5: self.wfile.write(payload)
             return
+        if parsed.path == '/unexpected-redirect':
+            self.server.followed_redirect = True
+            self.send_response(500); self.end_headers(); return
         if self.path == '/stream?link=' + 'b'*40 + '&stat=1':
             time.sleep(0.6)
             self.send_response(200); self.send_header('Content-Length', '2'); self.end_headers()
@@ -93,6 +100,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200); self.send_header('Content-Length', str(len(payload))); self.end_headers(); self.wfile.write(payload)
 checks = '''package tv.orbit.shield
 import java.io.ByteArrayInputStream
+import kotlinx.coroutines.runBlocking
 fun main(args: Array<String>) {
     val port = args[0].toInt()
     if (args.size > 1) {
@@ -105,9 +113,13 @@ fun main(args: Array<String>) {
     val entry = TorrServerCatalog.list(port).single()
     check(entry.hash == hash && entry.title == "test" && entry.files.single() == TorrCatalogFile(1,"dir/game.bin",4096))
     check(entry.downloadBytesPerSecond == 259364L && entry.connectedSeeders == 3)
-    val buffer = TorrServerCatalog.preload(hash,2,port)
+    val buffer = runBlocking { TorrServerCatalog.preload(hash,2,port) }
     check(buffer.cachedBytes == 4194304L && buffer.preloadBytes == 33554432L && buffer.serverState == 2)
-    check(runCatching { TorrServerCatalog.preload(hash,0,port) }.isFailure)
+    for ((id, error) in listOf(3 to "Cannot prepare torrent", 4 to "Unexpected torrent identity", 5 to "Server response too large")) {
+        val failure = runCatching { runBlocking { TorrServerCatalog.preload(hash,id,port) } }.exceptionOrNull()
+        check(failure is java.io.IOException && failure.message == error)
+    }
+    check(runCatching { runBlocking { TorrServerCatalog.preload(hash,0,port) } }.isFailure)
     check(TorrServerCatalog.canReadVideoEdges(hash, 7, 200_000, port))
     check(!TorrServerCatalog.canReadVideoEdges(hash, 8, 200_000, port))
     check(!TorrServerCatalog.canReadVideoEdges(hash, 9, 200_000, port))
@@ -165,17 +177,18 @@ fun main(args: Array<String>) {
     println("PASS: catalog list, file metadata, magnet, torrent upload and input bounds")
 }
 '''
-server = ThreadingHTTPServer(('127.0.0.1', 0), Handler); server.events = []; server.uploads = []; server.ranges = []; thread = Thread(target=server.serve_forever,daemon=True); thread.start()
+server = ThreadingHTTPServer(('127.0.0.1', 0), Handler); server.events = []; server.uploads = []; server.ranges = []; server.followed_redirect = False; thread = Thread(target=server.serve_forever,daemon=True); thread.start()
 try:
     with tempfile.TemporaryDirectory(prefix='gostex-catalog-test-') as td:
-        folder=Path(td); (folder/'Checks.kt').write_text(checks); cp=f'{compiler[1]}:{json_jar}'
+        folder=Path(td); (folder/'Checks.kt').write_text(checks); cp=f'{COMPILER[1]}:{COMPILER[4]}:{json_jar}'
         source=ROOT/'native-launcher/app/src/main/java/tv/orbit/shield/TorrServerCatalog.kt'
-        result=subprocess.run([str(JAVA),'-cp',':'.join(map(str,compiler)),'org.jetbrains.kotlin.cli.jvm.K2JVMCompiler',
-            '-no-stdlib','-no-reflect','-classpath',cp,'-d',str(folder/'classes'),str(source),str(source.parent/'TorrentFileIdentity.kt'),str(source.parent/'TorrPlaylistSafety.kt'),str(folder/'Checks.kt')],capture_output=True,text=True)
+        result=subprocess.run([str(JAVA),'-cp',':'.join(map(str,COMPILER)),'org.jetbrains.kotlin.cli.jvm.K2JVMCompiler',
+            '-no-stdlib','-no-reflect','-classpath',cp,'-d',str(folder/'classes'),str(source),str(source.parent/'TorrentFileIdentity.kt'),str(source.parent/'TorrPlaylistSafety.kt'),str(folder/'Checks.kt')],capture_output=True,text=True,timeout=60)
         if result.returncode: raise SystemExit(result.stderr)
-        result=subprocess.run([str(JAVA),'-cp',f'{folder / "classes"}:{cp}','tv.orbit.shield.ChecksKt',str(server.server_port)],capture_output=True,text=True)
+        result=subprocess.run([str(JAVA),'-cp',f'{folder / "classes"}:{cp}','tv.orbit.shield.ChecksKt',str(server.server_port)],capture_output=True,text=True,timeout=30)
         print(result.stdout,end='')
         if result.returncode: raise SystemExit(result.stderr)
+        assert not server.followed_redirect
         assert (7, 0, 65535) in server.ranges and (7, 134464, 199999) in server.ranges
         assert [r for r in server.ranges if r[0] == 11] == [(11, 0, 9999)]
         events = server.events

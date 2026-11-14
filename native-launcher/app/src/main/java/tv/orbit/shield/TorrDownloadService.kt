@@ -3,8 +3,10 @@ package tv.orbit.shield
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.graphics.drawable.Icon
 import android.net.Uri
 import android.os.Build
 import android.os.IBinder
@@ -12,6 +14,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.DocumentsContract
 import java.io.IOException
+import java.util.UUID
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -20,9 +23,25 @@ internal class TorrDownloadService : Service() {
     private val executor = Executors.newSingleThreadExecutor()
     private val workerActive = AtomicBoolean(false)
     private val stopping = AtomicBoolean(false)
-    private class Transfer(val id: String, val http: HttpDownloadAbort?) {
+    private inner class Transfer(val id: String, val http: HttpDownloadAbort?) {
+        val pauseToken: String = UUID.randomUUID().toString()
         val paused = AtomicBoolean(false)
+        private val notificationPause = lazy(LazyThreadSafetyMode.NONE) {
+            val identity = Uri.Builder().scheme("gostex-download").authority(packageName)
+                .appendPath(id).appendPath(pauseToken).build()
+            val intent = Intent(this@TorrDownloadService, TorrDownloadService::class.java)
+                .setAction(ACTION_PAUSE_NOTIFICATION).setData(identity)
+                .putExtra("id", id).putExtra("pauseToken", pauseToken)
+            val pending = PendingIntent.getService(this@TorrDownloadService, 0, intent, PendingIntent.FLAG_IMMUTABLE)
+            Notification.Action.Builder(Icon.createWithResource(this@TorrDownloadService, android.R.drawable.ic_media_pause),
+                getString(R.string.torr_download_pause), pending).build()
+        }
+
         fun pause() { paused.set(true); http?.cancel() }
+        fun pauseAction(): Notification.Action = notificationPause.value
+        fun clearPauseAction() {
+            if (notificationPause.isInitialized()) runCatching { notificationPause.value.actionIntent?.cancel() }
+        }
     }
     @Volatile private var activeTransfer: Transfer? = null
     private var storeAvailable = false
@@ -43,22 +62,39 @@ internal class TorrDownloadService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val action = intent?.action
+        if (action != ACTION_START) {
+            if (intent != null && (action == ACTION_PAUSE || action == ACTION_PAUSE_NOTIFICATION)) pauseTransfer(intent)
+            synchronized(this) { if (!workerActive.get()) stopSelfResult(startId) }
+            return START_NOT_STICKY
+        }
         synchronized(notificationLock) {
             startForeground(NOTIFICATION, notification(getString(R.string.torr_download_preparing)))
             notifiedProgress = null
         }
         if (!storeAvailable) { stopSelf(); return START_NOT_STICKY }
-        // Cold recovery pauses stale work on I/O; a late pause intent must not
-        // initialize/migrate the journal on the service's main thread.
-        if (intent?.action == ACTION_PAUSE && TorrDownloadStartup.ready) {
-            val id = intent.getStringExtra("id")
-            if (id != null) {
-                val paused = runCatching { TorrDownloadStore.update(this, id) { if (it.state == "running" || it.state == "queued") it.copy(state = "paused") else it } }.getOrNull()
-                if (paused?.state == "paused") activeTransfer?.takeIf { it.id == id }?.pause()
-            }
-        }
         launchWorker()
         return START_NOT_STICKY
+    }
+
+    private fun pauseTransfer(intent: Intent) {
+        // A late in-app or notification action has no work to pause in a cold service.
+        if (!storeAvailable || !workerActive.get() || !TorrDownloadStartup.ready) return
+        val id = intent.getStringExtra("id") ?: return
+        val transfer = activeTransfer?.takeIf { it.id == id }
+        val fromNotification = intent.action == ACTION_PAUSE_NOTIFICATION
+        if (fromNotification && (transfer == null || transfer.pauseToken != intent.getStringExtra("pauseToken"))) return
+        val paused = runCatching {
+            TorrDownloadStore.update(this, id) { job ->
+                val canPause = if (fromNotification) activeTransfer === transfer && job.state == "running"
+                    else job.state == "running" || job.state == "queued"
+                if (canPause) job.copy(state = "paused") else job
+            }
+        }.getOrNull()
+        if (paused?.state == "paused" && transfer != null) {
+            transfer.pause()
+            notificationUpdate(transfer, paused)
+        }
     }
 
     @Synchronized private fun launchWorker() {
@@ -89,7 +125,7 @@ internal class TorrDownloadService : Service() {
                             if (it.state == "queued") it.copy(state = "running", error = "") else it
                         }
                         if (job.state != "running") continue
-                        notificationUpdate(job)
+                        notificationUpdate(transfer, job)
                         if (job.offset < job.total) {
                             phase = "storage"
                             TorrDownloadDocuments.verifyPartial(this, job)
@@ -111,7 +147,7 @@ internal class TorrDownloadService : Service() {
                                         val beforeWrite: (Int) -> Boolean = { count -> throttle.beforeWrite(count, cancelled) }
                                         val progress: (Long) -> Unit = { offset ->
                                             TorrDownloadLiveProgress.report(job.id, offset)
-                                            notificationUpdate(job, offset)
+                                            notificationUpdate(transfer, job, offset)
                                         }
                                         val http = job.http
                                         end = if (http == null) TorrDownloadEngine.transfer(
@@ -155,6 +191,7 @@ internal class TorrDownloadService : Service() {
                         }
                         job = TorrDownloadStore.update(this, job.id) { if (it.state == "running") it.copy(state = "finalizing") else it }
                         if (job.state != "finalizing") continue
+                        notificationUpdate(transfer, job)
                         phase = "finalize"
                         val result = finalizeDocument(job)
                         val completed = TorrDownloadStore.update(this, job.id) {
@@ -177,6 +214,7 @@ internal class TorrDownloadService : Service() {
                     } finally {
                         TorrDownloadLiveProgress.clear(next.id)
                         activeTransfer = null
+                        transfer.clearPauseAction()
                         TorrDownloadStore.releaseWorker(next.id)
                     }
                 }
@@ -256,22 +294,36 @@ internal class TorrDownloadService : Service() {
         return result
     }
 
-    private fun notification(text: String): Notification = Notification.Builder(this, CHANNEL)
+    private val openDownloads by lazy {
+        val intent = Intent(this, MainActivity::class.java).setAction(MainActivity.ACTION_OPEN_DOWNLOADS)
+        PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
+    }
+
+    private fun notification(text: String, pause: Notification.Action? = null): Notification = Notification.Builder(this, CHANNEL)
         .setSmallIcon(android.R.drawable.stat_sys_download)
         .setContentTitle(getString(R.string.torr_download_channel))
-        .setContentText(text).setOnlyAlertOnce(true).setOngoing(true).build()
+        .setContentText(text).setOnlyAlertOnce(true).setOngoing(true)
+        .setVisibility(Notification.VISIBILITY_PRIVATE).setContentIntent(openDownloads)
+        .apply { if (pause != null) addAction(pause) }.build()
     private val notificationLock = Any()
-    private var notifiedProgress: Pair<String, Int>? = null
-    private fun notificationUpdate(job: TorrDownloadJob, offset: Long = job.offset) {
+    private var notifiedProgress: Triple<String, Int, Boolean>? = null
+    private fun notificationUpdate(transfer: Transfer, job: TorrDownloadJob, offset: Long = job.offset) {
         val percent = if (job.total > 0) (offset.coerceIn(0L, job.total).toDouble() / job.total * 100).toInt().coerceIn(0, 100) else 0
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) return
-        val progress = job.id to percent
         synchronized(notificationLock) {
+            if (activeTransfer !== transfer) return
+            val canPause = job.state == "running" && !transfer.paused.get()
+            val progress = Triple(transfer.pauseToken, percent, canPause)
             if (notifiedProgress == progress) return
             // Notification permission/system availability can change during a transfer.
             // A display failure must not abort a valid download or its durable checkpoint.
-            if (runCatching { getSystemService(NotificationManager::class.java).notify(NOTIFICATION, notification("${job.name} · $percent%")) }.isSuccess)
+            val body = if (job.http?.sessionBound == true) "$percent%" else "${job.name} · $percent%"
+            if (runCatching {
+                    val pause = if (canPause) transfer.pauseAction() else null
+                    getSystemService(NotificationManager::class.java).notify(NOTIFICATION, notification(body, pause))
+                }.isSuccess) {
                 notifiedProgress = progress
+            }
         }
     }
 
@@ -295,6 +347,7 @@ internal class TorrDownloadService : Service() {
     companion object {
         const val ACTION_START = "tv.orbit.shield.download.START"
         const val ACTION_PAUSE = "tv.orbit.shield.download.PAUSE"
+        private const val ACTION_PAUSE_NOTIFICATION = "tv.orbit.shield.download.NOTIFICATION_PAUSE"
         private const val CHANNEL = "torr-downloads"
         private const val NOTIFICATION = 42371
     }

@@ -107,6 +107,10 @@ private data class PortablePreviewDecisionSession(
 private class LegacyRecoveryNotice(val messageId: Int) : Exception()
 
 class MainActivity : ComponentActivity() {
+    companion object {
+        internal const val ACTION_OPEN_DOWNLOADS = "tv.orbit.shield.download.OPEN"
+    }
+
     private val videoPlayer = VideoPlayerChooser(this) { emulatorInstall }
     private val updatesLazy = lazy { LauncherUpdates(this) }
     internal val updates: LauncherUpdates by updatesLazy
@@ -704,6 +708,7 @@ class MainActivity : ComponentActivity() {
     internal fun cancelPortableCopy() { portableCopyJob?.cancel() }
     var resumeVersion by mutableIntStateOf(0)
     var homeVersion by mutableIntStateOf(0)
+    internal var openDownloadsRequested by mutableStateOf(false)
     var library by mutableStateOf<List<Game>>(emptyList())
     var scanning by mutableStateOf(false)
     internal var manualLibraryScanStatus by mutableStateOf<Int?>(null)
@@ -842,8 +847,12 @@ class MainActivity : ComponentActivity() {
         if (PortableMaintenance.running) return
         setIntent(intent)
         acceptTorrentIntent(intent)
+        if (intent.action == ACTION_OPEN_DOWNLOADS) openDownloadsRequested = true
         AndroidDiagnostics.event("launcher.intent", if (intent.hasCategory(Intent.CATEGORY_HOME)) "home" else "other")
-        if (intent.hasCategory(Intent.CATEGORY_HOME)) homeVersion++
+        if (intent.hasCategory(Intent.CATEGORY_HOME)) {
+            openDownloadsRequested = false
+            homeVersion++
+        }
     }
     private fun acceptTorrentIntent(intent: Intent?) {
         val uri = intent?.data ?: return
@@ -1278,6 +1287,8 @@ class MainActivity : ComponentActivity() {
         }
         updates // Initialize bounded diagnostics and the preference listener once for this Activity.
         importScope.launch { TorrDownloadStartup.prepare(applicationContext) }
+        openDownloadsRequested = savedInstanceState?.getBoolean("openDownloadsRequested")
+            ?: (intent.action == ACTION_OPEN_DOWNLOADS)
         if (savedInstanceState == null) acceptTorrentIntent(intent)
         else incomingTorrentUri = savedInstanceState.getString("incomingTorrentUri")?.let(Uri::parse)
         importPlatform = savedInstanceState?.getString("importPlatform").orEmpty()
@@ -1322,6 +1333,7 @@ class MainActivity : ComponentActivity() {
         outState.putString("importSource", importSource.value)
         outState.putString("pendingCoverId", pendingCoverId)
         outState.putString("incomingTorrentUri", incomingTorrentUri?.toString())
+        outState.putBoolean("openDownloadsRequested", openDownloadsRequested)
         super.onSaveInstanceState(outState)
     }
 
@@ -1626,8 +1638,7 @@ class MainActivity : ComponentActivity() {
         searchReturnTarget = "results"
         searchOpen = false
     }
-    LaunchedEffect(activity.homeVersion) {
-        if (activity.homeVersion == 0) return@LaunchedEffect
+    fun showRootTab(destination: String) {
         settingsOpen = false
         mediaOpen = false
         searchOpen = false
@@ -1636,9 +1647,15 @@ class MainActivity : ComponentActivity() {
         tileMenu = null
         membershipItem = null
         favoriteOrderItem = null
-        tab = "home"
+        tab = destination
         platform = "all"
         variant = 0
+    }
+    LaunchedEffect(activity.homeVersion) {
+        if (activity.homeVersion != 0) showRootTab("home")
+    }
+    LaunchedEffect(activity.openDownloadsRequested) {
+        if (activity.openDownloadsRequested) showRootTab("downloads")
     }
     BackHandler {
         if (detail != null) { detail = null; tileRestore++ } else { tab = "home"; platform = "all" }
@@ -1795,6 +1812,13 @@ class MainActivity : ComponentActivity() {
                         favorites = favoriteRefs, onMenu = ::movieMenu, modifier = Modifier.weight(1f))
                 } else if (tab == "downloads") {
                     val downloadsFocus = remember { FocusRequester() }
+                    LaunchedEffect(activity.openDownloadsRequested) {
+                        if (activity.openDownloadsRequested) {
+                            withFrameNanos { }
+                            runCatching { downloadsFocus.requestFocus() }
+                            activity.openDownloadsRequested = false
+                        }
+                    }
                     BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
                         val wide = maxWidth >= 600.dp
                         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = if (wide) 36.dp else 16.dp, vertical = 12.dp),

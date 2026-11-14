@@ -21,6 +21,23 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7.0.1
+      - name: Check whether VLC policy inputs changed
+        id: vlc_policy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          run=true
+          if release=$(gh release view --repo "$GH_REPO" --json tagName,targetCommitish --jq '[.tagName, .targetCommitish] | @tsv'); then
+            read -r tag baseline <<< "$release"
+            if [[ "$tag" =~ ^build-[0-9]+$ && "$baseline" =~ ^[0-9a-f]{40}$ ]] &&
+                (git cat-file -e "$baseline^{commit}" 2>/dev/null || git fetch --no-tags --depth=1 origin "$baseline") &&
+                git diff --quiet "$baseline" HEAD -- native-launcher/vlc-patch/ \
+                  native-launcher/checks/check_vlc_policy.py native-launcher/checks/kotlin_toolchain.py; then
+              run=false
+            fi
+          fi
+          printf 'run=%s\n' "$run" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-java@v6.1.0
         with:
           distribution: temurin
@@ -47,6 +64,7 @@ jobs:
       - name: Build Android with existing installation identity
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          RUN_VLC_POLICY: ${{ steps.vlc_policy.outputs.run }}
         run: |
           test -n "$ANDROID_KEYSTORE_BASE64"
           export GOSTEX_ANDROID_KEYSTORE="$RUNNER_TEMP/gostex-android.keystore"
@@ -68,7 +86,6 @@ jobs:
             native-launcher/checks/check_import_warnings.py \
             native-launcher/checks/check_remote_install_policy.py \
             native-launcher/checks/check_official_apk_policy.py \
-            native-launcher/checks/check_vlc_policy.py \
             native-launcher/checks/check_torr_saf_target.py \
             native-launcher/checks/check_torr_folder_access.py \
             native-launcher/checks/check_legacy_catalog_bridge.py \
@@ -102,6 +119,9 @@ jobs:
             native-launcher/checks/test_carry_forward_linux.py \
             native-launcher/checks/check_update_state.py \
             native-launcher/checks/check_install_session.py | xargs -n 1 -P 2 python3
+          if [[ "$RUN_VLC_POLICY" != false ]]; then
+            python3 native-launcher/checks/check_vlc_policy.py
+          fi
           actual_certificate=$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs native-launcher/app/build/outputs/apk/release/app-release.apk | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
           test "$actual_certificate" = '8dfd10419f9cd24209f4771e083cd33c4fd78375e6b19aea0453257be1016898'
           python3 native-launcher/tools/release/publish_feed.py --platform android-arm64 --artifact native-launcher/app/build/outputs/apk/release/app-release.apk --output release-assets --private-key "$RUNNER_TEMP/gostex-release.pem" --base-url "https://github.com/$GITHUB_REPOSITORY/releases/download/build-$GITHUB_RUN_NUMBER"

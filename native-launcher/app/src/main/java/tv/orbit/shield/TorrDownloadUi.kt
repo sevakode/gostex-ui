@@ -1,6 +1,8 @@
 package tv.orbit.shield
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Row
@@ -20,6 +22,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
@@ -58,8 +61,71 @@ import kotlinx.coroutines.withContext
     var discardErrorId by remember { mutableStateOf<String?>(null) }
     var page by remember { mutableStateOf(0) }
     var filePage by remember { mutableStateOf(0) }
-    var jobPage by remember { mutableStateOf(0) }
-    var showFinished by remember { mutableStateOf(false) }
+    var jobPage by rememberSaveable { mutableStateOf(0) }
+    var showFinished by rememberSaveable { mutableStateOf(false) }
+    var folderAccessRequest by rememberSaveable { mutableStateOf<ArrayList<String>?>(null) }
+    var folderAccessReturnFocus by rememberSaveable { mutableStateOf<String?>(null) }
+    var folderAccessBusy by remember { mutableStateOf(false) }
+    var folderGrants by remember { mutableStateOf<Set<TorrDownloadFolderAccess.Identity>?>(null) }
+    val folderSnapshotGeneration = remember { intArrayOf(0) }
+    LaunchedEffect(activity.resumeVersion) {
+        val generation = ++folderSnapshotGeneration[0]
+        val snapshot = withContext(Dispatchers.IO) { TorrDownloadFolderAccess.snapshot(activity.contentResolver) }
+        if (generation == folderSnapshotGeneration[0]) folderGrants = snapshot
+    }
+    val folderAccessPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        val saved = folderAccessRequest
+        folderAccessRequest = null
+        val request = saved?.takeIf { it.size == 3 }?.let { TorrDownloadFolderAccess.Request(it[0], it[1], it[2]) }
+        folderAccessBusy = true
+        ++folderSnapshotGeneration[0]
+        scope.launch {
+            try {
+                val ready = TorrDownloadStartup.prepare(activity.applicationContext)
+                val result = withContext(Dispatchers.IO) {
+                    val current = if (ready && !PortableMaintenance.running) TorrDownloadStore.jobs.value
+                        .firstOrNull { it.id == request?.id && it.state == "error" && it.error == "storage" }
+                        ?.let { TorrDownloadFolderAccess.Request(it.id, it.tree, it.document) } else null
+                    TorrDownloadFolderAccess.restore(activity.contentResolver, request, current, uri)
+                }
+                ++folderSnapshotGeneration[0]
+                folderGrants = result.grants
+                activity.torrDownloadMessage = activity.getString(when (result.outcome) {
+                    TorrDownloadFolderAccess.Outcome.RESTORED -> R.string.torr_folder_access_restored
+                    TorrDownloadFolderAccess.Outcome.CANCELLED -> R.string.torr_folder_access_cancelled
+                    TorrDownloadFolderAccess.Outcome.DIFFERENT_FOLDER -> R.string.torr_folder_access_different
+                    TorrDownloadFolderAccess.Outcome.STALE -> R.string.torr_folder_access_stale
+                    TorrDownloadFolderAccess.Outcome.UNAVAILABLE -> R.string.torr_folder_access_failed
+                })
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) { activity.torrDownloadMessage = activity.getString(R.string.torr_folder_access_failed) }
+            finally {
+                folderAccessBusy = false
+                folderAccessReturnFocus = request?.id
+                val index = TorrDownloadStore.jobs.value.filter { it.state != "done" }.indexOfFirst { it.id == request?.id }
+                if (index >= 0) { showFinished = false; jobPage = index / 20 }
+            }
+        }
+    }
+    fun restoreFolderAccess(job: TorrDownloadJob) {
+        if (folderAccessBusy || folderAccessRequest != null || PortableMaintenance.running) return
+        val probe = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT_TREE)
+        val resolved = runCatching { activity.packageManager.resolveActivity(probe,
+            android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo }.getOrNull()
+        if (resolved == null || !resolved.enabled || !resolved.applicationInfo.enabled ||
+            resolved.packageName == "com.android.tv.frameworkpackagestubs") {
+            activity.torrDownloadMessage = activity.getString(R.string.document_picker_unavailable)
+            return
+        }
+        folderAccessRequest = arrayListOf(job.id, job.tree, job.document)
+        activity.torrDownloadMessage = activity.getString(R.string.torr_folder_access_hint)
+        try { folderAccessPicker.launch(android.net.Uri.parse(job.tree)) }
+        catch (_: Exception) {
+            folderAccessRequest = null
+            folderAccessReturnFocus = job.id
+            activity.torrDownloadMessage = activity.getString(R.string.document_picker_unavailable)
+        }
+    }
     var hiddenFinished by remember(activity) { mutableStateOf(TorrDownloadHistory.read(activity)) }
     DisposableEffect(activity) {
         val stopObserving = TorrDownloadHistory.observe(activity) { hiddenFinished = it }
@@ -429,6 +495,14 @@ import kotlinx.coroutines.withContext
     val availableJobs = if (journalLoading || journalFailed) emptyList() else jobs
     val activeJobs = availableJobs.filter { it.state != "done" }
     val finishedJobs = TorrDownloadHistory.completed(availableJobs, hiddenFinished)
+    val folderFocusMissing = folderAccessReturnFocus != null && activeJobs.none { it.id == folderAccessReturnFocus }
+    LaunchedEffect(folderFocusMissing, folderAccessBusy, journalLoading) {
+        if (folderFocusMissing && !folderAccessBusy && !journalLoading) {
+            withFrameNanos { }
+            runCatching { initialFocus.requestFocus() }
+            folderAccessReturnFocus = null
+        }
+    }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         SettingRow((if (!showFinished) "✓ " else "") + tr(R.string.torr_download_active_tab, activeJobs.size), modifier = Modifier.weight(1f), isSelected = !showFinished, onClick = { showFinished = false; jobPage = 0 })
         SettingRow((if (showFinished) "✓ " else "") + tr(R.string.torr_download_finished_tab, finishedJobs.size), modifier = Modifier.weight(1f).focusRequester(finishedTabFocus), isSelected = showFinished, onClick = { showFinished = true; jobPage = 0 })
@@ -455,6 +529,16 @@ import kotlinx.coroutines.withContext
     if (journalLoading) Text(tr(R.string.torr_download_loading), color = Color.LightGray, fontSize = 13.sp)
     if (!journalLoading && !journalFailed && visibleJobs.isEmpty()) Text(tr(if (showFinished) R.string.torr_download_empty_finished else R.string.torr_download_empty_queue), color = Color.LightGray, fontSize = 13.sp)
     visibleJobs.drop(jobPage * 20).take(20).forEach { job ->
+        val jobFocus = remember(job.id) { FocusRequester() }
+        val restoreAccess = job.state == "error" && job.error == "storage" &&
+            TorrDownloadFolderAccess.needsAccess(job.tree, folderGrants)
+        LaunchedEffect(folderAccessReturnFocus == job.id, folderAccessBusy) {
+            if (folderAccessReturnFocus == job.id && !folderAccessBusy) {
+                withFrameNanos { }
+                runCatching { jobFocus.requestFocus() }
+                folderAccessReturnFocus = null
+            }
+        }
         val label = when (job.state) {
             "queued" -> R.string.torr_download_queued
             "running" -> if (job.error == "retrying") R.string.torr_download_retrying else R.string.torr_download_running
@@ -479,12 +563,14 @@ import kotlinx.coroutines.withContext
         val percent = if (job.total == 0L) { if (job.state == "done") 100 else 0 } else (displayOffset.toDouble() / job.total * 100).toInt().coerceIn(0, 100)
         val action = when (job.state) {
             "queued", "running" -> tr(R.string.torr_download_pause)
-            "paused", "error" -> tr(R.string.torr_download_resume)
+            "paused", "error" -> tr(if (restoreAccess) R.string.torr_folder_access_restore else R.string.torr_download_resume)
             else -> ""
         }
         val summary = "${tr(label)} · $percent%" + if (action.isNotEmpty()) " · $action" else ""
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SettingRow(job.name, summary, modifier = Modifier.weight(1f), onClick = {
+            SettingRow(job.name, summary, modifier = Modifier.weight(1f).focusRequester(jobFocus), onClick = {
+                if (restoreAccess) { restoreFolderAccess(job); return@SettingRow }
+                if (folderAccessBusy || folderAccessRequest != null) return@SettingRow
                 runCatching {
                     when (job.state) {
                         "queued", "running" -> TorrDownloadActions.pause(activity, job.id)
@@ -495,6 +581,9 @@ import kotlinx.coroutines.withContext
             val hideDescription = tr(R.string.torr_download_hide_finished)
             if (job.state == "done") SettingRow("×", modifier = Modifier.width(72.dp).semantics { contentDescription = hideDescription }, trailing = "", onClick = { hideFinished(job) })
         }
+        if (job.state == "error" && job.error == "storage") Text(
+            tr(if (restoreAccess) R.string.torr_folder_access_hint else R.string.torr_folder_access_check),
+            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }, color = Color.LightGray, fontSize = 12.sp)
         if (job.state in setOf("running", "queued", "paused") && job.total > 0) {
             Box(Modifier.fillMaxWidth().height(3.dp).background(Color(0xFF38383C))) {
                 Box(Modifier.fillMaxWidth(percent / 100f).height(3.dp).background(Color(0xFFCCFF00)))

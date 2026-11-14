@@ -247,4 +247,12 @@
     <string name="just_player_downloading">Descargando Just Player…</string>
     <string name="just_player_failed">No se pudo instalar Just Player. Comprueba la compatibilidad y la conexión.</string>
     <string name="just_player_incompatible">Esta versión de Just Player no es compatible con este Android o procesador.</string>
+    <string name="torr_folder_access_restore">Restablecer acceso a la carpeta</string>
+    <string name="torr_folder_access_hint">Selecciona la misma carpeta para restablecer el acceso. El archivo incompleto se conserva.</string>
+    <string name="torr_folder_access_check">Comprueba la unidad y el archivo; después selecciona Continuar.</string>
+    <string name="torr_folder_access_restored">Acceso restablecido. Selecciona Continuar.</string>
+    <string name="torr_folder_access_cancelled">El acceso no ha cambiado.</string>
+    <string name="torr_folder_access_different">Selecciona la carpeta original de descarga. La descarga no ha cambiado.</string>
+    <string name="torr_folder_access_stale">Esta descarga ha cambiado o ya no está disponible. Vuelve a la cola.</string>
+    <string name="torr_folder_access_failed">No se pudo restablecer el acceso. Comprueba que la carpeta original permita leer y escribir.</string>
 </resources>

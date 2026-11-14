@@ -249,4 +249,12 @@
     <string name="just_player_downloading">Загружается Just Player…</string>
     <string name="just_player_failed">Не удалось установить Just Player. Проверьте совместимость и интернет.</string>
     <string name="just_player_incompatible">Эта сборка Just Player несовместима с версией Android или процессором устройства.</string>
+    <string name="torr_folder_access_restore">Восстановить доступ к папке</string>
+    <string name="torr_folder_access_hint">Выбери прежнюю папку, чтобы восстановить доступ. Недокачанный файл останется на месте.</string>
+    <string name="torr_folder_access_check">Проверь накопитель и файл, затем нажми «Продолжить».</string>
+    <string name="torr_folder_access_restored">Доступ восстановлен. Нажми «Продолжить», чтобы возобновить загрузку.</string>
+    <string name="torr_folder_access_cancelled">Доступ не изменён.</string>
+    <string name="torr_folder_access_different">Выбери исходную папку загрузки. Загрузка не изменена.</string>
+    <string name="torr_folder_access_stale">Эта загрузка изменилась или уже недоступна. Вернись к очереди.</string>
+    <string name="torr_folder_access_failed">Не удалось восстановить доступ. Проверь, что исходная папка доступна для чтения и записи.</string>
 </resources>

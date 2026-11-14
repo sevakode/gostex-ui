@@ -70,6 +70,7 @@ jobs:
             native-launcher/checks/check_official_apk_policy.py \
             native-launcher/checks/check_vlc_policy.py \
             native-launcher/checks/check_torr_saf_target.py \
+            native-launcher/checks/check_torr_folder_access.py \
             native-launcher/checks/check_legacy_catalog_bridge.py \
             native-launcher/checks/check_legacy_catalog_archive.py \
             native-launcher/checks/check_legacy_catalog_recovery.py \

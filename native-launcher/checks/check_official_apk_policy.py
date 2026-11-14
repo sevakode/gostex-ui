@@ -28,6 +28,7 @@ class PackageManager {
 }
 '''
 checks = r'''package tv.orbit.shield
+import android.content.Context
 import android.content.pm.*
 import java.io.File
 import java.io.RandomAccessFile
@@ -93,7 +94,7 @@ fun main(args:Array<String>)=runBlocking {
   check(OfficialApkPolicy.installedState(pkg,pin.versionCode,signers)==OfficialApkPolicy.InstalledState.UNTRUSTED)
  check(OfficialApkPolicy.installedState(pkg,-1,listOf(pin.certificateSha256))==OfficialApkPolicy.InstalledState.UNTRUSTED)
 
- val activity=MainActivity(File(args[0]))
+ val activity=Context(File(args[0]))
  check(OfficialEmulatorApk.installStatus(activity,pkg)==OfficialEmulatorApk.InstallStatus.MISSING)
  activity.packageManager.installed=PackageInfo(pkg,pin.versionCode,SigningInfo(arrayOf(Signature(byteArrayOf(1,2,3)))))
  check(OfficialEmulatorApk.installStatus(activity,pkg)==OfficialEmulatorApk.InstallStatus.UNTRUSTED)
@@ -148,7 +149,7 @@ with tempfile.TemporaryDirectory(prefix="gostex-official-apk-") as td:
     bodies = {
         "Packages.kt": packages,
         "Build.kt": "package android.os\nobject Build { object VERSION { const val SDK_INT=28 }; val SUPPORTED_ABIS=arrayOf(\"arm64-v8a\") }\n",
-        "Activity.kt": "package tv.orbit.shield\nclass MainActivity(val cacheDir:java.io.File) { val packageManager=android.content.pm.PackageManager() }\n",
+        "Context.kt": "package android.content\nclass Context(val cacheDir:java.io.File) { val packageManager=android.content.pm.PackageManager() }\n",
         "Checks.kt": checks,
     }
     for name, body in bodies.items():

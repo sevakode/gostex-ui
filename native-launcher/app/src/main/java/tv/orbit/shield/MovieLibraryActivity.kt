@@ -34,7 +34,7 @@ import kotlinx.coroutines.withContext
 
 /** Film metadata and user-owned sources; streaming is delegated to an installed player. */
 class MovieLibraryActivity : ComponentActivity() {
-    private val videoPlayer = VideoPlayerChooser(this)
+    private val videoPlayer = VideoPlayerChooser(this) { emulatorInstall }
     private var page by mutableStateOf("saved")
     private var saved by mutableStateOf<List<SavedMovie>>(emptyList())
     private var results by mutableStateOf<List<MovieCatalogItem>>(emptyList())
@@ -81,10 +81,15 @@ class MovieLibraryActivity : ComponentActivity() {
         }
     }
 
+    private val emulatorInstall: EmulatorInstall = EmulatorInstall(this, updateNotice = { message ->
+        if (!videoPlayer.isOpen && message.isNotBlank()) Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+    })
+
     override fun attachBaseContext(base: Context) { super.attachBaseContext(Language.context(base)) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        emulatorInstall.restore(savedInstanceState)
         if (!PortableRestoreStartup.ready || PortableMaintenance.running) { finish(); return }
         lifecycleScope.launch { TorrDownloadStartup.prepare(applicationContext) }
         refresh()
@@ -120,6 +125,7 @@ class MovieLibraryActivity : ComponentActivity() {
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
+        emulatorInstall.save(outState)
         outState.putString(STATE_PENDING_FILE_ID, pendingFileId)
         outState.putString(STATE_PENDING_RESTORE_HASH, pendingRestoreHash)
         outState.putString("buffer.movie", lastPreparedMovie)

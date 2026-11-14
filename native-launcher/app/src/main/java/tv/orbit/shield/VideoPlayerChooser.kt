@@ -3,12 +3,15 @@ package tv.orbit.shield
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.media.MediaMetadata
 import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
 import android.os.SystemClock
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -21,6 +24,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -34,13 +38,19 @@ import java.security.MessageDigest
 
 internal data class VlcSeriesPlaylist(val hash: String, val startId: Int, val startTitle: String, val ids: Set<Int>, val titles: Set<String>, val onFilePlayed: (Int) -> Unit)
 
-internal class VideoPlayerChooser(private val activity: ComponentActivity) {
+private val tvFrameworkStubPackages = setOf(
+    "com.android.tv.frameworkpackagestubs",
+    "com.google.android.tv.frameworkpackagestubs",
+)
+
+internal class VideoPlayerChooser(private val activity: ComponentActivity, private val installer: () -> EmulatorInstall) {
     private fun isVlc(packageName: String) = packageName in setOf("org.videolan.vlc", "tv.gostex.vlc", "tv.gostex.vlc.debug")
     private val prefs by lazy { activity.getSharedPreferences("orbit", Context.MODE_PRIVATE) }
     private val pendingKey = "video.pending." + activity.javaClass.simpleName
     private val pendingUriKey = "$pendingKey.uri"
     private val pendingPlayerKey = "$pendingKey.player"
     private var request by mutableStateOf<Request?>(null)
+    val isOpen: Boolean get() = request != null
     private var onPlayerReturned: (() -> Unit)? = null
     private var onPlayerCompleted: (() -> Unit)? = null
     private var onPlayerNavigate: ((Int) -> Unit)? = null
@@ -96,22 +106,32 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
         }
     }
     private data class Player(val component: ComponentName, val label: String)
-    private data class Request(val intent: Intent, val players: List<Player>, val onStarted: () -> Unit, val onError: () -> Unit, val onReturned: () -> Unit, val onCompleted: (() -> Unit)?, val playlist: VlcSeriesPlaylist?, val playlistUnavailable: Boolean, val resumeIdentity: String?, val fromStart: Boolean, val askResume: Boolean, val onNavigate: ((Int) -> Unit)?)
+    private data class Choices(val players: List<Player>, val canInstallVlc: Boolean)
+    private data class Request(val intent: Intent, val choices: Choices, val onStarted: () -> Unit, val onError: () -> Unit, val onReturned: () -> Unit, val onCompleted: (() -> Unit)?, val playlist: VlcSeriesPlaylist?, val playlistUnavailable: Boolean, val resumeIdentity: String?, val fromStart: Boolean, val askResume: Boolean, val onNavigate: ((Int) -> Unit)?)
 
     fun takeCompletedPlayerPackage(): String? = completedPlayerPackage.also { completedPlayerPackage = null }
 
-    fun open(intent: Intent, force: Boolean = false, onStarted: () -> Unit = {}, onError: () -> Unit, onReturned: () -> Unit = {}, onCompleted: (() -> Unit)? = null, playlist: VlcSeriesPlaylist? = null, playlistUnavailable: Boolean = false, resumeIdentity: String? = null, fromStart: Boolean = false, askResume: Boolean = false, preferredPackage: String? = null, onNavigate: ((Int) -> Unit)? = null) {
-        val players = activity.packageManager.queryIntentActivities(intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
+    private fun resolvePlayers(intent: Intent, fromStart: Boolean): List<Player> =
+        activity.packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
             .mapNotNull { item ->
                 val info = item.activityInfo ?: return@mapNotNull null
+                if (info.packageName in tvFrameworkStubPackages) return@mapNotNull null
                 if (!info.exported || !info.enabled || !info.applicationInfo.enabled) return@mapNotNull null
                 Player(ComponentName(info.packageName, info.name), item.loadLabel(activity.packageManager).toString())
             }.distinctBy { it.component }.filter { !fromStart || isVlc(it.component.packageName) }.sortedBy { it.label.lowercase() }
-        if (players.isEmpty()) { onError(); return }
-        val next = Request(Intent(intent), players, onStarted, onError, onReturned, onCompleted, playlist, playlistUnavailable, resumeIdentity, fromStart, askResume, onNavigate)
+
+    private fun canInstallVlc(intent: Intent): Boolean =
+        intent.type?.startsWith("video/") == true &&
+            OfficialEmulatorApk.installStatus(activity, OfficialEmulatorApk.VLC_PACKAGE) == OfficialEmulatorApk.InstallStatus.MISSING
+
+    fun open(intent: Intent, force: Boolean = false, onStarted: () -> Unit = {}, onError: () -> Unit, onReturned: () -> Unit = {}, onCompleted: (() -> Unit)? = null, playlist: VlcSeriesPlaylist? = null, playlistUnavailable: Boolean = false, resumeIdentity: String? = null, fromStart: Boolean = false, askResume: Boolean = false, preferredPackage: String? = null, onNavigate: ((Int) -> Unit)? = null) {
+        val players = resolvePlayers(intent, fromStart)
         val preferred = prefs.getString("video.default_player", null)
         val selected = if (preferredPackage != null) players.firstOrNull { it.component.packageName == preferredPackage }
             else players.firstOrNull { it.component.flattenToString() == preferred }
+        val canInstall = (force || selected == null) && canInstallVlc(intent)
+        if (players.isEmpty() && !canInstall) { onError(); return }
+        val next = Request(Intent(intent), Choices(players, canInstall), onStarted, onError, onReturned, onCompleted, playlist, playlistUnavailable, resumeIdentity, fromStart, askResume, onNavigate)
         if (!force && selected != null) launch(next, selected, null) else request = next
     }
 
@@ -308,27 +328,114 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity) {
 
     @Composable fun Render() {
         val current = request ?: return
+        val install = installer()
+        val pkg = OfficialEmulatorApk.VLC_PACKAGE
+        val revision = install.revision
+        var lastRevision by remember(current) { mutableIntStateOf(revision) }
+        var choices by remember(current) { mutableStateOf(current.choices) }
+        var installRequested by remember(current) { mutableStateOf(false) }
+        var initiallyFocused by remember(current) { mutableStateOf(false) }
         var rememberDefault by remember(current) { mutableStateOf(false) }
-        val focus = remember(current) { FocusRequester() }
-        Dialog(onDismissRequest = { request = null }) {
+        val defaultFocus = remember(current) { FocusRequester() }
+        val installFocus = remember(current) { FocusRequester() }
+        val installedPlayerFocus = remember(current) { FocusRequester() }
+        val closeFocus = remember(current) { FocusRequester() }
+        val playerList = rememberLazyListState()
+        val firstVlc = choices.players.firstOrNull { it.component.packageName == pkg }
+        val downloading = install.downloadingPackage == pkg
+        val installing = install.installingPackage == pkg
+        val permission = install.permissionPackage == pkg
+        val busy = downloading || installing || permission
+
+        fun dismiss() {
+            if (installRequested) {
+                install.abandonPermission(pkg)
+                install.cancelDownload(pkg)
+            }
+            request = null
+        }
+
+        Dialog(onDismissRequest = ::dismiss) {
             Column(Modifier.fillMaxWidth(0.85f).background(Color(0xFF161E24)).padding(20.dp)) {
                 Text(activity.getString(R.string.video_choose_player), color = Color.White, fontSize = 22.sp)
                 Spacer(Modifier.height(12.dp))
-                SettingRow(activity.getString(R.string.video_remember_player), modifier = Modifier.focusRequester(focus),
-                    isSelected = rememberDefault, trailing = if (rememberDefault) "☑" else "☐") { rememberDefault = !rememberDefault }
-                Spacer(Modifier.height(8.dp))
-                LazyColumn(Modifier.heightIn(max = 360.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    items(current.players, key = { it.component.flattenToString() }) { player ->
+                if (choices.players.isNotEmpty()) {
+                    SettingRow(activity.getString(R.string.video_remember_player), modifier = Modifier.focusRequester(defaultFocus),
+                        isSelected = rememberDefault, trailing = if (rememberDefault) "☑" else "☐") { rememberDefault = !rememberDefault }
+                    Spacer(Modifier.height(8.dp))
+                }
+                if (choices.canInstallVlc || (installRequested && busy)) {
+                    val hint = when {
+                        downloading -> R.string.vlc_install_cancel_hint
+                        installing -> R.string.app_install_confirm
+                        permission -> R.string.vlc_install_permission_hint
+                        else -> R.string.vlc_install_source
+                    }
+                    SettingRow(tr(if (busy) R.string.vlc_install_name else R.string.vlc_install_title), tr(hint), Modifier.focusRequester(installFocus)) {
+                        installRequested = true
+                        when {
+                            downloading -> install.cancelDownload(pkg)
+                            installing -> Unit
+                            permission -> install.abandonPermission(pkg)
+                            else -> {
+                                install.clearReturnFocus(pkg)
+                                install.download(pkg)
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                } else if (choices.players.isEmpty()) {
+                    SettingRow(tr(R.string.cancel), modifier = Modifier.focusRequester(closeFocus)) {
+                        dismiss()
+                        current.onError()
+                    }
+                }
+                if (installRequested && !busy && install.message.isNotEmpty()) {
+                    Text(install.message, color = Color.White, fontSize = 14.sp, modifier = Modifier.padding(bottom = 8.dp))
+                }
+                LazyColumn(Modifier.heightIn(max = 360.dp), state = playerList, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    items(choices.players, key = { it.component.flattenToString() }) { player ->
                         val isDefault = prefs.getString("video.default_player", null) == player.component.flattenToString()
-                        SettingRow(player.label, value = if (isDefault) activity.getString(R.string.video_current_default) else "", trailing = "▶") {
-                            request = null
+                        val modifier = if (player == firstVlc) Modifier.focusRequester(installedPlayerFocus) else Modifier
+                        SettingRow(player.label, value = if (isDefault) activity.getString(R.string.video_current_default) else "", modifier = modifier, trailing = "▶") {
+                            dismiss()
                             launch(current, player, rememberDefault)
                         }
                     }
                 }
             }
         }
-        LaunchedEffect(current) { withFrameNanos { }; runCatching { focus.requestFocus() } }
+        LaunchedEffect(current, revision) {
+            activity.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                val refreshed = Choices(resolvePlayers(current.intent, current.fromStart), canInstallVlc(current.intent))
+                val observedRevision = install.revision
+                val returning = installRequested && lastRevision != observedRevision
+                if (!returning) lastRevision = observedRevision
+                val installRowRemoved = choices.canInstallVlc && !refreshed.canInstallVlc
+                val emptyStateChanged = choices.players.isEmpty() != refreshed.players.isEmpty()
+                choices = refreshed
+                if (initiallyFocused && !returning && !installRowRemoved && !emptyStateChanged) return@repeatOnLifecycle
+
+                val vlcIndex = if (returning || installRowRemoved)
+                    refreshed.players.indexOfFirst { it.component.packageName == pkg } else -1
+                val fallbackFocus = when {
+                    refreshed.canInstallVlc && (returning || refreshed.players.isEmpty()) -> installFocus
+                    refreshed.players.isNotEmpty() -> defaultFocus
+                    else -> closeFocus
+                }
+                withFrameNanos { }
+                if (vlcIndex >= 0) {
+                    playerList.scrollToItem(vlcIndex)
+                    withFrameNanos { }
+                }
+                initiallyFocused = (vlcIndex >= 0 && runCatching { installedPlayerFocus.requestFocus() }.getOrDefault(false)) ||
+                    runCatching { fallbackFocus.requestFocus() }.getOrDefault(false)
+                if (initiallyFocused && returning) {
+                    lastRevision = observedRevision
+                    install.clearReturnFocus(pkg)
+                }
+            }
+        }
     }
 
     private fun digest(value: String): String = MessageDigest.getInstance("SHA-256")

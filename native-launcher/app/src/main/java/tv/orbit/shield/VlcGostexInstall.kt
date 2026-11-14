@@ -12,6 +12,7 @@ import androidx.lifecycle.withResumed
 /** Uses the existing on-demand installer; opening/installing never selects a playback default. */
 @Composable internal fun VlcGostexInstallSetting(activity: MainActivity, modifier: Modifier = Modifier) {
     val pkg = OfficialEmulatorApk.VLC_PACKAGE
+    val installer = activity.emulatorInstall
     val owner = LocalLifecycleOwner.current
     var revision by remember { mutableIntStateOf(0) }
     val focus = remember { FocusRequester() }
@@ -20,17 +21,17 @@ import androidx.lifecycle.withResumed
         owner.lifecycle.addObserver(observer)
         onDispose { owner.lifecycle.removeObserver(observer) }
     }
-    val resultRevision = activity.emulatorInstallRevision
+    val resultRevision = installer.revision
     val status = remember(activity, revision, resultRevision) { OfficialEmulatorApk.installStatus(activity, pkg) }
-    val downloading = activity.emulatorInstallPackage == pkg
-    val installing = activity.pendingEmulatorPackage == pkg
-    val permission = activity.pendingEmulatorPermission == pkg
-    val returnFocus = activity.emulatorInstallReturnFocus == pkg
+    val downloading = installer.downloadingPackage == pkg
+    val installing = installer.installingPackage == pkg
+    val permission = installer.permissionPackage == pkg
+    val returnFocus = installer.returnFocusPackage == pkg
     LaunchedEffect(returnFocus, revision, resultRevision) {
         if (returnFocus) {
             withFrameNanos { }
             val focused = owner.lifecycle.withResumed { runCatching { focus.requestFocus() }.getOrDefault(false) }
-            if (focused && activity.emulatorInstallReturnFocus == pkg) activity.emulatorInstallReturnFocus = null
+            if (focused) installer.clearReturnFocus(pkg)
         }
     }
     val title = when {
@@ -50,9 +51,9 @@ import androidx.lifecycle.withResumed
     }
     SettingRow(tr(title), tr(hint), modifier.focusRequester(focus)) {
         when {
-            downloading -> activity.emulatorInstallJob?.cancel()
+            downloading -> installer.cancelDownload(pkg)
             installing -> { activity.notice = activity.getString(R.string.app_install_confirm) }
-            permission -> activity.finishEmulatorPermission(pkg)
+            permission -> installer.finishPermission(pkg)
             status == OfficialEmulatorApk.InstallStatus.UNTRUSTED -> { activity.notice = activity.getString(R.string.vlc_install_conflict) }
             status == OfficialEmulatorApk.InstallStatus.CURRENT -> {
                 val intent = activity.packageManager.getLeanbackLaunchIntentForPackage(pkg)
@@ -60,7 +61,7 @@ import androidx.lifecycle.withResumed
                 if (intent == null || runCatching { activity.startActivity(intent) }.isFailure)
                     activity.notice = activity.getString(R.string.vlc_install_failed)
             }
-            else -> activity.downloadOfficialEmulator(pkg)
+            else -> installer.download(pkg)
         }
     }
 }

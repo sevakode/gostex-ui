@@ -107,7 +107,7 @@ private data class PortablePreviewDecisionSession(
 private class LegacyRecoveryNotice(val messageId: Int) : Exception()
 
 class MainActivity : ComponentActivity() {
-    private val videoPlayer = VideoPlayerChooser(this)
+    private val videoPlayer = VideoPlayerChooser(this) { emulatorInstall }
     private val updatesLazy = lazy { LauncherUpdates(this) }
     internal val updates: LauncherUpdates by updatesLazy
     private val diagnosticExport = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
@@ -678,19 +678,7 @@ class MainActivity : ComponentActivity() {
                 if (PortableMaintenance.running) true else original.dispatchTouchEvent(event)
         }
     }
-    internal var pendingEmulatorApk: java.io.File? = null
-    internal var emulatorInstallJob: Job? = null
-    internal var emulatorInstallPackage by mutableStateOf<String?>(null)
-    internal var pendingEmulatorPackage by mutableStateOf<String?>(null)
-    internal var emulatorInstallReturnFocus by mutableStateOf<String?>(null)
-    internal var emulatorInstallRevision by mutableIntStateOf(0)
-    internal var pendingEmulatorPermission by mutableStateOf<String?>(null)
-    internal val emulatorPermissionLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        pendingEmulatorPermission?.let { finishEmulatorPermission(it) }
-    }
-    internal val emulatorApkLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        finishEmulatorInstall(it.resultCode)
-    }
+    internal val emulatorInstall = EmulatorInstall(this, updateNotice = { notice = it }, currentNotice = { notice })
     private var importPlatform = ""
     private var importSource = LibrarySource.FILES
     private var importHintRoot: LibraryImport.Root? = null
@@ -1154,12 +1142,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        pendingEmulatorPermission = savedInstanceState?.getString("pendingEmulatorPermission")?.takeIf(OfficialEmulatorApk::supports)
-        val stagedPackage = savedInstanceState?.getString("pendingEmulatorPackage")?.takeIf(OfficialEmulatorApk::supports)
-        if (stagedPackage != null) {
-            pendingEmulatorApk = OfficialEmulatorApk.restoreAttempt(this, savedInstanceState?.getString("pendingEmulatorApk"))
-            if (pendingEmulatorApk != null) pendingEmulatorPackage = stagedPackage
-        }
+        emulatorInstall.restore(savedInstanceState)
         if (PortableRestoreStartup.ready && !PortableMaintenance.running) {
             torrDownloadFolder = getSharedPreferences("orbit", MODE_PRIVATE).getString("downloads.folder", "").orEmpty()
         }
@@ -1225,9 +1208,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
-        outState.putString("pendingEmulatorPermission", pendingEmulatorPermission)
-        outState.putString("pendingEmulatorPackage", pendingEmulatorPackage)
-        outState.putString("pendingEmulatorApk", pendingEmulatorApk?.name)
+        emulatorInstall.save(outState)
         outState.putString("importPlatform", importPlatform)
         outState.putString("importSource", importSource.value)
         outState.putString("pendingCoverId", pendingCoverId)

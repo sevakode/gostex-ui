@@ -1,5 +1,6 @@
 package tv.orbit.shield
 
+import android.content.Context
 import android.content.pm.PackageManager
 import android.content.pm.PackageInfo
 import android.os.Build
@@ -23,24 +24,24 @@ internal object OfficialEmulatorApk {
     private val attempts = ConcurrentHashMap.newKeySet<String>()
     private val filename = Regex("emulator-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.apk")
     fun supports(pkg: String) = pkg in OfficialApkPolicy.sources
-    private fun directory(activity: MainActivity) = File(activity.cacheDir, "emulator-install")
-    private fun owned(activity: MainActivity, file: File): Boolean =
-        filename.matches(file.name) && file.canonicalFile.parentFile == directory(activity).canonicalFile && file.canonicalFile.name == file.name
+    private fun directory(context: Context) = File(context.cacheDir, "emulator-install")
+    private fun owned(context: Context, file: File): Boolean =
+        filename.matches(file.name) && file.canonicalFile.parentFile == directory(context).canonicalFile && file.canonicalFile.name == file.name
 
     /** Recover a staged installer handoff using a managed filename, never an arbitrary saved path. */
-    fun restoreAttempt(activity: MainActivity, name: String?): File? {
+    fun restoreAttempt(context: Context, name: String?): File? {
         if (name == null || !filename.matches(name)) return null
-        return runCatching { File(directory(activity), name).takeIf {
-            owned(activity, it) && it.isFile && it.length() in 1..OfficialApkPolicy.MAX_BYTES
+        return runCatching { File(directory(context), name).takeIf {
+            owned(context, it) && it.isFile && it.length() in 1..OfficialApkPolicy.MAX_BYTES
         }?.also { attempts += it.absolutePath } }.getOrNull()
     }
 
     /** Allocate before withContext(IO), so cancellation during result delivery cannot lose the file. */
-    fun createAttempt(activity: MainActivity): File {
-        val dir = directory(activity).apply { require(isDirectory || mkdirs()) }
+    fun createAttempt(context: Context): File {
+        val dir = directory(context).apply { require(isDirectory || mkdirs()) }
         val now = System.currentTimeMillis()
         dir.listFiles()?.take(64)?.forEach { old ->
-            if (owned(activity, old) && old.isFile && old.absolutePath !in attempts && old.lastModified() > 0 && now - old.lastModified() > STALE_MS) old.delete()
+            if (owned(context, old) && old.isFile && old.absolutePath !in attempts && old.lastModified() > 0 && now - old.lastModified() > STALE_MS) old.delete()
         }
         return File(dir, "emulator-${UUID.randomUUID()}.apk").also {
             require(it.createNewFile())
@@ -49,8 +50,8 @@ internal object OfficialEmulatorApk {
     }
 
     /** Remove only this caller's staging file; an older Activity must never delete a new attempt. */
-    fun discard(activity: MainActivity, file: File?) {
-        if (file != null && owned(activity, file)) {
+    fun discard(context: Context, file: File?) {
+        if (file != null && owned(context, file)) {
             file.delete()
             attempts -= file.absolutePath
         }
@@ -60,10 +61,10 @@ internal object OfficialEmulatorApk {
     private fun signers(info: PackageInfo): List<String> = info.signingInfo?.apkContentsSigners?.map { digest(it.toByteArray()) }.orEmpty()
 
     @Suppress("DEPRECATION")
-    fun installStatus(activity: MainActivity, pkg: String): InstallStatus {
+    fun installStatus(context: Context, pkg: String): InstallStatus {
         val source = OfficialApkPolicy.sources[pkg] ?: return InstallStatus.UNTRUSTED
         return try {
-            val info = activity.packageManager.getPackageInfo(pkg, if (source.pin != null) PackageManager.GET_SIGNING_CERTIFICATES else 0)
+            val info = context.packageManager.getPackageInfo(pkg, if (source.pin != null) PackageManager.GET_SIGNING_CERTIFICATES else 0)
             InstallStatus.valueOf(OfficialApkPolicy.installedState(pkg, info.longVersionCode, if (source.pin != null) signers(info) else emptyList()).name)
         } catch (_: PackageManager.NameNotFoundException) { InstallStatus.MISSING }
         catch (_: Exception) { InstallStatus.UNTRUSTED }
@@ -91,12 +92,12 @@ internal object OfficialEmulatorApk {
         error("Too many redirects")
     }
     @Suppress("DEPRECATION")
-    suspend fun download(activity: MainActivity, pkg: String, target: File = createAttempt(activity)): File {
-        require(owned(activity, target) && target.absolutePath in attempts && target.isFile && target.length() == 0L)
+    suspend fun download(context: Context, pkg: String, target: File = createAttempt(context)): File {
+        require(owned(context, target) && target.absolutePath in attempts && target.isFile && target.length() == 0L)
         try {
             coroutineContext.ensureActive()
             val source = OfficialApkPolicy.sources[pkg] ?: error("Unknown source")
-            if (source.pin != null) require(installStatus(activity, pkg) != InstallStatus.UNTRUSTED)
+            if (source.pin != null) require(installStatus(context, pkg) != InstallStatus.UNTRUSTED)
             val api = open(OfficialApkPolicy.releaseUrl(pkg))
             val json = try {
                 api.inputStream.use { input ->
@@ -124,11 +125,11 @@ internal object OfficialEmulatorApk {
                 } }
                 coroutineContext.ensureActive()
                 require(total == asset.bytes && hash.digest().joinToString("") { "%02x".format(it) } == asset.sha256)
-                val info = activity.packageManager.getPackageArchiveInfo(target.path, if (source.pin != null) PackageManager.GET_SIGNING_CERTIFICATES else 0) ?: error("Invalid APK")
+                val info = context.packageManager.getPackageArchiveInfo(target.path, if (source.pin != null) PackageManager.GET_SIGNING_CERTIFICATES else 0) ?: error("Invalid APK")
                 require(info.packageName == pkg)
                 source.pin?.let { pin ->
                     require(info.longVersionCode == pin.versionCode && OfficialApkPolicy.trustedSigners(pin, signers(info)))
-                    require(installStatus(activity, pkg) != InstallStatus.UNTRUSTED)
+                    require(installStatus(context, pkg) != InstallStatus.UNTRUSTED)
                 }
                 if ((info.applicationInfo?.minSdkVersion ?: Int.MAX_VALUE) > Build.VERSION.SDK_INT) throw EmulatorApkIncompatible()
                 val abis = ZipFile(target).use { zip ->
@@ -139,6 +140,6 @@ internal object OfficialEmulatorApk {
                 coroutineContext.ensureActive()
                 return target
             } finally { conn.disconnect() }
-        } catch (error: Throwable) { runCatching { discard(activity, target) }; throw error }
+        } catch (error: Throwable) { runCatching { discard(context, target) }; throw error }
     }
 }

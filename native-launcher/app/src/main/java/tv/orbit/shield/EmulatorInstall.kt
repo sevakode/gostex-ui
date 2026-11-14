@@ -1,10 +1,18 @@
 package tv.orbit.shield
 
+import android.app.Activity
 import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Bundle
 import android.provider.Settings
+import androidx.activity.ComponentActivity
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.core.content.FileProvider
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -51,113 +59,201 @@ internal fun MainActivity.offerMissingEmulator(spec: PlatformSpec): Boolean {
     return true
 }
 
-internal fun MainActivity.downloadOfficialEmulator(pkg: String) {
-    if (!OfficialEmulatorApk.supports(pkg) || PortableMaintenance.running) return
-    val isPlayer = pkg == "com.brouken.player"
-    val isVlc = pkg == OfficialEmulatorApk.VLC_PACKAGE
-    fun failed() = getString(when {
-        isVlc -> R.string.vlc_install_failed
-        isPlayer -> R.string.just_player_failed
-        else -> R.string.emulator_install_failed
-    })
-    if (emulatorInstallJob != null || pendingEmulatorPermission != null || pendingEmulatorPackage != null) {
-        notice = getString(if (pendingEmulatorPackage != null) R.string.app_install_confirm else R.string.app_install_busy)
-        return
+internal fun MainActivity.downloadOfficialEmulator(pkg: String) = emulatorInstall.download(pkg)
+
+/** Owns the install request and its Android results for the activity that opened it. */
+internal class EmulatorInstall(
+    private val activity: ComponentActivity,
+    private val updateNotice: (String) -> Unit = {},
+    private val currentNotice: (() -> String)? = null,
+) {
+    private var stagedApk: File? = null
+    private var downloadJob: Job? = null
+    private var pendingPermissionPackage by mutableStateOf<String?>(null)
+    private var permissionAbandoned by mutableStateOf(false)
+    var downloadingPackage by mutableStateOf<String?>(null)
+        private set
+    var installingPackage by mutableStateOf<String?>(null)
+        private set
+    val permissionPackage: String? get() = pendingPermissionPackage.takeUnless { permissionAbandoned }
+    var returnFocusPackage by mutableStateOf<String?>(null)
+        private set
+    var revision by mutableIntStateOf(0)
+        private set
+    var message by mutableStateOf("")
+        private set
+
+    private val permissionLauncher = activity.registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        val pkg = pendingPermissionPackage ?: return@registerForActivityResult
+        if (permissionAbandoned) {
+            pendingPermissionPackage = null
+            permissionAbandoned = false
+            revision++
+            replaceMessage(activity.getString(R.string.app_install_confirm), "")
+        } else finishPermission(pkg)
     }
-    if (isVlc) when (OfficialEmulatorApk.installStatus(this, pkg)) {
-        OfficialEmulatorApk.InstallStatus.CURRENT -> { notice = getString(R.string.vlc_install_installed); return }
-        OfficialEmulatorApk.InstallStatus.UNTRUSTED -> { notice = getString(R.string.vlc_install_conflict); return }
-        else -> Unit
+    private val apkLauncher = activity.registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        finishInstall(it.resultCode)
     }
-    emulatorInstallReturnFocus = null
-    if (!packageManager.canRequestPackageInstalls()) {
-        notice = getString(R.string.emulator_install_permission)
-        pendingEmulatorPermission = pkg
-        runCatching { emulatorPermissionLauncher.launch(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName"))) }
-            .onFailure { pendingEmulatorPermission = null; emulatorInstallReturnFocus = pkg; notice = failed() }
-        return
+
+    fun restore(state: Bundle?) {
+        if (state == null) return
+        pendingPermissionPackage = state.getString("pendingEmulatorPermission")?.takeIf(OfficialEmulatorApk::supports)
+        permissionAbandoned = pendingPermissionPackage != null && state.getBoolean("pendingEmulatorPermissionAbandoned")
+        val pkg = state.getString("pendingEmulatorPackage")?.takeIf(OfficialEmulatorApk::supports) ?: return
+        stagedApk = OfficialEmulatorApk.restoreAttempt(activity, state.getString("pendingEmulatorApk"))
+        if (stagedApk != null) installingPackage = pkg
     }
-    val progress = getString(when {
-        isVlc -> R.string.vlc_install_downloading
-        isPlayer -> R.string.just_player_downloading
-        else -> R.string.emulator_install_downloading
-    })
-    notice = progress
-    var job: Job? = null
-    val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) job?.cancel() }
-    job = lifecycleScope.launch(start = CoroutineStart.LAZY) {
-        lifecycle.addObserver(observer)
-        var attempt: File? = null
-        var handedOff = false
-        try {
-            val file = withContext(Dispatchers.IO) {
-                val target = OfficialEmulatorApk.createAttempt(this@downloadOfficialEmulator)
-                attempt = target
-                OfficialEmulatorApk.download(this@downloadOfficialEmulator, pkg, target)
-            }
-            coroutineContext.ensureActive()
-            val uri = FileProvider.getUriForFile(this@downloadOfficialEmulator, "$packageName.torrserve-installer", file)
-            // A download may finish under another window. Never open the installer
-            // while paused, and never delete its file merely because Home resumes us.
-            lifecycle.withResumed {
-                check(!isFinishing && !isDestroyed && !PortableMaintenance.running)
-                pendingEmulatorApk = file
-                pendingEmulatorPackage = pkg
-                lifecycle.removeObserver(observer)
-                @Suppress("DEPRECATION")
-                val install = Intent(Intent.ACTION_INSTALL_PACKAGE).setDataAndType(uri, "application/vnd.android.package-archive")
-                    .putExtra(Intent.EXTRA_RETURN_RESULT, true).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                emulatorApkLauncher.launch(install)
-                handedOff = true
-                if (notice == progress) notice = getString(R.string.app_install_confirm)
-            }
-        } catch (e: CancellationException) {
-            if (notice == progress) notice = ""
-            throw e
-        } catch (_: EmulatorApkIncompatible) {
-            notice = getString(when {
-                isVlc -> R.string.vlc_install_incompatible
-                isPlayer -> R.string.just_player_incompatible
-                else -> R.string.emulator_install_incompatible
-            })
-        } catch (_: Exception) {
-            notice = failed()
-        } finally {
-            lifecycle.removeObserver(observer)
-            if (!handedOff) {
-                OfficialEmulatorApk.discard(this@downloadOfficialEmulator, attempt)
-                if (pendingEmulatorApk == attempt) { pendingEmulatorApk = null; pendingEmulatorPackage = null }
-            }
-            emulatorInstallJob = null
-            emulatorInstallPackage = null
+
+    fun save(state: Bundle) {
+        state.putString("pendingEmulatorPermission", pendingPermissionPackage)
+        state.putBoolean("pendingEmulatorPermissionAbandoned", permissionAbandoned)
+        state.putString("pendingEmulatorPackage", installingPackage)
+        state.putString("pendingEmulatorApk", stagedApk?.name)
+    }
+
+    fun clearReturnFocus(pkg: String) {
+        if (returnFocusPackage == pkg) returnFocusPackage = null
+    }
+
+    fun cancelDownload(pkg: String) {
+        if (downloadingPackage == pkg) downloadJob?.cancel()
+    }
+
+    /** Retain the result slot until Android returns so a late grant cannot resume or replace an attempt. */
+    fun abandonPermission(pkg: String) {
+        if (permissionPackage != pkg) return
+        permissionAbandoned = true
+        replaceMessage(activity.getString(R.string.emulator_install_permission), "")
+    }
+
+    private fun showMessage(value: String) {
+        message = value
+        updateNotice(value)
+    }
+
+    private fun replaceMessage(previous: String, value: String) {
+        val visibleNotice = currentNotice?.invoke() ?: message
+        if (message == previous) message = value
+        if (visibleNotice == previous) updateNotice(value)
+    }
+
+    fun download(pkg: String) {
+        if (!OfficialEmulatorApk.supports(pkg) || PortableMaintenance.running) return
+        val isPlayer = pkg == "com.brouken.player"
+        val isVlc = pkg == OfficialEmulatorApk.VLC_PACKAGE
+        fun failed() = activity.getString(when {
+            isVlc -> R.string.vlc_install_failed
+            isPlayer -> R.string.just_player_failed
+            else -> R.string.emulator_install_failed
+        })
+        if (downloadJob != null || pendingPermissionPackage != null || installingPackage != null) {
+            val waitingForAndroid = installingPackage != null || permissionAbandoned
+            showMessage(activity.getString(if (waitingForAndroid) R.string.app_install_confirm else R.string.app_install_busy))
+            return
         }
+        if (isVlc) when (OfficialEmulatorApk.installStatus(activity, pkg)) {
+            OfficialEmulatorApk.InstallStatus.CURRENT -> { showMessage(activity.getString(R.string.vlc_install_installed)); return }
+            OfficialEmulatorApk.InstallStatus.UNTRUSTED -> { showMessage(activity.getString(R.string.vlc_install_conflict)); return }
+            else -> Unit
+        }
+        returnFocusPackage = null
+        if (!activity.packageManager.canRequestPackageInstalls()) {
+            showMessage(activity.getString(R.string.emulator_install_permission))
+            pendingPermissionPackage = pkg
+            val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${activity.packageName}"))
+            runCatching { permissionLauncher.launch(intent) }.onFailure {
+                pendingPermissionPackage = null
+                returnFocusPackage = pkg
+                showMessage(failed())
+            }
+            return
+        }
+        val progress = activity.getString(when {
+            isVlc -> R.string.vlc_install_downloading
+            isPlayer -> R.string.just_player_downloading
+            else -> R.string.emulator_install_downloading
+        })
+        showMessage(progress)
+        val lifecycle = activity.lifecycle
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) cancelDownload(pkg) }
+        val job = activity.lifecycleScope.launch(start = CoroutineStart.LAZY) {
+            lifecycle.addObserver(observer)
+            var attempt: File? = null
+            var handedOff = false
+            try {
+                val file = withContext(Dispatchers.IO) {
+                    val target = OfficialEmulatorApk.createAttempt(activity)
+                    attempt = target
+                    OfficialEmulatorApk.download(activity, pkg, target)
+                }
+                coroutineContext.ensureActive()
+                val uri = FileProvider.getUriForFile(activity, "${activity.packageName}.torrserve-installer", file)
+                // A download may finish under another window. Never open the installer
+                // while paused, and never delete its file merely because Home resumes us.
+                lifecycle.withResumed {
+                    check(!activity.isFinishing && !activity.isDestroyed && !PortableMaintenance.running)
+                    stagedApk = file
+                    installingPackage = pkg
+                    lifecycle.removeObserver(observer)
+                    @Suppress("DEPRECATION")
+                    val install = Intent(Intent.ACTION_INSTALL_PACKAGE).setDataAndType(uri, "application/vnd.android.package-archive")
+                        .putExtra(Intent.EXTRA_RETURN_RESULT, true).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    apkLauncher.launch(install)
+                    handedOff = true
+                    replaceMessage(progress, activity.getString(R.string.app_install_confirm))
+                }
+            } catch (e: CancellationException) {
+                replaceMessage(progress, "")
+                throw e
+            } catch (_: EmulatorApkIncompatible) {
+                showMessage(activity.getString(when {
+                    isVlc -> R.string.vlc_install_incompatible
+                    isPlayer -> R.string.just_player_incompatible
+                    else -> R.string.emulator_install_incompatible
+                }))
+            } catch (_: Exception) {
+                showMessage(failed())
+            } finally {
+                lifecycle.removeObserver(observer)
+                if (!handedOff) {
+                    OfficialEmulatorApk.discard(activity, attempt)
+                    if (stagedApk == attempt) {
+                        stagedApk = null
+                        installingPackage = null
+                    }
+                }
+                downloadJob = null
+                downloadingPackage = null
+            }
+        }
+        downloadingPackage = pkg
+        downloadJob = job
+        job.start()
     }
-    emulatorInstallPackage = pkg
-    emulatorInstallJob = job
-    job.start()
-}
 
-/** The system installer owns the staged file until it returns, including a Home detour. */
-internal fun MainActivity.finishEmulatorInstall(resultCode: Int) {
-    val pkg = pendingEmulatorPackage
-    OfficialEmulatorApk.discard(this, pendingEmulatorApk)
-    pendingEmulatorApk = null
-    pendingEmulatorPackage = null
-    emulatorInstallRevision++
-    if (pkg != null) emulatorInstallReturnFocus = pkg
-    if (pkg == OfficialEmulatorApk.VLC_PACKAGE && OfficialEmulatorApk.installStatus(this, pkg) == OfficialEmulatorApk.InstallStatus.CURRENT) {
-        notice = getString(R.string.vlc_install_installed)
-    } else if (resultCode != android.app.Activity.RESULT_CANCELED && resultCode != android.app.Activity.RESULT_OK) {
-        notice = getString(if (pkg == OfficialEmulatorApk.VLC_PACKAGE) R.string.vlc_install_failed else R.string.emulator_install_failed)
-    } else if (notice == getString(R.string.app_install_confirm)) notice = ""
-}
+    /** The system installer owns the staged file until it returns, including a Home detour. */
+    private fun finishInstall(resultCode: Int) {
+        val pkg = installingPackage
+        OfficialEmulatorApk.discard(activity, stagedApk)
+        stagedApk = null
+        installingPackage = null
+        revision++
+        if (pkg != null) returnFocusPackage = pkg
+        if (pkg == OfficialEmulatorApk.VLC_PACKAGE && OfficialEmulatorApk.installStatus(activity, pkg) == OfficialEmulatorApk.InstallStatus.CURRENT) {
+            showMessage(activity.getString(R.string.vlc_install_installed))
+        } else if (resultCode != Activity.RESULT_CANCELED && resultCode != Activity.RESULT_OK) {
+            showMessage(activity.getString(if (pkg == OfficialEmulatorApk.VLC_PACKAGE) R.string.vlc_install_failed else R.string.emulator_install_failed))
+        } else replaceMessage(activity.getString(R.string.app_install_confirm), "")
+    }
 
-/** Also lets a Home detour cancel a still-open permission request, without a second launch. */
-internal fun MainActivity.finishEmulatorPermission(pkg: String) {
-    if (pendingEmulatorPermission != pkg) return
-    pendingEmulatorPermission = null
-    emulatorInstallRevision++
-    emulatorInstallReturnFocus = pkg
-    if (packageManager.canRequestPackageInstalls() && !PortableMaintenance.running) downloadOfficialEmulator(pkg)
-    else notice = ""
+    /** Also lets a Home detour cancel a still-open permission request, without a second launch. */
+    fun finishPermission(pkg: String) {
+        if (permissionPackage != pkg) return
+        pendingPermissionPackage = null
+        revision++
+        returnFocusPackage = pkg
+        if (activity.packageManager.canRequestPackageInstalls() && !PortableMaintenance.running) download(pkg)
+        else showMessage("")
+    }
 }

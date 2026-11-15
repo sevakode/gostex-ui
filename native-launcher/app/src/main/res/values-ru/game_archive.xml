@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="game_archive_title">Распаковать ZIP</string>
+    <string name="game_archive_invalid">Не удалось прочитать ZIP. Возможно, он недокачан или использует неподдерживаемый формат.</string>
+    <string name="game_archive_cancelled">Распаковка отменена.</string>
+    <string name="game_archive_failed">Распаковка остановлена. Проверьте свободное место и доступ к папке, затем повторите.</string>
+    <string name="game_archive_inspecting">Читаем содержимое архива…</string>
+    <string name="game_archive_working">Распаковываем файлы… Оставьте GOSTEX открытым до завершения.</string>
+    <string name="game_archive_ready">Файлы готовы в новой папке. Подтвердите эту папку, чтобы добавить её в библиотеку.</string>
+    <string name="game_archive_confirm">Файлов: %1$d · после распаковки: %2$s. Выберите место для новой папки. Исходный архив сохранится.</string>
+    <string name="game_archive_destination">Выбрать папку</string>
+</resources>

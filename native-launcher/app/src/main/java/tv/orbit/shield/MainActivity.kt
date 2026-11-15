@@ -115,6 +115,9 @@ class MainActivity : ComponentActivity() {
     private val updatesLazy = lazy { LauncherUpdates(this) }
     internal val updates: LauncherUpdates by updatesLazy
     internal val settingsCopy = SettingsCopyController(this, ::launchDocumentPicker)
+    internal val gameArchive = GameArchiveController(this, ::launchDocumentPicker) { platform, folder ->
+        chooseLibraryFolder(platform, LibrarySource.FILES, folder)
+    }
     private val diagnosticExport = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
         if (PortableMaintenance.running) return@registerForActivityResult
         if (uri != null) updates.exportDiagnostics(uri)
@@ -158,6 +161,15 @@ class MainActivity : ComponentActivity() {
     private var torrGameImporting = false
     internal fun addDownloadedGame(job: TorrDownloadJob) {
         if (PortableMaintenance.running || torrGameImporting || job.state != "done") return
+        if (job.finalName.endsWith(".zip", ignoreCase = true)) {
+            val platforms = PlatformRegistry.all
+            android.app.AlertDialog.Builder(this).setTitle(R.string.choose_system)
+                .setItems(platforms.map { getString(it.titleRes) }.toTypedArray()) { _, index ->
+                    if (TorrDownloadStore.jobs.value.any { it.id == job.id && it.state == "done" && it.document == job.document })
+                        gameArchive.inspect(platforms[index].id, Uri.parse(job.document))
+                }.setNegativeButton(R.string.cancel, null).show()
+            return
+        }
         val systems = PlatformRegistry.all.filter { it.accepts(job.finalName) }
         if (systems.isEmpty()) { torrDownloadMessage = getString(R.string.torr_game_unsupported); return }
         val emulator = LibraryPreferences.read(this).ndsEmulator
@@ -817,6 +829,7 @@ class MainActivity : ComponentActivity() {
         lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
     override fun onPause() { AndroidDiagnostics.event("launcher.pause"); super.onPause() }
     override fun onStop() {
+        gameArchive.stop()
         torrentPlaybackDialog?.dismiss()
         AgentStateHooks.detach(this)
         if (updatesLazy.isInitialized()) updates.onStop()
@@ -1057,9 +1070,10 @@ class MainActivity : ComponentActivity() {
         if (PlatformRegistry.find(platform) == null) { notice = getString(R.string.platform_unknown); return }
         if (platform == "Nintendo 3DS") {
             android.app.AlertDialog.Builder(this).setTitle(R.string.three_ds_add_title)
-                .setItems(arrayOf(getString(R.string.import_one_game), getString(R.string.three_ds_rom_folder), getString(R.string.three_ds_installed))) { _, index ->
+                .setItems(arrayOf(getString(R.string.import_one_game), getString(R.string.three_ds_rom_folder), getString(R.string.three_ds_installed), getString(R.string.game_archive_title))) { _, index ->
                     if (index == 0) chooseLibraryFile(platform)
                     else if (index == 1) chooseLibraryFolder(platform, LibrarySource.FILES)
+                    else if (index == 3) gameArchive.chooseSource(platform)
                     else android.app.AlertDialog.Builder(this).setTitle(R.string.three_ds_installed)
                         .setMessage(R.string.three_ds_data_folder_hint)
                         .setPositiveButton(R.string.three_ds_choose_folder) { _, _ -> chooseLibraryFolder(platform, LibrarySource.AZAHAR_INSTALLED) }
@@ -1081,8 +1095,10 @@ class MainActivity : ComponentActivity() {
             return
         }
         android.app.AlertDialog.Builder(this).setTitle(R.string.import_source_title)
-            .setItems(arrayOf(getString(R.string.import_one_game), getString(R.string.import_game_folder))) { _, index ->
-                if (index == 0) chooseLibraryFile(platform) else chooseLibraryFolder(platform, LibrarySource.FILES)
+            .setItems(arrayOf(getString(R.string.import_one_game), getString(R.string.import_game_folder), getString(R.string.game_archive_title))) { _, index ->
+                if (index == 0) chooseLibraryFile(platform)
+                else if (index == 1) chooseLibraryFolder(platform, LibrarySource.FILES)
+                else gameArchive.chooseSource(platform)
             }.setNegativeButton(R.string.cancel, null).show()
     }
     private fun chooseLibraryFile(platform: String) {
@@ -1984,6 +2000,7 @@ class MainActivity : ComponentActivity() {
         FavoriteOrderDialog(itemKey, apps, games, movies, onDismiss = { favoriteOrderItem = null; tileRestore++ })
     }
     if (settingsOpen) SettingsDrawer(activity, apps, games, mediaPlayback, settingsInitialSection, onClose = { settingsOpen = false })
+    GameArchiveHost(activity)
     if (mediaOpen) MediaPlayerPopover(activity, mediaPlayback, onDismiss = { mediaOpen = false })
     activity.coverEditorId?.let { id -> games.firstOrNull { it.id == id }?.let { game ->
         GameCoverEditor(activity, game, onClose = { activity.coverEditorId = null })

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="game_archive_title">Extraer un archivo ZIP</string>
+    <string name="game_archive_invalid">No se pudo leer este ZIP. Puede estar incompleto o usar un formato no compatible.</string>
+    <string name="game_archive_cancelled">Extracción cancelada.</string>
+    <string name="game_archive_failed">La extracción se detuvo. Comprueba el espacio disponible y el acceso a la carpeta e inténtalo de nuevo.</string>
+    <string name="game_archive_inspecting">Leyendo el contenido del archivo…</string>
+    <string name="game_archive_working">Extrayendo archivos… Mantén GOSTEX abierto hasta que termine.</string>
+    <string name="game_archive_ready">Los archivos están listos en una carpeta nueva. Confirma esa carpeta para añadirla a tu biblioteca.</string>
+    <string name="game_archive_confirm">%1$d archivos · %2$s extraídos. Elige dónde crear su nueva carpeta. Se conserva el archivo original.</string>
+    <string name="game_archive_destination">Elegir destino</string>
+</resources>

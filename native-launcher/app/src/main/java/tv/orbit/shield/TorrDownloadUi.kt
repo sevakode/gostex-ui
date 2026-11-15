@@ -782,7 +782,8 @@ import kotlinx.coroutines.withContext
             }
         }
         if (job.state == "done" && PlatformRegistry.all.any { it.accepts(job.finalName) })
-            SettingRow(tr(R.string.torr_game_add), onClick = { activity.addDownloadedGame(job) })
+            SettingRow(tr(if (job.finalName.endsWith(".zip", ignoreCase = true)) R.string.game_archive_title else R.string.torr_game_add),
+                onClick = { activity.addDownloadedGame(job) })
         if (job.state == "paused" || job.state == "error") SettingRow(
             tr(R.string.torr_download_remove), tr(R.string.torr_download_keep_partial), onClick = {
                 android.app.AlertDialog.Builder(activity)

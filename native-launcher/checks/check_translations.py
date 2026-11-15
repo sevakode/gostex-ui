@@ -28,5 +28,6 @@ for folder in ('values-en', 'values-es', 'values-ru'):
             quantities = {item.attrib['quantity'] for item in target}
             assert 'other' in quantities
             if folder == 'values-ru': assert {'one','few','many','other'} <= quantities
-            for item in target: assert '%d' in item.text
+            for item in target:
+                assert re.search(r'%(?:[1-9]\d*\$)?d', item.text or ''), (folder, key, item.attrib['quantity'])
     print(folder, len(translated), 'entries: coverage and placeholders OK')

@@ -148,6 +148,7 @@ internal object LibraryImport {
                 check(!name.isNullOrEmpty() && name !in setOf(".", "..") && '/' !in name && '\\' !in name) { context.getString(R.string.folder_unavailable) }
                 val path = if (parent.isEmpty()) name else "$parent/$name"
                 if (mime == Docs.Document.MIME_TYPE_DIR) {
+                    if (name.startsWith(".gostex-extract-") && name.endsWith(".partial")) continue
                     if (path == "sdmc") hasSdmc = true
                     if (!installed || ThreeDsInstalledLayout.directory(path)) walk(child, path, depth + 1)
                     continue

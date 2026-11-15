@@ -14,6 +14,8 @@
     <string name="browser_download_entry">Navegar por la web</string>
     <string name="browser_import_torrent">Añadir torrent a TorrServer</string>
     <string name="browser_settings_search_engine">Buscador del navegador</string>
+    <string name="browser_settings_quick_download">Añadir rápido desde el navegador</string>
+    <string name="browser_settings_quick_download_hint">Los enlaces HTTPS sin sesión del sitio abren el formulario de descarga para comprobar el enlace y elegir el nombre del archivo y la carpeta.</string>
     <string name="browser_error_webview">Android System WebView no está disponible.</string>
     <string name="browser_error_page">No se pudo abrir esta página.</string>
     <string name="browser_error_address">Introduce una dirección web o un término de búsqueda.</string>

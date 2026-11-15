@@ -216,9 +216,7 @@ internal class TvBrowserActivity : ComponentActivity() {
                 if (link == null) {
                     showStatus(R.string.browser_error_download)
                 } else {
-                    val session = HttpDownloadSession.create(currentUrl.orEmpty(), link.substringBefore('#'),
-                        size, mime.orEmpty()) { target -> CookieManager.getInstance().getCookie(target) }
-                    confirmDownload(link, session)
+                    handOffDownload(link, size, mime.orEmpty())
                 }
             }
         }
@@ -321,6 +319,28 @@ internal class TvBrowserActivity : ComponentActivity() {
         }.show()
     }
 
+    private fun handOffDownload(link: String, size: Long, mime: String) {
+        if (!active || isFinishing || prompt != null) return
+        val attachment = link.substringBefore('#')
+        val cookieLookup: (String) -> String? = { CookieManager.getInstance().getCookie(it) }
+        // Session creation checks whether a link could use cookies, without looking them up.
+        // Check for their presence here so public same-origin attachments can still go directly
+        // to the queue form. If WebView cannot report cookies, keep the review prompt.
+        if (!intent.getBooleanExtra(RESELECT_DOWNLOAD, false) &&
+            link.startsWith("https://", ignoreCase = true) && TvBrowserOptions.quickDownload(this) &&
+            runCatching { cookieLookup(attachment).isNullOrBlank() }.getOrDefault(false)) {
+            returnDownloadLink(link)
+        } else {
+            val session = HttpDownloadSession.create(currentUrl.orEmpty(), attachment, size, mime, cookieLookup)
+            confirmDownload(link, session)
+        }
+    }
+
+    private fun returnDownloadLink(link: String) {
+        setResult(RESULT_OK, Intent().putExtra(RESULT_LINK, link))
+        finish()
+    }
+
     private fun confirmDownload(link: String, session: HttpDownloadSession? = null) {
         if (!active || isFinishing || prompt != null) return
         val reselect = intent.getBooleanExtra(RESELECT_DOWNLOAD, false)
@@ -336,8 +356,7 @@ internal class TvBrowserActivity : ComponentActivity() {
             .setNegativeButton(R.string.cancel, null)
             .apply {
                 if (!reselect) setPositiveButton(R.string.browser_downloads) { _, _ ->
-                    setResult(RESULT_OK, Intent().putExtra(RESULT_LINK, link))
-                    finish()
+                    returnDownloadLink(link)
                 }
                 if (session != null) {
                     val acceptSession = android.content.DialogInterface.OnClickListener { _, _ ->

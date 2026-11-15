@@ -14,6 +14,8 @@
     <string name="browser_download_entry">Открыть браузер</string>
     <string name="browser_import_torrent">Добавить торрент в TorrServer</string>
     <string name="browser_settings_search_engine">Поисковая система браузера</string>
+    <string name="browser_settings_quick_download">Быстрое добавление из браузера</string>
+    <string name="browser_settings_quick_download_hint">Ссылки HTTPS без сессии сайта сразу открывают форму, где можно проверить ссылку и выбрать имя файла и папку.</string>
     <string name="browser_error_webview">Android System WebView недоступен.</string>
     <string name="browser_error_page">Не удалось открыть страницу.</string>
     <string name="browser_error_address">Введите адрес сайта или поисковый запрос.</string>

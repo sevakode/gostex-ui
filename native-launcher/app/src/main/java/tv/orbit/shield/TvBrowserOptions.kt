@@ -14,6 +14,7 @@ internal enum class BrowserSearchProvider(val id: String, val displayName: Strin
 }
 
 internal object TvBrowserOptions {
+    const val QUICK_DOWNLOAD = "browser.quickDownload"
     private const val SEARCH_PROVIDER = "browser.searchProvider"
     private const val BOOKMARKS = "browser.bookmarks"
     private const val MAX_BOOKMARKS = 32
@@ -29,6 +30,14 @@ internal object TvBrowserOptions {
 
     fun setSearchProvider(context: Context, provider: BrowserSearchProvider) {
         prefs(context).edit().putString(SEARCH_PROVIDER, provider.id).apply()
+    }
+
+    fun quickDownload(context: Context): Boolean = runCatching {
+        prefs(context).getBoolean(QUICK_DOWNLOAD, false)
+    }.getOrDefault(false)
+
+    fun setQuickDownload(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(QUICK_DOWNLOAD, enabled).apply()
     }
 
     fun webUrl(input: String): String? {

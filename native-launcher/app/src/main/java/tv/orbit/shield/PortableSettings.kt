@@ -18,7 +18,8 @@ internal object PortableSettingsCodec {
             "grafana.rotationMode", "apps.catalogOrder").forEach { put(it, Kind.STRING) }
         listOf("appearance.favoriteBadgeVisible", "clock.visible", "clock.showDate", "art.interludes",
             "apps.tabVisible", "library.tabVisible", "library.groupVersions", "status.networkVisible", "status.mediaPlayerVisible",
-            "status.mediaPlayerShowPaused", "covers.onlineLandscape", "covers.automatic").forEach { put(it, Kind.BOOLEAN) }
+            "status.mediaPlayerShowPaused", "covers.onlineLandscape", "covers.automatic",
+            "browser.quickDownload").forEach { put(it, Kind.BOOLEAN) }
         listOf("art.holdSeconds", "grafana.refreshSeconds", "grafana.rotationSeconds").forEach { put(it, Kind.INT) }
         listOf("home.shelves.visible", "video.visible", "apps.catalogHidden").forEach { put(it, Kind.STRING_SET) }
     }

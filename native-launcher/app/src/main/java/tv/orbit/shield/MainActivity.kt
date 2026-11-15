@@ -2340,7 +2340,7 @@ private fun settingsTitle(section: String): Int = when {
         "libraryGroup" -> (if (activity.legacyRecoveryPending) listOf("legacyRecovery") else emptyList()) +
             listOf("addGames", "rescanGames", "folders", "portableCopy", "covers", "ndsEmulator", "androidGames", "groupVersions", "libraryTab", "appsTab")
         "localeGroup" -> listOf("language", "clock")
-        "systemGroup" -> listOf("network", "browserSearch", "defaultHome", "shield", "services", "settingsCopy", "remote")
+        "systemGroup" -> listOf("network", "browserSearch", "browserQuickDownload", "defaultHome", "shield", "services", "settingsCopy", "remote")
         "services" -> listOf("appCatalog", "vlcGostex", "torrServer", "torrServeInstall", "revancedManager")
         "portableCopy" -> listOf("copyAction", "portablePreview")
         "settingsCopy" -> listOf("export", "import")
@@ -2427,6 +2427,24 @@ private fun settingsTitle(section: String): Int = when {
                         .setNegativeButton(R.string.cancel, null)
                         .show()
                 })
+                var quickDownload by remember(activity) { mutableStateOf(TvBrowserOptions.quickDownload(activity)) }
+                DisposableEffect(activity, prefs) {
+                    val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+                        if (key == TvBrowserOptions.QUICK_DOWNLOAD || key == null) {
+                            quickDownload = TvBrowserOptions.quickDownload(activity)
+                        }
+                    }
+                    prefs.registerOnSharedPreferenceChangeListener(listener)
+                    quickDownload = TvBrowserOptions.quickDownload(activity)
+                    onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+                }
+                SettingRow(
+                    tr(R.string.browser_settings_quick_download),
+                    tr(R.string.browser_settings_quick_download_hint),
+                    rowFocus("browserQuickDownload"), isSelected = quickDownload,
+                    trailing = if (quickDownload) "✓" else "—",
+                    onClick = { TvBrowserOptions.setQuickDownload(activity, !TvBrowserOptions.quickDownload(activity)) }
+                )
                 DefaultHomeSetting(activity, rowFocus("defaultHome"))
                 SettingRow(tr(R.string.settings_device_title), modifier = rowFocus("shield"), onClick = { activity.openSettings() })
                 SettingRow(tr(R.string.settings_services_title), tr(R.string.settings_services_summary), rowFocus("services"), onClick = { onSection("services") })

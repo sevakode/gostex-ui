@@ -15,12 +15,12 @@ internal object PortableSettingsCodec {
             "clock.format", "clock.zones", "art.captionMode", "art.speed", "art.revealStyle",
             "art.priorities", "library.ndsEmulator", "home.order", "home.shelves.order",
             "video.order", "covers.onlineSources", "grafana.mode", "grafana.scrollMode",
-            "grafana.rotationMode").forEach { put(it, Kind.STRING) }
+            "grafana.rotationMode", "apps.catalogOrder").forEach { put(it, Kind.STRING) }
         listOf("appearance.favoriteBadgeVisible", "clock.visible", "clock.showDate", "art.interludes",
             "apps.tabVisible", "library.tabVisible", "library.groupVersions", "status.networkVisible", "status.mediaPlayerVisible",
             "status.mediaPlayerShowPaused", "covers.onlineLandscape", "covers.automatic").forEach { put(it, Kind.BOOLEAN) }
         listOf("art.holdSeconds", "grafana.refreshSeconds", "grafana.rotationSeconds").forEach { put(it, Kind.INT) }
-        listOf("home.shelves.visible", "video.visible").forEach { put(it, Kind.STRING_SET) }
+        listOf("home.shelves.visible", "video.visible", "apps.catalogHidden").forEach { put(it, Kind.STRING_SET) }
     }
 
     internal fun supportedKeys(): Set<String> = kinds.keys.toSet()
@@ -30,13 +30,17 @@ internal object PortableSettingsCodec {
         return value
     }
     private fun checked(key: String, value: Any): Any = when (kinds[key] ?: error("Unsupported setting")) {
-        Kind.STRING -> validText(value as? String ?: error("Invalid setting type"))
+        Kind.STRING -> validText(value as? String ?: error("Invalid setting type")).also {
+            if (key == "apps.catalogOrder") AppCatalogPreferencesCodec.decodeOrder(it)
+        }
         Kind.BOOLEAN -> value as? Boolean ?: error("Invalid setting type")
         Kind.INT -> value as? Int ?: error("Invalid setting type")
         Kind.STRING_SET -> {
             val items = value as? Set<*> ?: error("Invalid setting type")
             require(items.size <= MAX_SET_ITEMS)
-            items.map { validText(it as? String ?: error("Invalid set item")) }.toSet()
+            items.map { validText(it as? String ?: error("Invalid set item")) }.toSet().also {
+                if (key == "apps.catalogHidden") AppCatalogPreferencesCodec.checkedHidden(it)
+            }
         }
     }
 

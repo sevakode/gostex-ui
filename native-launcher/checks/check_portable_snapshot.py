@@ -53,7 +53,7 @@ with tempfile.TemporaryDirectory() as tmp:
     (folder / 'Model.kt').write_text('package tv.orbit.shield\n' + model)
     (folder / 'Checks.kt').write_text(checks)
     runtime_cp = str(COMPILER[1]) + ':' + str(jar)
-    files = ['PortableJsonSafety.kt', 'PortablePaths.kt', 'PortableGameIndex.kt', 'PortableHomeState.kt', 'PortableSettings.kt', 'PortableSnapshot.kt']
+    files = ['PortableJsonSafety.kt', 'PortablePaths.kt', 'PortableGameIndex.kt', 'PortableHomeState.kt', 'AppCatalogPreferencesCodec.kt', 'PortableSettings.kt', 'PortableSnapshot.kt']
     subprocess.run([str(JAVA), '-cp', ':'.join(map(str, COMPILER)), 'org.jetbrains.kotlin.cli.jvm.K2JVMCompiler',
                     '-no-stdlib', '-no-reflect', '-classpath', runtime_cp, '-d', str(folder / 'classes'),
                     *map(str, (sources / name for name in files)), str(folder / 'Model.kt'), str(folder / 'Checks.kt')], check=True)

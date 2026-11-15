@@ -3,6 +3,7 @@
     <string name="game_archive_title">Распаковать ZIP</string>
     <string name="game_archive_invalid">Не удалось прочитать ZIP. Возможно, он недокачан или использует неподдерживаемый формат.</string>
     <string name="game_archive_cancelled">Распаковка отменена.</string>
+    <string name="game_archive_expired">Подготовка архива прервана. Выберите ZIP заново, чтобы продолжить. Исходный архив не изменён.</string>
     <string name="game_archive_failed">Распаковка остановлена. Проверьте свободное место и доступ к папке, затем повторите.</string>
     <string name="game_archive_inspecting">Читаем содержимое архива…</string>
     <string name="game_archive_working">Распаковываем файлы… Оставьте GOSTEX открытым до завершения.</string>

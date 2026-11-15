@@ -106,6 +106,15 @@ private data class PortablePreviewDecisionSession(
 
 private class LegacyRecoveryNotice(val messageId: Int) : Exception()
 
+private class GameImportRequest(val root: LibraryImport.Root, val fromDownload: Boolean)
+
+private data class LibraryRefreshResult(
+    val games: List<Game>,
+    val warnings: List<String>,
+    val catalog: List<Game>,
+    val imported: GameImportSummary?,
+)
+
 class MainActivity : ComponentActivity() {
     companion object {
         internal const val ACTION_OPEN_DOWNLOADS = "tv.orbit.shield.download.OPEN"
@@ -212,12 +221,18 @@ class MainActivity : ComponentActivity() {
                                 game.platform == root.platform && game.files.any { libraryFileKey(it) == fileKey }
                             }
                             if (alreadyVisible) {
+                                gameImportRequest = null
+                                importHintRoot = null
+                                gameImportSummary = summarizeGameImport(root.platform,
+                                    library.filter { game -> game.platform == root.platform &&
+                                        game.files.any { libraryFileKey(it) == fileKey } },
+                                    library, library, emptyList())
                                 torrDownloadMessage = getString(R.string.torr_game_already_added)
                                 return@launch
                             }
                         }
+                        beginGameImport(root, fromDownload = true)
                         refreshLibrary()
-                        torrDownloadMessage = getString(R.string.torr_game_added)
                     } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
                     catch (_: Exception) { torrDownloadMessage = getString(R.string.torr_game_failed) }
                     finally { torrGameImporting = false }
@@ -724,6 +739,7 @@ class MainActivity : ComponentActivity() {
     internal var openDownloadsRequested by mutableStateOf(false)
     var library by mutableStateOf<List<Game>>(emptyList())
     var scanning by mutableStateOf(false)
+    internal var gameImportSummary by mutableStateOf<GameImportSummary?>(null)
     internal var manualLibraryScanStatus by mutableStateOf<Int?>(null)
         private set
     var legacyRecoveryPending by mutableStateOf(false)
@@ -752,6 +768,9 @@ class MainActivity : ComponentActivity() {
         check(PortableMaintenance.running && android.os.Looper.myLooper() == android.os.Looper.getMainLooper())
         portableMaintenanceSeen = true
         libraryVisible = false
+        gameImportRequest = null
+        gameImportSummary = null
+        importHintRoot = null
         refreshPending = false
         manualRefreshPending = false
         coverSyncPending = false
@@ -760,6 +779,7 @@ class MainActivity : ComponentActivity() {
         if (updatesLazy.isInitialized()) updates.onStop()
         importRoot.cancel()
         withContext(kotlinx.coroutines.NonCancellable) {
+            gameArchive.cancelAndJoin()
             importRoot.join()
             while (coverEdits > 0) kotlinx.coroutines.delay(20)
         }
@@ -780,6 +800,22 @@ class MainActivity : ComponentActivity() {
     private var importPlatform = ""
     private var importSource = LibrarySource.FILES
     private var importHintRoot: LibraryImport.Root? = null
+    private var gameImportRequest: GameImportRequest? = null
+    private fun beginGameImport(root: LibraryImport.Root, fromDownload: Boolean = false) {
+        gameImportRequest = GameImportRequest(root, fromDownload)
+        gameImportSummary = null
+        importHintRoot = root
+    }
+    private fun completeGameImport(request: GameImportRequest?, summary: GameImportSummary?) {
+        if (request == null || summary == null || gameImportRequest !== request) return
+        gameImportRequest = null
+        gameImportSummary = summary
+        if (request.fromDownload) torrDownloadMessage = getString(when {
+            summary.failed || summary.available == 0 -> R.string.torr_game_failed
+            summary.added == 0 -> R.string.torr_game_already_added
+            else -> R.string.torr_game_added
+        })
+    }
     private var refreshPending = false
     private var manualRefreshPending = false
     private var libraryVisible = false
@@ -1025,7 +1061,7 @@ class MainActivity : ComponentActivity() {
             contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
             val root = LibraryImport.Root(importPlatform, uri.toString(), importSource)
             LibraryImport.addRoot(this, root)
-            importHintRoot = root
+            beginGameImport(root)
             notice = ""
             refreshLibrary()
         } catch (e: Exception) { notice = getString(R.string.folder_error, e.localizedMessage.orEmpty()) }
@@ -1047,6 +1083,7 @@ class MainActivity : ComponentActivity() {
                     LibraryImport.addRoot(this@MainActivity, root)
                     retained = true
                     notice = ""
+                    beginGameImport(root)
                     refreshLibrary()
                 } catch (e: kotlinx.coroutines.CancellationException) { throw e }
                 catch (e: Exception) { notice = e.localizedMessage ?: getString(R.string.import_file_unavailable) }
@@ -1170,12 +1207,22 @@ class MainActivity : ComponentActivity() {
         if (PortableMaintenance.running) { if (manual) manualLibraryScanStatus = R.string.library_rescan_failed; return }
         if (!libraryVisible || scanning) { refreshPending = true; manualRefreshPending = manualRefreshPending || manual; return }
         manualLibraryScanStatus = null
-        if (legacyRecoveryStateError) { notice = getString(R.string.legacy_recovery_state_error); if (manual) manualLibraryScanStatus = R.string.library_rescan_failed; return }
+        if (legacyRecoveryStateError) {
+            notice = getString(R.string.legacy_recovery_state_error)
+            completeGameImport(gameImportRequest, gameImportRequest?.let { GameImportSummary(it.root.platform, 0, 0, true, listOf(notice)) })
+            if (manual) manualLibraryScanStatus = R.string.library_rescan_failed
+            return
+        }
         refreshPending = false
         val meteredApproved = allowMeteredRecoveryOnce
         allowMeteredRecoveryOnce = false
-        val roots = rootsOrNotify() ?: run { if (manual) manualLibraryScanStatus = R.string.library_rescan_failed; return }
+        val roots = rootsOrNotify() ?: run {
+            completeGameImport(gameImportRequest, gameImportRequest?.let { GameImportSummary(it.root.platform, 0, 0, true, listOf(notice)) })
+            if (manual) manualLibraryScanStatus = R.string.library_rescan_failed
+            return
+        }
         val hintRoot = importHintRoot
+        val importRequest = gameImportRequest
         val recoveryRequired = legacyRecoveryPending
         val initialCatalog = bundled
         scanning = true
@@ -1210,39 +1257,58 @@ class MainActivity : ComponentActivity() {
                     catch (e: kotlinx.coroutines.CancellationException) { throw e }
                     catch (_: Exception) { AndroidDiagnostics.event("library.legacy_catalog", "unavailable") }
                     val errors = ImportWarnings()
+                    val importErrors = ImportWarnings()
+                    var importScanned: List<Game>? = null
                     val activeRoots = if (recoveryRequired) LibraryImport.roots(this@MainActivity) else roots
                     val found = activeRoots.flatMap { root ->
                         val scanned = try { LibraryImport.scan(this@MainActivity, root, catalog, showHints = root == hintRoot, previousSnapshot = previous) { warning ->
                             errors.add { "${PlatformRegistry.title(this@MainActivity, root.platform)}: $warning" }
+                            if (root == importRequest?.root) importErrors.add { warning }
                         } }
                         catch (e: kotlinx.coroutines.CancellationException) { throw e }
                         catch (e: Exception) {
+                            val reason = if (e is SecurityException) getString(
+                                if (root.source == LibrarySource.SINGLE_FILE) R.string.import_file_unavailable else R.string.import_folder_permission)
+                            else e.localizedMessage.orEmpty()
                             errors.add(rootFailure = true) {
-                                val reason = if (e is SecurityException) getString(
-                                    if (root.source == LibrarySource.SINGLE_FILE) R.string.import_file_unavailable else R.string.import_folder_permission)
-                                else e.localizedMessage.orEmpty()
                                 "${PlatformRegistry.title(this@MainActivity, root.platform)}: $reason"
                             }
+                            if (root == importRequest?.root) importErrors.add(rootFailure = true) { reason }
                             null
                         }
+                        if (root == importRequest?.root) importScanned = scanned
                         libraryRootSnapshot(root.uri, scanned, previous, root.platform)
                     }.let(::mergeImportedVariants)
                     currentCoroutineContext().ensureActive()
                     LibraryImport.write(this@MainActivity, found)
                     val (visibleErrors, omittedErrors) = errors.snapshot()
                     val noticeErrors = if (omittedErrors > 0) visibleErrors + getString(R.string.import_warnings_more, omittedErrors) else visibleErrors
-                    Triple(found, noticeErrors, catalog)
+                    val (importVisible, importOmitted) = importErrors.snapshot()
+                    val importNotices = if (importOmitted > 0)
+                        importVisible + getString(R.string.import_warnings_more, importOmitted) else importVisible
+                    LibraryRefreshResult(found, noticeErrors, catalog, importRequest?.let {
+                        summarizeGameImport(it.root.platform, importScanned, previous, found, importNotices)
+                    })
                 }
-                library = result.first
-                bundled = result.third
+                library = result.games
+                bundled = result.catalog
                 if (recoveryRequired) legacyRecoveryPending = false
                 if (importHintRoot == hintRoot) importHintRoot = null
-                if (result.second.isNotEmpty()) notice = result.second.joinToString("; ")
+                if (result.warnings.isNotEmpty()) notice = result.warnings.joinToString("; ")
                 else if (recoveryRequired) notice = getString(R.string.legacy_recovery_done)
-                if (manual) manualLibraryScanStatus = if (result.second.isEmpty()) R.string.library_rescan_done else R.string.library_rescan_failed
+                completeGameImport(importRequest, result.imported)
+                if (manual) manualLibraryScanStatus = if (result.warnings.isEmpty()) R.string.library_rescan_done else R.string.library_rescan_failed
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
-            catch (e: LegacyRecoveryNotice) { notice = getString(e.messageId); if (manual) manualLibraryScanStatus = e.messageId }
-            catch (e: Exception) { notice = getString(R.string.refresh_error, e.localizedMessage.orEmpty()); if (manual) manualLibraryScanStatus = R.string.library_rescan_failed }
+            catch (e: LegacyRecoveryNotice) {
+                notice = getString(e.messageId)
+                completeGameImport(importRequest, importRequest?.let { GameImportSummary(it.root.platform, 0, 0, true, listOf(notice)) })
+                if (manual) manualLibraryScanStatus = e.messageId
+            }
+            catch (e: Exception) {
+                notice = getString(R.string.refresh_error, e.localizedMessage.orEmpty())
+                completeGameImport(importRequest, importRequest?.let { GameImportSummary(it.root.platform, 0, 0, true, listOf(notice)) })
+                if (manual) manualLibraryScanStatus = R.string.library_rescan_failed
+            }
             finally {
                 scanning = false
                 if (refreshPending && libraryVisible && !isDestroyed) {
@@ -1274,6 +1340,7 @@ class MainActivity : ComponentActivity() {
             pendingDownloadFolderRequest = DownloadFolderRequest.ExpiredHttp
         }
         emulatorInstall.restore(savedInstanceState)
+        gameArchive.restore(savedInstanceState)
         if (PortableRestoreStartup.ready && !PortableMaintenance.running) {
             torrDownloadFolder = getSharedPreferences("orbit", MODE_PRIVATE).getString("downloads.folder", "").orEmpty()
         }
@@ -1310,6 +1377,23 @@ class MainActivity : ComponentActivity() {
         else incomingTorrentUri = savedInstanceState.getString("incomingTorrentUri")?.let(Uri::parse)
         importPlatform = savedInstanceState?.getString("importPlatform").orEmpty()
         importSource = LibrarySource.read(savedInstanceState?.getString("importSource"), importPlatform)
+        savedInstanceState?.getBundle("pendingGameImport")?.let { pending ->
+            val platform = pending.getString("platform").orEmpty()
+            val uri = pending.getString("uri").orEmpty()
+            if (PlatformRegistry.find(platform) != null && uri.startsWith("content://")) {
+                beginGameImport(LibraryImport.Root(platform, uri,
+                    LibrarySource.read(pending.getString("source"), platform)), pending.getBoolean("download"))
+            }
+        }
+        if (gameImportRequest == null) savedInstanceState?.getBundle("gameImportSummary")?.let { saved ->
+            val platform = saved.getString("platform").orEmpty()
+            val available = saved.getInt("available", -1)
+            val added = saved.getInt("added", -1)
+            if (PlatformRegistry.find(platform) != null && available in 0..10000 && added in 0..available) {
+                gameImportSummary = GameImportSummary(platform, available, added, saved.getBoolean("failed"),
+                    saved.getStringArrayList("warnings").orEmpty().take(6).map { it.take(1024) })
+            }
+        }
         pendingCoverId = savedInstanceState?.getString("pendingCoverId")
         managedCovers = ManagedCoverStore.read(this)
         RemoteStartup.start(this)
@@ -1342,12 +1426,30 @@ class MainActivity : ComponentActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         emulatorInstall.save(outState)
+        gameArchive.save(outState)
         // Only remember that a stale picker result belongs to an expired request.
         // Never put the URL, validator, filename or the request itself in a Bundle.
         outState.putBoolean("httpDownloadPickerPending", pendingDownloadFolderRequest is DownloadFolderRequest.Http ||
             pendingDownloadFolderRequest == DownloadFolderRequest.ExpiredHttp)
         outState.putString("importPlatform", importPlatform)
         outState.putString("importSource", importSource.value)
+        gameImportRequest?.let { request ->
+            outState.putBundle("pendingGameImport", Bundle().apply {
+                putString("platform", request.root.platform)
+                putString("uri", request.root.uri)
+                putString("source", request.root.source.value)
+                putBoolean("download", request.fromDownload)
+            })
+        }
+        gameImportSummary?.let { summary ->
+            outState.putBundle("gameImportSummary", Bundle().apply {
+                putString("platform", summary.platform)
+                putInt("available", summary.available)
+                putInt("added", summary.added)
+                putBoolean("failed", summary.failed)
+                putStringArrayList("warnings", ArrayList(summary.warnings.take(6).map { it.take(1024) }))
+            })
+        }
         outState.putString("pendingCoverId", pendingCoverId)
         outState.putString("incomingTorrentUri", incomingTorrentUri?.toString())
         outState.putBoolean("openDownloadsRequested", openDownloadsRequested)
@@ -2001,6 +2103,7 @@ class MainActivity : ComponentActivity() {
     }
     if (settingsOpen) SettingsDrawer(activity, apps, games, mediaPlayback, settingsInitialSection, onClose = { settingsOpen = false })
     GameArchiveHost(activity)
+    GameImportSummaryHost(activity)
     if (mediaOpen) MediaPlayerPopover(activity, mediaPlayback, onDismiss = { mediaOpen = false })
     activity.coverEditorId?.let { id -> games.firstOrNull { it.id == id }?.let { game ->
         GameCoverEditor(activity, game, onClose = { activity.coverEditorId = null })
@@ -2133,6 +2236,8 @@ class MainActivity : ComponentActivity() {
 }
 
 private fun settingsParent(section: String): String = when {
+    section == "appCatalog" -> "services"
+    section == "appCatalogOptions" -> "appCatalog"
     section == "clock" || section == "language" -> "localeGroup"
     section.startsWith("clock/") -> clockParent(section)
     section in setOf("appearance", "art", "grafana") -> "appearanceGroup"
@@ -2153,6 +2258,8 @@ private fun settingsTitle(section: String): Int = when {
         "nowPlaying" -> R.string.media_player
         "playback" -> R.string.settings_playback_title
         "services" -> R.string.settings_services_title
+        "appCatalog" -> R.string.app_catalog_title
+        "appCatalogOptions" -> R.string.app_catalog_options_title
         "settingsCopy" -> R.string.settings_copy_title
         "downloads" -> R.string.torr_download_channel
         "appearanceGroup" -> R.string.settings_appearance_group
@@ -2174,7 +2281,7 @@ private fun settingsTitle(section: String): Int = when {
     var savedSection by rememberSaveable { mutableStateOf(initialSection) }
     val section = when {
         savedSection == "videoOptions" -> "homeOptions"
-        savedSection.startsWith("clock/") || savedSection in setOf("root", "appearanceGroup", "mediaGroup", "libraryGroup", "controller", "localeGroup", "systemGroup", "language", "art", "grafana", "homeOptions", "appearance", "clock", "covers", "nowPlaying", "playback", "services", "settingsCopy", "updates", "portableCopy", "portablePreview", "downloads") -> savedSection
+        savedSection.startsWith("clock/") || savedSection in setOf("root", "appearanceGroup", "mediaGroup", "libraryGroup", "controller", "localeGroup", "systemGroup", "language", "art", "grafana", "homeOptions", "appearance", "clock", "covers", "nowPlaying", "playback", "services", "appCatalog", "appCatalogOptions", "settingsCopy", "updates", "portableCopy", "portablePreview", "downloads") -> savedSection
         else -> "root"
     }
     // The route we leave identifies the exact parent row to restore on Back.
@@ -2234,7 +2341,7 @@ private fun settingsTitle(section: String): Int = when {
             listOf("addGames", "rescanGames", "folders", "portableCopy", "covers", "ndsEmulator", "androidGames", "groupVersions", "libraryTab", "appsTab")
         "localeGroup" -> listOf("language", "clock")
         "systemGroup" -> listOf("network", "browserSearch", "defaultHome", "shield", "services", "settingsCopy", "remote")
-        "services" -> listOf("vlcGostex", "torrServer", "torrServeInstall", "revancedManager")
+        "services" -> listOf("appCatalog", "vlcGostex", "torrServer", "torrServeInstall", "revancedManager")
         "portableCopy" -> listOf("copyAction", "portablePreview")
         "settingsCopy" -> listOf("export", "import")
         else -> emptyList()
@@ -2330,10 +2437,15 @@ private fun settingsTitle(section: String): Int = when {
                     if (remoteAuto) RemoteStartup.start(activity)
                 })
             } else if (section == "services") {
+                SettingRow(tr(R.string.app_catalog_title), tr(R.string.app_catalog_summary), rowFocus("appCatalog"), onClick = { onSection("appCatalog") })
                 VlcGostexInstallSetting(activity, rowFocus("vlcGostex"))
                 TorrServerStatusSetting(rowFocus("torrServer"))
                 TorrServeInstallSetting(activity, rowFocus("torrServeInstall"))
                 ReVancedInstallSetting(activity, rowFocus("revancedManager"))
+            } else if (section == "appCatalog") {
+                InstallableAppCatalogSettings(activity, initialFocus, onOptions = { onSection("appCatalogOptions") })
+            } else if (section == "appCatalogOptions") {
+                InstallableAppCatalogOptions(activity, initialFocus)
             } else if (section == "updates") {
                 UpdateSettings(activity, initialFocus)
             } else if (section == "settingsCopy") {
@@ -2419,7 +2531,11 @@ private fun settingsTitle(section: String): Int = when {
             ControlHints(back = if (section == "root") R.string.close else R.string.back)
         }
     }
-    LaunchedEffect(section) { withFrameNanos { }; initialFocus.requestFocus() }
+    LaunchedEffect(section) {
+        // The catalog owns the exact package focus when Android's installer returns.
+        val restoringInstallerFocus = section == "appCatalog" && activity.emulatorInstall.returnFocusPackage != null
+        if (!restoringInstallerFocus) { withFrameNanos { }; initialFocus.requestFocus() }
+    }
     LaunchedEffect(section, activity.portablePreviewFocusRevision) {
         if (section == "portablePreview" && activity.portablePreviewFocusRevision > 0) {
             withFrameNanos { }

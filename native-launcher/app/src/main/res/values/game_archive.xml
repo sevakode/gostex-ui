@@ -3,6 +3,7 @@
     <string name="game_archive_title">Extract a ZIP archive</string>
     <string name="game_archive_invalid">Could not read this ZIP. It may be incomplete or use an unsupported format.</string>
     <string name="game_archive_cancelled">Extraction cancelled.</string>
+    <string name="game_archive_expired">Archive preparation was interrupted. Select the ZIP again to continue. The original archive is unchanged.</string>
     <string name="game_archive_failed">Extraction stopped. Check available space and folder access, then try again.</string>
     <string name="game_archive_inspecting">Reading archive contents…</string>
     <string name="game_archive_working">Extracting files… Keep GOSTEX open until this finishes.</string>

@@ -155,7 +155,7 @@ with tempfile.TemporaryDirectory() as tmp:
     (folder / 'Models.kt').write_text('package tv.orbit.shield\n' + home_model + game_model + live_model + '\n' + tree_model)
     (folder / 'Checks.kt').write_text(checks)
     runtime_cp = str(COMPILER[1]) + ':' + str(jar)
-    files = ['PortablePaths.kt','PortableJsonSafety.kt','PortableGameIndex.kt','PortableHomeState.kt','PortableSettings.kt','PortableSnapshot.kt',
+    files = ['PortablePaths.kt','PortableJsonSafety.kt','PortableGameIndex.kt','PortableHomeState.kt','AppCatalogPreferencesCodec.kt', 'PortableSettings.kt','PortableSnapshot.kt',
              'PortableVerifiedCopy.kt','PortableGenerationWriter.kt','ManagedCoverModel.kt','PortableLiveCapture.kt',
              'PortableSnapshotAssembler.kt','DiscImport.kt','PortableDiscPlan.kt','PortableDreamcastDiscPlan.kt','PortableSourceLookup.kt','PortableSourcePlan.kt',
              'PortableStaging.kt','PortableSnapshotStore.kt','PortableExportWorkflow.kt']

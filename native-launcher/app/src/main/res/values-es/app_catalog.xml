@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_catalog_just_player">Just Player</string>
+    <string name="app_catalog_melonds">melonDS</string>
+    <string name="app_catalog_flycast">Flycast</string>
+    <string name="app_catalog_azahar">Azahar</string>
+    <string name="app_catalog_title">Catálogo de apps</string>
+    <string name="app_catalog_summary">Elige, instala y abre apps disponibles</string>
+    <string name="app_catalog_options_title">Aspecto del catálogo</string>
+    <string name="app_catalog_options_summary">Elige las apps visibles y su orden</string>
+    <string name="app_catalog_hint">Elige una app para instalarla o abrirla. Android confirma la instalación; antes se comprueban los requisitos de versión de Android y procesador.</string>
+    <string name="app_catalog_options_hint">Selecciona una app para mostrarla, ocultarla o moverla. Ocultarla no la desinstala.</string>
+    <string name="app_catalog_video_player">Reproductor de vídeo</string>
+    <string name="app_catalog_emulator">Emulador</string>
+    <string name="app_catalog_empty">Todas las apps están ocultas. Usa Aspecto del catálogo para mostrarlas.</string>
+    <string name="app_catalog_downloading">Descargando · selecciona para cancelar</string>
+    <string name="app_catalog_permission">Permiso de instalación · selecciona para continuar</string>
+    <string name="app_catalog_checking">Comprobando app…</string>
+    <string name="app_catalog_not_installed">Sin instalar · selecciona para instalar</string>
+    <string name="app_catalog_update">Instalada · actualización disponible</string>
+    <string name="app_catalog_untrusted">No se pudo verificar el paquete instalado. La instalación no está disponible.</string>
+    <string name="app_catalog_no_screen">Instalada · sin pantalla de inicio disponible</string>
+    <string name="app_catalog_installed">Instalada · selecciona para abrir</string>
+    <string name="app_catalog_source">Fuente: %1$s</string>
+    <string name="app_catalog_release">Versión del catálogo: %1$s</string>
+    <string name="app_catalog_open_failed">No se pudo abrir %1$s. Comprueba su instalación y vuelve a intentarlo.</string>
+    <string name="app_catalog_visible">Visible en el catálogo</string>
+    <string name="app_catalog_hidden">Oculta en el catálogo</string>
+    <string name="app_catalog_hide">Ocultar del catálogo</string>
+    <string name="app_catalog_show">Mostrar en el catálogo</string>
+    <string name="app_catalog_update_action">Actualizar %1$s</string>
+    <string name="app_catalog_changed">El estado de la app cambió. Selecciónala de nuevo.</string>
+</resources>

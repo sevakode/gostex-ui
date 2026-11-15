@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_catalog_just_player">Just Player</string>
+    <string name="app_catalog_melonds">melonDS</string>
+    <string name="app_catalog_flycast">Flycast</string>
+    <string name="app_catalog_azahar">Azahar</string>
+    <string name="app_catalog_title">App catalog</string>
+    <string name="app_catalog_summary">Choose, install and open supported apps</string>
+    <string name="app_catalog_options_title">Catalog appearance</string>
+    <string name="app_catalog_options_summary">Choose visible apps and their order</string>
+    <string name="app_catalog_hint">Choose an app to install or open it. Android confirms installation; Android version and processor requirements are checked first.</string>
+    <string name="app_catalog_options_hint">Select an app to show, hide or move it. Hiding an app does not uninstall it.</string>
+    <string name="app_catalog_video_player">Video player</string>
+    <string name="app_catalog_emulator">Emulator</string>
+    <string name="app_catalog_empty">All catalog apps are hidden. Use Catalog appearance to show them.</string>
+    <string name="app_catalog_downloading">Downloading · select to cancel</string>
+    <string name="app_catalog_permission">Installation permission · select to continue</string>
+    <string name="app_catalog_checking">Checking app…</string>
+    <string name="app_catalog_not_installed">Not installed · select to install</string>
+    <string name="app_catalog_update">Installed · update available</string>
+    <string name="app_catalog_untrusted">The installed package could not be verified. Installation is unavailable.</string>
+    <string name="app_catalog_no_screen">Installed · no launch screen available</string>
+    <string name="app_catalog_installed">Installed · select to open</string>
+    <string name="app_catalog_source">Source: %1$s</string>
+    <string name="app_catalog_release">Catalog release: %1$s</string>
+    <string name="app_catalog_open_failed">Could not open %1$s. Check its installation and try again.</string>
+    <string name="app_catalog_visible">Visible in catalog</string>
+    <string name="app_catalog_hidden">Hidden from catalog</string>
+    <string name="app_catalog_hide">Hide from catalog</string>
+    <string name="app_catalog_show">Show in catalog</string>
+    <string name="app_catalog_update_action">Update %1$s</string>
+    <string name="app_catalog_changed">The app state changed. Select it again.</string>
+</resources>

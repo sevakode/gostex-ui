@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="game_import_result_title">Resultado de importación · %1$s</string>
+    <string name="game_import_counts">Juegos de esta fuente en la biblioteca: %1$d. Entradas nuevas: %2$d.</string>
+    <string name="game_import_empty">No se encontraron juegos compatibles. Revisa el sistema elegido y los formatos de los archivos.</string>
+    <string name="game_import_failed">No se pudo comprobar esta fuente. Los juegos guardados anteriormente siguen en la biblioteca.</string>
+    <string name="game_import_formats">Formatos reconocidos: %1$s</string>
+    <string name="game_import_emulator_missing">%1$s no está instalado. Puedes instalarlo sin volver a añadir los juegos.</string>
+    <string name="game_import_emulator_available">%1$s está disponible. Para jugar, aún pueden ser necesarios ajustes del emulador, archivos BIOS y un juego compatible.</string>
+    <string name="game_import_emulator_unavailable">El inicio de juegos con %1$s no está disponible. Revisa la instalación y los ajustes del emulador.</string>
+    <string name="game_import_open_emulator">Abrir emulador</string>
+    <string name="game_import_install_emulator">Instalar emulador</string>
+    <string name="game_import_details">Detalles:\n%1$s</string>
+</resources>

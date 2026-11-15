@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_catalog_just_player">Just Player</string>
+    <string name="app_catalog_melonds">melonDS</string>
+    <string name="app_catalog_flycast">Flycast</string>
+    <string name="app_catalog_azahar">Azahar</string>
+    <string name="app_catalog_title">Каталог приложений</string>
+    <string name="app_catalog_summary">Выбор, установка и запуск доступных приложений</string>
+    <string name="app_catalog_options_title">Вид каталога</string>
+    <string name="app_catalog_options_summary">Видимые приложения и их порядок</string>
+    <string name="app_catalog_hint">Выберите приложение для установки или открытия. Установку подтверждает Android; перед ней проверяются требования к версии Android и процессору.</string>
+    <string name="app_catalog_options_hint">Выберите приложение, чтобы показать, скрыть или переместить его. Скрытие не удаляет приложение.</string>
+    <string name="app_catalog_video_player">Видеоплеер</string>
+    <string name="app_catalog_emulator">Эмулятор</string>
+    <string name="app_catalog_empty">Все приложения каталога скрыты. Откройте «Вид каталога», чтобы показать их.</string>
+    <string name="app_catalog_downloading">Скачивается · выберите для отмены</string>
+    <string name="app_catalog_permission">Разрешение установки · выберите для продолжения</string>
+    <string name="app_catalog_checking">Проверяем приложение…</string>
+    <string name="app_catalog_not_installed">Не установлено · выберите для установки</string>
+    <string name="app_catalog_update">Установлено · доступно обновление</string>
+    <string name="app_catalog_untrusted">Не удалось подтвердить установленный пакет. Установка недоступна.</string>
+    <string name="app_catalog_no_screen">Установлено · нет доступного экрана запуска</string>
+    <string name="app_catalog_installed">Установлено · выберите для открытия</string>
+    <string name="app_catalog_source">Источник: %1$s</string>
+    <string name="app_catalog_release">Выпуск каталога: %1$s</string>
+    <string name="app_catalog_open_failed">Не удалось открыть %1$s. Проверьте установку и повторите.</string>
+    <string name="app_catalog_visible">Показано в каталоге</string>
+    <string name="app_catalog_hidden">Скрыто из каталога</string>
+    <string name="app_catalog_hide">Скрыть из каталога</string>
+    <string name="app_catalog_show">Показать в каталоге</string>
+    <string name="app_catalog_update_action">Обновить %1$s</string>
+    <string name="app_catalog_changed">Состояние приложения изменилось. Выберите его заново.</string>
+</resources>

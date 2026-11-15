@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="game_import_result_title">Import result · %1$s</string>
+    <string name="game_import_counts">Games from this source in the library: %1$d. New entries: %2$d.</string>
+    <string name="game_import_empty">No compatible games were found. Check the selected system and file formats.</string>
+    <string name="game_import_failed">Could not check this source. Previously saved games remain in the library.</string>
+    <string name="game_import_formats">Recognized formats: %1$s</string>
+    <string name="game_import_emulator_missing">%1$s is not installed. You can install it without adding the games again.</string>
+    <string name="game_import_emulator_available">%1$s is available. Playing may still require emulator setup, BIOS files and a compatible game.</string>
+    <string name="game_import_emulator_unavailable">The game launcher for %1$s is unavailable. Check the emulator installation and settings.</string>
+    <string name="game_import_open_emulator">Open emulator</string>
+    <string name="game_import_install_emulator">Install emulator</string>
+    <string name="game_import_details">Details:\n%1$s</string>
+</resources>

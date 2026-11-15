@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="game_import_result_title">Результат добавления · %1$s</string>
+    <string name="game_import_counts">Игр из этого источника в библиотеке: %1$d. Новых карточек: %2$d.</string>
+    <string name="game_import_empty">Подходящие игры не найдены. Проверьте выбранную систему и формат файлов.</string>
+    <string name="game_import_failed">Не удалось проверить источник. Сохранённые ранее игры остались в библиотеке.</string>
+    <string name="game_import_formats">Распознаваемые форматы: %1$s</string>
+    <string name="game_import_emulator_missing">%1$s не установлен. Его можно установить без повторного добавления игр.</string>
+    <string name="game_import_emulator_available">%1$s доступен. Для игры ещё могут потребоваться настройка эмулятора, файлы BIOS и совместимый образ игры.</string>
+    <string name="game_import_emulator_unavailable">Запуск игр через %1$s недоступен. Проверьте установку и настройки эмулятора.</string>
+    <string name="game_import_open_emulator">Открыть эмулятор</string>
+    <string name="game_import_install_emulator">Установить эмулятор</string>
+    <string name="game_import_details">Подробности:\n%1$s</string>
+</resources>

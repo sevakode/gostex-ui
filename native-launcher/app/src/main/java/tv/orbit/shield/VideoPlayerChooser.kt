@@ -56,10 +56,13 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity, priva
     private var onPlayerNavigate: ((Int) -> Unit)? = null
     private var completedPlayerPackage: String? = null
     private var activePlaylist: VlcSeriesPlaylist? = null
+    private var activeLaunchStartedAtMs: Long? = null
     private var resumeSeek: Job? = null
     private var pausedCache: Job? = null
     private val failedPlaylistResumes = mutableSetOf<String>()
     private val result = activity.registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { response ->
+        val returnedAtMs = SystemClock.elapsedRealtime()
+        val launchedAtMs = activeLaunchStartedAtMs.also { activeLaunchStartedAtMs = null }
         val expected = prefs.getString(pendingKey, null)
         val expectedUri = prefs.getString(pendingUriKey, null) ?: expected
         val playerPackage = prefs.getString(pendingPlayerKey, null)
@@ -90,11 +93,19 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity, priva
         val completed = onPlayerCompleted.also { onPlayerCompleted = null }
         val navigate = onPlayerNavigate.also { onPlayerNavigate = null }
         if (!activity.isFinishing && !activity.isDestroyed) {
-            val explicitEnd = playerPackage in setOf("tv.gostex.vlc", "tv.gostex.vlc.debug") && response.resultCode == android.app.Activity.RESULT_OK &&
-                playedKey != null && data?.getBooleanExtra("tv.gostex.extra.PLAYBACK_FINISHED", false) == true
-            val ended = playlist == null && (explicitEnd || videoShouldAdvance(response.resultCode == android.app.Activity.RESULT_OK,
-                playedKey != null, data?.hasExtra("extra_position") == true, data?.hasExtra("extra_duration") == true,
-                data?.getLongExtra("extra_position", -1) ?: -1, data?.getLongExtra("extra_duration", -1) ?: -1))
+            val patchedVlc = playerPackage in setOf("tv.gostex.vlc", "tv.gostex.vlc.debug")
+            val ended = playlist == null && videoShouldAdvanceAfterLaunch(
+                success = response.resultCode == android.app.Activity.RESULT_OK,
+                exactItem = playedKey != null,
+                requiresExplicitEnd = patchedVlc,
+                explicitEnd = data?.getBooleanExtra("tv.gostex.extra.PLAYBACK_FINISHED", false) == true,
+                hasPosition = data?.hasExtra("extra_position") == true,
+                hasDuration = data?.hasExtra("extra_duration") == true,
+                position = data?.getLongExtra("extra_position", -1) ?: -1,
+                duration = data?.getLongExtra("extra_duration", -1) ?: -1,
+                launchedAtMs = launchedAtMs,
+                returnedAtMs = returnedAtMs,
+            )
             val step = data?.getIntExtra("tv.gostex.extra.EPISODE_STEP", 0) ?: 0
             if (playerPackage in setOf("tv.gostex.vlc", "tv.gostex.vlc.debug") && response.resultCode == android.app.Activity.RESULT_OK && playedKey != null && step in listOf(-1, 1) && navigate != null) {
                 completedPlayerPackage = playerPackage
@@ -189,6 +200,7 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity, priva
             onPlayerNavigate = if (player.component.packageName in setOf("tv.gostex.vlc", "tv.gostex.vlc.debug")) req.onNavigate else null
             activePlaylist = playlist
             val launchTime = SystemClock.elapsedRealtime()
+            activeLaunchStartedAtMs = launchTime
             result.launch(intent)
             if (req.fromStart && key != null) prefs.edit().remove("video.position.$key").apply()
             val stream = localTorrentStreamIdentity(req.intent.dataString)
@@ -209,6 +221,7 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity, priva
             resumeSeek?.cancel(); resumeSeek = null
             pausedCache?.cancel(); pausedCache = null
             activePlaylist = null
+            activeLaunchStartedAtMs = null
             prefs.edit().remove(pendingKey).remove(pendingUriKey).remove(pendingPlayerKey).apply()
             req.onError()
         }

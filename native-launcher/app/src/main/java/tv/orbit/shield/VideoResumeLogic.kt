@@ -15,6 +15,29 @@ internal fun videoActuallyCompleted(position: Long, duration: Long): Boolean =
 internal fun videoShouldAdvance(success: Boolean, exactItem: Boolean, hasPosition: Boolean, hasDuration: Boolean, position: Long, duration: Long): Boolean =
     success && exactItem && hasPosition && hasDuration && videoActuallyCompleted(position, duration)
 
+/** An immediate end result can come from a failed open, even when the player reports EOF.
+ * Count only the current launch, after any resume prompt; stale positions cannot shorten
+ * this floor. A very short return remains available for an explicit Next action. */
+internal fun videoShouldAdvanceAfterLaunch(
+    success: Boolean,
+    exactItem: Boolean,
+    requiresExplicitEnd: Boolean,
+    explicitEnd: Boolean,
+    hasPosition: Boolean,
+    hasDuration: Boolean,
+    position: Long,
+    duration: Long,
+    launchedAtMs: Long?,
+    returnedAtMs: Long,
+): Boolean {
+    if (!success || !exactItem || launchedAtMs == null || launchedAtMs < 0L ||
+        returnedAtMs < launchedAtMs || returnedAtMs - launchedAtMs < 1_500L) return false
+    // Our patched VLC reports EndReached explicitly. A plain Back near the end
+    // is not completion; keep the positional fallback only for older external VLC.
+    return if (requiresExplicitEnd) explicitEnd
+        else videoShouldAdvance(success, exactItem, hasPosition, hasDuration, position, duration)
+}
+
 /** Null means an unreliable or too-early sample; zero means a completed video. */
 internal fun videoCheckpoint(position: Long, duration: Long, restartNearEnd: Boolean = true): Long? {
     if (position < 10_000L || duration < 0L || (duration > 0L && position > duration)) return null

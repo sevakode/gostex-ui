@@ -153,4 +153,5 @@
     <string name="http_download_restart_confirm">Скачать с начала? Частичный файл будет заменён, только когда сервер будет готов отправить файл. Отмените действие, чтобы сохранить скачанное.</string>
     <string name="http_download_restart_access_restored">Доступ к папке восстановлен. Когда будете готовы, выберите «Начать заново».</string>
     <string name="http_download_restart_access_check">Проверьте накопитель и файл, затем выберите «Начать заново».</string>
+    <string name="torr_download_video_invalid">Видео повреждено. Удалите неполную копию, чтобы скачать его заново.</string>
 </resources>

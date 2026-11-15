@@ -20,6 +20,9 @@ data class Uri(val raw: String) {
 context = r'''package android.content
 import android.net.Uri
 import java.io.Closeable
+import java.io.ByteArrayInputStream
+import java.io.IOException
+import java.io.InputStream
 data class FakeDocument(val id:String, val parent:String, val name:String, val size:Long?, val mime:String)
 class FakeCursor(private val rows:List<List<Any?>>):Closeable {
  private var index=-1
@@ -37,10 +40,35 @@ class ContentResolver {
  val lists=mutableMapOf<String,Int>()
  var opens=0;var creates=0;var deletes=0
  var afterQuery:((String)->Unit)?=null
+ var afterRead:(()->Unit)?=null
+ var headerBytesRead=0;var chunkSize=4096
+ var checkDirectChild=false
+ val bodies=mutableMapOf<String,ByteArray>()
+ val failedReads=mutableSetOf<String>()
+ val unavailableBodies=mutableSetOf<String>()
  val persistedUriPermissions=mutableListOf<Permission>()
  fun takePersistableUriPermission(uri:Uri, flags:Int) {}
  fun openAssetFileDescriptor(uri:Uri,mode:String):FakeDescriptor? {
   check(mode=="r");opens++;return if(uri.raw.substringAfterLast('/') in documents) FakeDescriptor() else null
+ }
+ fun openInputStream(uri:Uri):InputStream? {
+  opens++
+  val id=uri.raw.substringAfterLast('/')
+  val document=documents[id] ?: return null
+  if(id in unavailableBodies) return null
+  val body=bodies[id] ?: ByteArray(minOf(document.size ?: 0,4096L).toInt()).also { bytes ->
+   val ebml=byteArrayOf(0x1A,0x45,0xDF.toByte(),0xA3.toByte())
+   ebml.copyInto(bytes,endIndex=minOf(ebml.size,bytes.size))
+  }
+  return object:ByteArrayInputStream(body) {
+   override fun read(buffer:ByteArray,offset:Int,length:Int):Int {
+    if(id in failedReads) throw IOException("Fixture read error")
+    val count=super.read(buffer,offset,minOf(length,chunkSize))
+    if(count>0) headerBytesRead+=count
+    afterRead?.invoke()
+    return count
+   }
+  }
  }
  fun query(uri:Uri,columns:Array<String>,selection:String?,args:Array<String>?,sort:String?):FakeCursor? {
   val id=uri.raw.substringAfterLast('/')
@@ -126,7 +154,6 @@ internal object TorrDownloadStore {
  fun queue(context:Context,ids:List<String>) {}
 }
 object PortableMaintenance { var running=false }
-object TorrPlayback { fun isVideo(path:String)=path.endsWith(".mkv") }
 object TorrDownloadSpace { fun read(context:Context)=0 }
 object TorrDownloadActions { fun startMany(context:Context,ids:List<String>) {} }
 data class PrefetchEpisode(val id:Int,val path:String,val bytes:Long)
@@ -138,7 +165,10 @@ class TorrSafTarget:Closeable {
  override fun close() {}
  companion object { fun open(resolver:ContentResolver,uri:Uri)=TorrSafTarget() }
 }
-fun portableSafDirectChild(resolver:ContentResolver,tree:Uri,parent:String,child:String):Boolean=error("Recovery must reuse its verified parent listing")
+fun portableSafDirectChild(resolver:ContentResolver,tree:Uri,parent:String,child:String):Boolean {
+ check(resolver.checkDirectChild) { "Recovery must reuse its verified parent listing" }
+ return resolver.documents[child]?.parent==parent
+}
 '''
 checks = r'''package tv.orbit.shield
 import android.content.Context
@@ -184,6 +214,60 @@ fun main()=runBlocking {
  check(TorrDownloadStore.jobs.value.size==37 && TorrDownloadStore.jobs.value.none { it.index in 1..3 })
  check(provider.creates==0 && provider.deletes==0)
 
+ ctx=fixture()
+ val files=ctx.contentResolver
+ files.bodies["file7"]=ByteArray(100) // Matching metadata with a zero-filled prefix.
+ files.bodies["file9"]=ByteArray(3)
+ files.failedReads+="file10"
+ files.unavailableBodies+="file11"
+ TorrPrefetch.recoverEntry(ctx,"movie",TorrServerCatalog.entry)
+ check(TorrDownloadStore.jobs.value.size==36 && TorrDownloadStore.jobs.value.none { it.index in setOf(7,9,10,11) })
+ val validJob=TorrDownloadStore.jobs.value.single { it.index==8 }
+ val badJob=validJob.copy(document=Docs.buildDocumentUriUsingTree(tree,"file7").toString(),finalName="Show.S01E07.mkv")
+ check(TorrPrefetch.playable(ctx,validJob) && !TorrPrefetch.playable(ctx,badJob))
+ check(TorrPrefetch.savedStatus(ctx,badJob)==SavedVideoIntegrity.Result.INVALID)
+ check(TorrPrefetch.savedStatus(ctx,badJob.copy(document=Docs.buildDocumentUriUsingTree(tree,"file10").toString()))==SavedVideoIntegrity.Result.UNAVAILABLE)
+ check(TorrPrefetch.savedStatus(ctx,validJob.copy(total=99))==SavedVideoIntegrity.Result.INVALID)
+ check(TorrPrefetch.savedStatus(ctx,validJob.copy(state="paused"))==SavedVideoIntegrity.Result.UNAVAILABLE)
+ var cancelledStatus=false
+ val priorOpens=files.opens
+ files.afterQuery={ cancelledStatus=true }
+ check(runCatching { TorrPrefetch.savedStatus(ctx,validJob) { if(cancelledStatus) throw CancellationException() } }
+  .exceptionOrNull() is CancellationException && files.opens==priorOpens)
+ files.afterQuery=null
+ fun checkFile(extension:String,size:Long):SavedVideoIntegrity.Result = SavedVideoIntegrity.check(files,Uri.parse(validJob.document),"video.$extension",size)
+ files.bodies["file8"]=ByteArray(8192).also { it[0]=1 }
+ files.headerBytesRead=0;files.chunkSize=200
+ check(checkFile("mpg",8192)==SavedVideoIntegrity.Result.VALID && files.headerBytesRead==4096)
+ check(checkFile("mkv",8192)==SavedVideoIntegrity.Result.INVALID)
+ check(checkFile("WEBM",8192)==SavedVideoIntegrity.Result.INVALID)
+ files.bodies["file8"]=ByteArray(8192)
+ check(checkFile("m2ts",8192)==SavedVideoIntegrity.Result.INVALID)
+ val opens=files.opens
+ check(checkFile("zip",8192)==SavedVideoIntegrity.Result.VALID && files.opens==opens)
+ check(files.creates==0 && files.deletes==0)
+
+ val httpDocument=Docs.buildDocumentUriUsingTree(tree,"attachment")
+ val httpJob=validJob.copy(document=httpDocument.toString(),parentId="root",grouped=false,finalName="attachment.mkv",
+  http=HttpDownloadOrigin(null,"fixture",null))
+ files.checkDirectChild=true
+ files.documents["attachment"]=FakeDocument("attachment","root","attachment.mkv",100,"video")
+ check(TorrDownloadDocuments.verifyCompletedHttp(ctx,httpJob)==httpDocument)
+ files.bodies["attachment"]=ByteArray(100)
+ check(runCatching { TorrDownloadDocuments.verifyCompletedHttp(ctx,httpJob) }.isFailure)
+ files.documents["attachment"]=FakeDocument("attachment","root","attachment.zip",100,"archive")
+ val beforeZip=files.opens
+ check(TorrDownloadDocuments.verifyCompletedHttp(ctx,httpJob.copy(finalName="attachment.zip"))==httpDocument && files.opens==beforeZip)
+
+ ctx=fixture()
+ val cancelledOnRead=launch {
+  val job=currentCoroutineContext()[Job]!!
+  ctx.contentResolver.afterRead={ job.cancel() }
+  TorrPrefetch.recoverEntry(ctx,"movie",TorrServerCatalog.entry)
+ }
+ cancelledOnRead.join()
+ check(cancelledOnRead.isCancelled && TorrDownloadStore.jobs.value.isEmpty() && ctx.contentResolver.opens==1)
+
  ctx=fixture();ctx.prefs.values["downloads.torrserver.groups"]="[]"
  TorrPrefetch.recoverSaved(ctx,"movie",listOf(hash))
  check(TorrServerCatalog.cachedRequests==0 && ctx.contentResolver.lists.isEmpty() && TorrDownloadStore.jobs.value.isEmpty())
@@ -212,7 +296,7 @@ fun main()=runBlocking {
  check(runCatching { TorrPrefetch.recoverEntry(ctx,"movie",TorrServerCatalog.entry) }.exceptionOrNull() is CancellationException)
  check(TorrDownloadStore.jobs.value.isEmpty())
  check(TorrServerCatalog.peerRequests==0 && ctx.contentResolver.creates==0 && ctx.contentResolver.deletes==0)
- println("PASS: cached-only discovery, bounded directory IO, existing/colliding/missing files, damaged journal, concurrent requests and cancellation/maintenance/folder change")
+ println("PASS: cached-only discovery, bounded directory/header IO, existing/colliding/missing files, zero/truncated video headers, unavailable reads, intact siblings, completed HTTP video versus nonvideo, damaged journal, concurrent requests and cancellation/maintenance/folder change")
 }
 '''
 
@@ -226,7 +310,7 @@ with tempfile.TemporaryDirectory(prefix="gostex-completed-discovery-") as td:
     cp = ":".join(map(str, [COMPILER[1], COMPILER[4], jsonjar]))
     command = [str(JAVA), "-cp", ":".join(map(str, COMPILER)), "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler",
                "-no-stdlib", "-no-reflect", "-classpath", cp, "-d", str(folder / "classes")]
-    command += [str(base / name) for name in ("TorrPrefetch.kt", "TorrDownloadGroups.kt", "TorrDownloadDocuments.kt", "TorrDownloadPaths.kt", "HttpDownloadAdmission.kt")]
+    command += [str(base / name) for name in ("TorrPrefetch.kt", "TorrDownloadGroups.kt", "TorrDownloadDocuments.kt", "TorrDownloadPaths.kt", "HttpDownloadAdmission.kt", "SavedVideoIntegrity.kt", "TorrPlayback.kt")]
     command += [str(folder / name) for name in sources]
     result = subprocess.run(command, capture_output=True, text=True)
     if result.returncode:

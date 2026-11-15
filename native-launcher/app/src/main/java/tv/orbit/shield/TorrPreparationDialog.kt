@@ -18,10 +18,12 @@ import kotlinx.coroutines.withContext
 
 /** Shared preparation UI for the media library and direct torrent playback. */
 internal object TorrPreparationDialog {
-    fun show(activity: ComponentActivity, hash: String, fileId: Int, onOpen: () -> Unit, onDismiss: () -> Unit, startPreload: Boolean = true, trackDownload: Boolean = false, downloadPreparation: Job? = null): AlertDialog {
+    fun show(activity: ComponentActivity, hash: String, fileId: Int, onOpen: () -> Unit, onDismiss: () -> Unit, startPreload: Boolean = true, trackDownload: Boolean = false, downloadPreparation: Job? = null,
+             damagedLocalCopy: Boolean = false): AlertDialog {
+        val warning = if (damagedLocalCopy) activity.getString(R.string.prefetch_damaged_stream) else ""
         val dialog = AlertDialog.Builder(activity)
             .setTitle(R.string.movies_buffer_title)
-            .setMessage(R.string.movies_buffer_starting)
+            .setMessage(listOf(warning, activity.getString(R.string.movies_buffer_starting)).filter { it.isNotEmpty() }.joinToString("\n\n"))
             .setNegativeButton(R.string.movies_cancel, null)
             .setPositiveButton(R.string.movies_buffer_open, null)
             .create()
@@ -33,7 +35,7 @@ internal object TorrPreparationDialog {
         var preloadMessage = ""
         var downloadMessage = if (trackDownload) activity.getString(R.string.prefetch_preparing) else ""
         fun updateMessage() {
-            if (dialog.isShowing) dialog.setMessage(listOf(lastStatus, downloadMessage, preloadMessage).filter { it.isNotEmpty() }.joinToString("\n\n"))
+            if (dialog.isShowing) dialog.setMessage(listOf(warning, lastStatus, downloadMessage, preloadMessage).filter { it.isNotEmpty() }.joinToString("\n\n"))
         }
         dialog.setOnDismissListener {
             monitor?.cancel(); preload?.cancel(); downloadMonitor?.cancel(); preparationCompletion?.dispose(); onDismiss()
@@ -57,7 +59,7 @@ internal object TorrPreparationDialog {
                         "paused" -> R.string.torr_download_paused
                         "finalizing" -> R.string.torr_download_finalizing
                         "done" -> R.string.prefetch_ready
-                        else -> R.string.torr_download_error
+                        else -> if (job.error == "video_invalid") R.string.torr_download_video_invalid else R.string.torr_download_error
                     }
                     val displayOffset = downloadDisplayOffset(job, progress)
                     val downloaded = android.text.format.Formatter.formatShortFileSize(activity, displayOffset)

@@ -24,4 +24,7 @@
     <string name="prefetch_delete">Удалить файл</string>
     <string name="prefetch_delete_confirm">Удалить загруженный файл «%1$s»? Источник в медиатеке сохранится.</string>
     <string name="prefetch_delete_failed">Не удалось безопасно удалить файл. Проверьте накопитель.</string>
+    <string name="prefetch_checking">Проверяем сохранённую копию…</string>
+    <string name="prefetch_damaged">Сохранённая копия повреждена</string>
+    <string name="prefetch_damaged_stream">Сохранённая копия повреждена. Серия откроется из раздачи.</string>
 </resources>

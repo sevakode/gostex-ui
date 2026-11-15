@@ -146,11 +146,31 @@ internal object TorrPrefetch {
         return prepared
     }
 
-    fun playable(context: Context, job: TorrDownloadJob): Boolean = job.state == "done" && runCatching {
-        val uri = Uri.parse(job.document)
-        val size = context.contentResolver.query(uri, arrayOf(android.provider.DocumentsContract.Document.COLUMN_SIZE), null, null, null)?.use {
-            if (it.moveToFirst() && !it.isNull(0)) it.getLong(0) else -1L
-        } ?: -1L
-        size == job.total && context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { true } == true
-    }.getOrDefault(false)
+    fun savedStatus(context: Context, job: TorrDownloadJob, checkActive: () -> Unit = {}): SavedVideoIntegrity.Result {
+        if (job.state != "done") return SavedVideoIntegrity.Result.UNAVAILABLE
+        checkActive()
+        return try {
+            val uri = Uri.parse(job.document)
+            val resolver = context.contentResolver
+            val size = resolver.query(uri, arrayOf(android.provider.DocumentsContract.Document.COLUMN_SIZE), null, null, null)?.use {
+                if (it.moveToFirst() && !it.isNull(0)) it.getLong(0) else -1L
+            } ?: -1L
+            checkActive()
+            when {
+                size < 0 -> SavedVideoIntegrity.Result.UNAVAILABLE
+                size != job.total -> SavedVideoIntegrity.Result.INVALID
+                TorrPlayback.isVideo(job.finalName) -> SavedVideoIntegrity.check(resolver, uri, job.finalName, size, checkActive)
+                resolver.openAssetFileDescriptor(uri, "r")?.use { true } == true -> SavedVideoIntegrity.Result.VALID
+                else -> SavedVideoIntegrity.Result.UNAVAILABLE
+            }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            checkActive()
+            SavedVideoIntegrity.Result.UNAVAILABLE
+        }
+    }
+
+    fun playable(context: Context, job: TorrDownloadJob): Boolean =
+        savedStatus(context, job) == SavedVideoIntegrity.Result.VALID
 }

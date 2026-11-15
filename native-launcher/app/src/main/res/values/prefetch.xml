@@ -24,4 +24,7 @@
     <string name="prefetch_delete">Delete file</string>
     <string name="prefetch_delete_confirm">Delete the downloaded file “%1$s”? The streaming source stays in your library.</string>
     <string name="prefetch_delete_failed">Could not safely delete the downloaded file. Check the drive.</string>
+    <string name="prefetch_checking">Checking the saved copy…</string>
+    <string name="prefetch_damaged">Saved copy is damaged</string>
+    <string name="prefetch_damaged_stream">The saved copy is damaged. This episode will open as a stream.</string>
 </resources>

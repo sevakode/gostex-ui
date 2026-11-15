@@ -1,4 +1,4 @@
-"""Exercise old and new resume positions at the end and in the middle of a video."""
+"""Exercise resume positions and automatic completion after the actual player launch."""
 from pathlib import Path
 import subprocess
 import tempfile
@@ -41,7 +41,63 @@ fun main() {
     check(videoCheckpoint(20_000, 100_000) == 20_000L)
     check(videoCheckpoint(96_000, 100_000) == 0L)
     check(videoCheckpoint(96_000, 100_000, false) == 96_000L)
-    println("PASS: near-end restart and mid-video resume")
+
+    var completionChecks = 0
+    fun verify(name: String, expected: Boolean, success: Boolean = true, exactItem: Boolean = true,
+               patched: Boolean = true, explicitEnd: Boolean = true,
+               hasPosition: Boolean = true, hasDuration: Boolean = true,
+               position: Long = duration, returnedDuration: Long = duration,
+               launchedAt: Long? = 1_000_000L, returnedAt: Long = 1_002_000L) {
+        val actual = videoShouldAdvanceAfterLaunch(success, exactItem, patched, explicitEnd,
+            hasPosition, hasDuration, position, returnedDuration, launchedAt, returnedAt)
+        check(actual == expected) { "$name: expected $expected, got $actual" }
+        completionChecks++
+    }
+    // Real failure window: the corrupt episode returned as an end within 0.54–0.86 s.
+    for (elapsed in listOf(0L, 540L, 560L, 860L, 1_499L)) {
+        verify("early explicit end $elapsed", false, returnedAt = 1_000_000L + elapsed)
+        verify("early legacy numeric end $elapsed", false, patched = false,
+            returnedAt = 1_000_000L + elapsed)
+        verify("stale near-end duration cannot bypass floor $elapsed", false,
+            position = 400L, returnedDuration = 400L, returnedAt = 1_000_000L + elapsed)
+    }
+    verify("boundary explicit end", true, returnedAt = 1_001_500L)
+    verify("normal explicit end", true)
+    verify("short clip after launch floor", true, position = 1_600L, returnedDuration = 1_600L)
+    verify("legitimate near-end continuation after launch floor", true,
+        position = duration - 250L)
+    // Native VLC can clear its time/duration before returning a genuine EndReached result.
+    verify("explicit end with absent numeric metadata", true, hasPosition = false,
+        hasDuration = false, position = -1L, returnedDuration = -1L)
+    verify("explicit end with cleared numeric metadata", true, position = 0L, returnedDuration = 0L)
+    verify("patched Back exactly at end", false, explicitEnd = false)
+    verify("patched Back near end", false, explicitEnd = false, position = duration - 1_000L)
+    verify("failed player result", false, success = false)
+    verify("unrelated URI", false, exactItem = false)
+    verify("missing current launch", false, launchedAt = null)
+    verify("negative current launch", false, launchedAt = -1L)
+    verify("clock before current launch", false, returnedAt = 999_999L)
+    verify("elapsed starts at zero", true, launchedAt = 0L, returnedAt = 1_500L)
+    verify("large monotonic elapsed", true, launchedAt = 1L, returnedAt = Long.MAX_VALUE)
+    verify("large timestamps do not overflow", true, launchedAt = Long.MAX_VALUE - 1_500L,
+        returnedAt = Long.MAX_VALUE)
+    verify("large early timestamps stay early", false, launchedAt = Long.MAX_VALUE - 860L,
+        returnedAt = Long.MAX_VALUE)
+    // Old external VLC does not know our explicit-end flag and retains its numeric contract.
+    verify("legacy numeric end", true, patched = false, explicitEnd = false)
+    verify("legacy near end", true, patched = false, explicitEnd = false, position = duration - 2_000L)
+    verify("legacy incomplete", false, patched = false, position = duration - 2_001L)
+    verify("legacy missing position", false, patched = false, hasPosition = false)
+    verify("legacy missing duration", false, patched = false, hasDuration = false)
+    verify("unrecognized explicit flag cannot bypass legacy metrics", false,
+        patched = false, hasPosition = false, hasDuration = false, position = 0L, returnedDuration = 0L)
+    // A minute spent choosing Resume is not part of the attempt's evidence.
+    verify("resume dialog time excluded", false, launchedAt = 1_060_000L, returnedAt = 1_060_860L)
+    verify("resumed attempt later completes", true, launchedAt = 1_060_000L, returnedAt = 1_062_000L)
+    // Every result must have its own live timestamp; an old successful attempt cannot be reused.
+    verify("second attempt starts its own floor", false, launchedAt = 1_062_000L, returnedAt = 1_062_540L)
+    verify("consumed attempt evidence is absent", false, launchedAt = null, returnedAt = 1_070_000L)
+    println("PASS: resume/checkpoint boundaries and $completionChecks automatic completion cases")
 }
 '''
 with tempfile.TemporaryDirectory(prefix='gostex-video-resume-') as td:

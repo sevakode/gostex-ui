@@ -24,4 +24,7 @@
     <string name="prefetch_delete">Eliminar archivo</string>
     <string name="prefetch_delete_confirm">¿Eliminar el archivo descargado «%1$s»? La fuente seguirá en la biblioteca.</string>
     <string name="prefetch_delete_failed">No se pudo eliminar el archivo de forma segura. Comprueba la unidad.</string>
+    <string name="prefetch_checking">Comprobando la copia guardada…</string>
+    <string name="prefetch_damaged">La copia guardada está dañada</string>
+    <string name="prefetch_damaged_stream">La copia guardada está dañada. El episodio se abrirá en streaming.</string>
 </resources>

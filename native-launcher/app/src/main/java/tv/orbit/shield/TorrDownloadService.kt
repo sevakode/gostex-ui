@@ -138,7 +138,13 @@ internal class TorrDownloadService : Service() {
                                 try {
                                     phase = "storage"
                                     TorrDownloadDocuments.verifyPartial(this, job)
-                                    end = TorrSafTarget.open(contentResolver, Uri.parse(job.document)).use { target ->
+                                    val document = Uri.parse(job.document)
+                                    if (job.offset >= SavedVideoIntegrity.HEADER_BYTES && !job.requiresHttpRestart) {
+                                        requireVideoHeader(job, document) {
+                                            if (cancelled()) throw kotlinx.coroutines.CancellationException()
+                                        }
+                                    }
+                                    end = TorrSafTarget.open(contentResolver, document).use { target ->
                                         TorrDownloadPlaybackRate(this).use { rate ->
                                             val throttle = TorrDownloadThrottle(rate::current)
                                             phase = "transfer"
@@ -227,6 +233,7 @@ internal class TorrDownloadService : Service() {
                         val reason = when (error) {
                             is TorrDownloadLowSpace -> "space"
                             is TorrDownloadSpaceUnavailable -> "space_unavailable"
+                            is TorrVideoIntegrityFailure -> "video_invalid"
                             is TorrSourceFailure -> error.reason
                             is TorrStorageFailure -> "storage"
                             else -> phase
@@ -288,10 +295,12 @@ internal class TorrDownloadService : Service() {
         // has those bytes. It may have been truncated or replaced while the app
         // was stopped. Never expose it as a completed ROM until checked again.
         if (job.offset != job.total) throw IOException("Incomplete checkpoint")
-        TorrSafTarget.open(contentResolver, completed ?: Uri.parse(job.document)).use { target ->
+        val document = completed ?: Uri.parse(job.document)
+        TorrSafTarget.open(contentResolver, document).use { target ->
             TorrDownloadEngine.verifyCompleted(job.total, target, TorrDownloadCheckpoint(job.offset, job.etag),
                 requireStrongEtag = job.http?.let { it.expectedEtag != null } ?: true)
         }
+        requireVideoHeader(job, document)
         if (completed != null) return completed
         val result = DocumentsContract.renameDocument(contentResolver, Uri.parse(job.document), job.finalName)
             ?: throw IOException("Cannot finish download")
@@ -303,6 +312,16 @@ internal class TorrDownloadService : Service() {
         }
         if (name != job.finalName) throw IOException("Provider renamed document unexpectedly")
         return result
+    }
+
+    private class TorrVideoIntegrityFailure : IOException("Invalid video header")
+
+    private fun requireVideoHeader(job: TorrDownloadJob, document: Uri, checkActive: () -> Unit = {}) {
+        when (SavedVideoIntegrity.check(contentResolver, document, job.finalName, job.total, checkActive)) {
+            SavedVideoIntegrity.Result.VALID -> Unit
+            SavedVideoIntegrity.Result.INVALID -> throw TorrVideoIntegrityFailure()
+            SavedVideoIntegrity.Result.UNAVAILABLE -> throw TorrStorageFailure()
+        }
     }
 
     private val openDownloads by lazy {

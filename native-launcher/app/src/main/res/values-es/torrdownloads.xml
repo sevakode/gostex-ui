@@ -153,4 +153,5 @@
     <string name="http_download_restart_confirm">¿Descargar desde el principio? El archivo parcial se reemplazará solo cuando el servidor pueda enviar el archivo. Cancela para conservar lo que ya se descargó.</string>
     <string name="http_download_restart_access_restored">Acceso a la carpeta restablecido. Elige Empezar de nuevo cuando quieras.</string>
     <string name="http_download_restart_access_check">Comprueba la unidad y el archivo. Luego elige Empezar de nuevo.</string>
+    <string name="torr_download_video_invalid">El archivo de vídeo está dañado. Elimina la copia incompleta para volver a descargarlo.</string>
 </resources>

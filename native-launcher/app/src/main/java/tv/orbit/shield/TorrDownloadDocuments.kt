@@ -207,6 +207,11 @@ internal object TorrDownloadDocuments {
                 !c.isNull(2) && c.getLong(2) == job.total && c.getString(3) != DocumentsContract.Document.MIME_TYPE_DIR && !c.moveToNext()
         } ?: false
         if (!matches) throw IOException("Downloaded file no longer matches")
+        when (SavedVideoIntegrity.check(context.contentResolver, document, job.finalName, job.total)) {
+            SavedVideoIntegrity.Result.VALID -> Unit
+            SavedVideoIntegrity.Result.INVALID -> throw IOException("Downloaded video has an invalid header")
+            SavedVideoIntegrity.Result.UNAVAILABLE -> throw IOException("Downloaded video unavailable")
+        }
         return document
     }
 
@@ -267,7 +272,12 @@ internal object TorrDownloadDocuments {
                 } ?: false
                 if (!matches || android.os.Build.VERSION.SDK_INT >= 29 && !DocumentsContract.isChildDocument(context.contentResolver,
                         DocumentsContract.buildDocumentUriUsingTree(tree, parentId), document)) continue
-                context.contentResolver.openAssetFileDescriptor(document, "r")?.use { } ?: continue
+                if (TorrPlayback.isVideo(parts.last())) {
+                    val status = SavedVideoIntegrity.check(context.contentResolver, document, parts.last(), file.size, checkActive)
+                    if (status != SavedVideoIntegrity.Result.VALID) continue
+                } else {
+                    context.contentResolver.openAssetFileDescriptor(document, "r")?.use { } ?: continue
+                }
                 checkActive()
                 val job = TorrDownloadJob(UUID.randomUUID().toString(), entry.hash, file.id, file.size, parts.last(), tree.toString(),
                     document.toString(), parts.last(), offset = file.size, state = "done", parentId = parentId, grouped = true, prefetchMovieId = movieId)

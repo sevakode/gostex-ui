@@ -707,6 +707,7 @@ import kotlinx.coroutines.withContext
                 "space" -> R.string.torr_download_low_space
                 "space_unavailable" -> R.string.torr_download_space_unknown
                 "storage" -> R.string.torr_download_storage_error
+                "video_invalid" -> R.string.torr_download_video_invalid
                 "finalize", "finalizing" -> R.string.torr_download_finalize_error
                 "source_timeout" -> R.string.torr_download_source_timeout
                 "source_connect" -> R.string.torr_download_source_connect
@@ -722,7 +723,7 @@ import kotlinx.coroutines.withContext
         val httpTorrent = job.http != null && job.finalName.endsWith(".torrent", ignoreCase = true)
         val action = when (job.state) {
             "queued", "running" -> tr(R.string.torr_download_pause)
-            "paused", "error" -> tr(when {
+            "paused", "error" -> if (job.error == "video_invalid") "" else tr(when {
                 restoreAccess -> R.string.torr_folder_access_restore
                 needsSiteSession(job) -> R.string.http_download_sign_in_again
                 job.requiresHttpRestart -> R.string.http_download_restart
@@ -744,6 +745,7 @@ import kotlinx.coroutines.withContext
                     when (job.state) {
                         "queued", "running" -> TorrDownloadActions.pause(activity, job.id)
                         "paused", "error" -> when {
+                            job.error == "video_invalid" -> Unit // The separate removal action asks for confirmation.
                             needsSiteSession(job) -> openBrowser(job.id)
                             job.requiresHttpRestart -> restartOffset = job.offset
                             else -> activity.startTorrDownload(job.id)

@@ -153,4 +153,5 @@
     <string name="http_download_restart_confirm">Download from the beginning? The partial file will be replaced only after the server is ready to send the file. Cancel to keep what you have downloaded.</string>
     <string name="http_download_restart_access_restored">Folder access restored. Choose Start over when you are ready.</string>
     <string name="http_download_restart_access_check">Check the drive and file, then choose Start over.</string>
+    <string name="torr_download_video_invalid">Damaged video file. Remove the incomplete copy to download it again.</string>
 </resources>

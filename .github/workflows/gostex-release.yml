@@ -28,10 +28,10 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           run=true
-          if release=$(gh release view --repo "$GH_REPO" --json tagName,targetCommitish --jq '[.tagName, .targetCommitish] | @tsv'); then
-            read -r tag baseline <<< "$release"
-            if [[ "$tag" =~ ^build-[0-9]+$ && "$baseline" =~ ^[0-9a-f]{40}$ ]] &&
-                (git cat-file -e "$baseline^{commit}" 2>/dev/null || git fetch --no-tags --depth=1 origin "$baseline") &&
+          if tag=$(gh release view --repo "$GH_REPO" --json tagName --jq .tagName); then
+            if [[ "$tag" =~ ^build-[0-9]+$ ]] &&
+                git fetch --no-tags --depth=1 origin "refs/tags/$tag" &&
+                baseline=$(git rev-parse --verify 'FETCH_HEAD^{commit}') &&
                 git diff --quiet "$baseline" HEAD -- native-launcher/vlc-patch/ \
                   native-launcher/checks/check_vlc_policy.py native-launcher/checks/kotlin_toolchain.py; then
               run=false

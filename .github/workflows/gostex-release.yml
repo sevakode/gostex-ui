@@ -108,6 +108,7 @@ jobs:
             native-launcher/checks/check_torr_completed_discovery.py \
             native-launcher/checks/check_torr_download.py \
             native-launcher/checks/check_torr_network_wait.py \
+            native-launcher/checks/check_torr_playback_rate.py \
             native-launcher/checks/check_download_indicator.py \
             native-launcher/checks/check_video_resume_logic.py \
             native-launcher/checks/check_torr_playlist_safety.py \

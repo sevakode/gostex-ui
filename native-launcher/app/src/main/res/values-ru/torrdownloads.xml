@@ -82,6 +82,9 @@
     <string name="torr_write_unlimited">Без ограничения</string>
     <string name="torr_status_rate_value">%1$s/с</string>
     <string name="torr_write_limit_note">Ограничивает только запись файлов GOSTEX; кеш TorrServer и другие приложения не ограничиваются.</string>
+    <string name="torr_write_playback_limit">Лимит записи при воспроизведении</string>
+    <string name="torr_write_playback_regular">Использовать обычный лимит</string>
+    <string name="torr_write_playback_hint">Действует, когда Android обнаруживает воспроизведение медиааудио. Применяется меньший из заданных лимитов.</string>
     <string name="torr_play_file">Смотреть этот файл</string>
     <string name="torr_play_failed">Не удалось открыть видеоплеер. Проверь плеер и TorrServer.</string>
     <string name="downloads_tab_visibility">Значок загрузок</string>

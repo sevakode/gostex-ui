@@ -132,7 +132,6 @@ internal class TorrDownloadService : Service() {
                         if (job.state != "running") continue
                         notificationUpdate(transfer, job)
                         if (job.offset < job.total) {
-                            val throttle = TorrDownloadThrottle({ TorrDownloadWriteRate.read(this) })
                             var end: TorrDownloadCheckpoint? = null
                             var retries = 0
                             while (end == null && !cancelled()) {
@@ -140,35 +139,38 @@ internal class TorrDownloadService : Service() {
                                     phase = "storage"
                                     TorrDownloadDocuments.verifyPartial(this, job)
                                     end = TorrSafTarget.open(contentResolver, Uri.parse(job.document)).use { target ->
-                                        phase = "transfer"
-                                        val checkpoint = TorrDownloadCheckpoint(job.offset, job.etag)
-                                        val save: (TorrDownloadCheckpoint) -> Unit = { saved ->
-                                            job = TorrDownloadStore.update(this, job.id) { it.copy(offset = saved.offset, etag = saved.etag) }
+                                        TorrDownloadPlaybackRate(this).use { rate ->
+                                            val throttle = TorrDownloadThrottle(rate::current)
+                                            phase = "transfer"
+                                            val checkpoint = TorrDownloadCheckpoint(job.offset, job.etag)
+                                            val save: (TorrDownloadCheckpoint) -> Unit = { saved ->
+                                                job = TorrDownloadStore.update(this, job.id) { it.copy(offset = saved.offset, etag = saved.etag) }
+                                            }
+                                            val space = {
+                                                val reserve = TorrDownloadSpace.read(this).toLong() * 1024 * 1024
+                                                if (reserve == 0L) null else (target.availableBytes() - reserve).coerceAtLeast(0L)
+                                            }
+                                            val beforeWrite: (Int) -> Boolean = { count -> throttle.beforeWrite(count, cancelled) }
+                                            val progress: (Long) -> Unit = { offset ->
+                                                TorrDownloadLiveProgress.report(job.id, offset)
+                                                notificationUpdate(transfer, job, offset)
+                                            }
+                                            val http = job.http
+                                            if (http == null) TorrDownloadEngine.transfer(
+                                                TorrDownloadSource(job.hash, job.index, job.total), target, checkpoint,
+                                                cancelled = cancelled, saveCheckpoint = save, spaceAllowance = space,
+                                                beforeWrite = beforeWrite, reportProgress = progress,
+                                            ) else TorrDownloadEngine.transfer(
+                                                http, job.total, target, checkpoint, cancelled = cancelled,
+                                                saveCheckpoint = save, spaceAllowance = space, beforeWrite = beforeWrite,
+                                                reportProgress = progress, abort = transfer.http,
+                                                resetForRestart = if (job.requiresHttpRestart) ({
+                                                    job = TorrDownloadStore.resetHttpCheckpoint(this, job.id)
+                                                    TorrDownloadLiveProgress.clear(job.id)
+                                                }) else null,
+                                                session = if (http.sessionBound) TorrDownloadStore.sessionFor(job.id) else null,
+                                            )
                                         }
-                                        val space = {
-                                            val reserve = TorrDownloadSpace.read(this).toLong() * 1024 * 1024
-                                            if (reserve == 0L) null else (target.availableBytes() - reserve).coerceAtLeast(0L)
-                                        }
-                                        val beforeWrite: (Int) -> Boolean = { count -> throttle.beforeWrite(count, cancelled) }
-                                        val progress: (Long) -> Unit = { offset ->
-                                            TorrDownloadLiveProgress.report(job.id, offset)
-                                            notificationUpdate(transfer, job, offset)
-                                        }
-                                        val http = job.http
-                                        if (http == null) TorrDownloadEngine.transfer(
-                                            TorrDownloadSource(job.hash, job.index, job.total), target, checkpoint,
-                                            cancelled = cancelled, saveCheckpoint = save, spaceAllowance = space,
-                                            beforeWrite = beforeWrite, reportProgress = progress,
-                                        ) else TorrDownloadEngine.transfer(
-                                            http, job.total, target, checkpoint, cancelled = cancelled,
-                                            saveCheckpoint = save, spaceAllowance = space, beforeWrite = beforeWrite,
-                                            reportProgress = progress, abort = transfer.http,
-                                            resetForRestart = if (job.requiresHttpRestart) ({
-                                                job = TorrDownloadStore.resetHttpCheckpoint(this, job.id)
-                                                TorrDownloadLiveProgress.clear(job.id)
-                                            }) else null,
-                                            session = if (http.sessionBound) TorrDownloadStore.sessionFor(job.id) else null,
-                                        )
                                     }
                                 } catch (error: TorrSourceFailure) {
                                     if (cancelled()) break

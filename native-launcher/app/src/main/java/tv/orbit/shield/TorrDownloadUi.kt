@@ -207,7 +207,6 @@ import kotlinx.coroutines.withContext
         }
     }
     var reserveMiB by remember { mutableStateOf(TorrDownloadSpace.read(activity)) }
-    var writeRateKiB by remember { mutableStateOf(TorrDownloadWriteRate.read(activity)) }
     var prefetchCount by remember { mutableIntStateOf(TorrPrefetch.count(activity)) }
     var prefetchQuota by remember { mutableIntStateOf(TorrPrefetch.quota(activity)) }
     var autoRetry by remember { mutableStateOf(TorrDownloadRetryOptions.read(activity)) }
@@ -589,21 +588,7 @@ import kotlinx.coroutines.withContext
         TorrentArtwork.enabled(activity, !autoCover)
     })
     Text(tr(R.string.downloads_auto_cover_hint), color = Color.LightGray, fontSize = 12.sp)
-    val writeRateLabel = if (writeRateKiB == 0) tr(R.string.torr_write_unlimited)
-        else tr(R.string.torr_status_rate_value, android.text.format.Formatter.formatShortFileSize(activity, writeRateKiB.toLong() * 1024))
-    SettingRow(tr(R.string.torr_write_limit), writeRateLabel, onClick = {
-        val choices = TorrDownloadWriteRate.choices
-        val labels = choices.map { if (it == 0) activity.getString(R.string.torr_write_unlimited)
-            else activity.getString(R.string.torr_status_rate_value, android.text.format.Formatter.formatShortFileSize(activity, it.toLong() * 1024)) }.toTypedArray()
-        android.app.AlertDialog.Builder(activity).setTitle(R.string.torr_write_limit)
-            .setSingleChoiceItems(labels, choices.indexOf(writeRateKiB)) { dialog, index ->
-                runCatching { TorrDownloadWriteRate.write(activity, choices[index]) }
-                    .onSuccess { writeRateKiB = choices[index] }
-                    .onFailure { activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed) }
-                dialog.dismiss()
-            }.setNegativeButton(R.string.cancel, null).show()
-    })
-    Text(tr(R.string.torr_write_limit_note), color = Color.LightGray, fontSize = 13.sp)
+    DownloadWriteLimits(activity)
     }
     if (showMagnet) {
     Text(tr(R.string.torr_download_magnet), color = Color.LightGray, fontSize = 13.sp)
@@ -889,4 +874,54 @@ import kotlinx.coroutines.withContext
     }
     if (page > 0) SettingRow("‹", onClick = { page-- })
     if ((page + 1) * 20 < visibleEntries.size) SettingRow("›", onClick = { page++ })
+}
+
+@Composable
+private fun DownloadWriteLimits(activity: MainActivity) {
+    val context = activity.applicationContext
+    val prefs = remember(context) { context.getSharedPreferences("orbit", android.content.Context.MODE_PRIVATE) }
+    val scope = rememberCoroutineScope()
+    var regularRate by remember(context) { mutableIntStateOf(TorrDownloadWriteRate.read(context)) }
+    var playbackRate by remember(context) { mutableIntStateOf(TorrDownloadWriteRate.readPlayback(context)) }
+    var saving by remember { mutableStateOf(false) }
+    DisposableEffect(prefs) {
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == null || key == TorrDownloadWriteRate.KEY) regularRate = TorrDownloadWriteRate.read(context)
+            if (key == null || key == TorrDownloadWriteRate.PLAYBACK_KEY) playbackRate = TorrDownloadWriteRate.readPlayback(context)
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        regularRate = TorrDownloadWriteRate.read(context)
+        playbackRate = TorrDownloadWriteRate.readPlayback(context)
+        onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+
+    fun rateLabel(rate: Int, defaultLabel: Int): String = if (rate == 0) activity.getString(defaultLabel)
+        else activity.getString(R.string.torr_status_rate_value, android.text.format.Formatter.formatShortFileSize(activity, rate.toLong() * 1024))
+
+    fun pickRate(title: Int, defaultLabel: Int, rate: Int, write: (android.content.Context, Int) -> Unit) {
+        if (saving) return
+        val choices = TorrDownloadWriteRate.choices
+        val labels = choices.map { rateLabel(it, defaultLabel) }.toTypedArray()
+        android.app.AlertDialog.Builder(activity).setTitle(title)
+            .setSingleChoiceItems(labels, choices.indexOf(rate)) { dialog, index ->
+                dialog.dismiss()
+                val choice = choices[index]
+                saving = true
+                scope.launch {
+                    try { withContext(Dispatchers.IO) { write(context, choice) } }
+                    catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                    catch (_: Exception) { activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed) }
+                    finally { saving = false }
+                }
+            }.setNegativeButton(R.string.cancel, null).show()
+    }
+
+    SettingRow(tr(R.string.torr_write_limit), rateLabel(regularRate, R.string.torr_write_unlimited), onClick = {
+        pickRate(R.string.torr_write_limit, R.string.torr_write_unlimited, regularRate, TorrDownloadWriteRate::write)
+    })
+    Text(tr(R.string.torr_write_limit_note), color = Color.LightGray, fontSize = 13.sp)
+    SettingRow(tr(R.string.torr_write_playback_limit), rateLabel(playbackRate, R.string.torr_write_playback_regular), onClick = {
+        pickRate(R.string.torr_write_playback_limit, R.string.torr_write_playback_regular, playbackRate, TorrDownloadWriteRate::writePlayback)
+    })
+    Text(tr(R.string.torr_write_playback_hint), color = Color.LightGray, fontSize = 12.sp)
 }

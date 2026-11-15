@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_copy_title">Settings backup</string>
+    <string name="settings_copy_hint">Includes only launcher settings.</string>
+    <string name="settings_copy_export">Export JSON</string>
+    <string name="settings_copy_import">Import JSON</string>
+    <string name="settings_copy_exported">Settings file saved.</string>
+    <string name="settings_copy_import_failed">Could not open a valid settings file.</string>
+    <string name="settings_copy_export_failed">Could not save the settings file.</string>
+    <string name="settings_copy_apply_failed">Could not save the imported settings.</string>
+    <string name="settings_copy_no_changes">The settings in this file already match.</string>
+    <string name="settings_copy_stale">Settings changed. Select the file again.</string>
+    <string name="settings_copy_busy">Working with the settings file…</string>
+    <string name="settings_copy_applied">Settings applied.</string>
+    <string name="settings_copy_apply">Apply</string>
+    <plurals name="settings_copy_confirm">
+        <item quantity="one">Apply %1$d setting from this file?</item>
+        <item quantity="other">Apply %1$d settings from this file?</item>
+    </plurals>
+</resources>

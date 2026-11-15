@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_copy_title">Копия настроек</string>
+    <string name="settings_copy_hint">В копию входят только настройки лаунчера.</string>
+    <string name="settings_copy_export">Экспорт в JSON</string>
+    <string name="settings_copy_import">Импорт из JSON</string>
+    <string name="settings_copy_exported">Файл настроек сохранён.</string>
+    <string name="settings_copy_import_failed">Не удалось открыть файл настроек. Проверьте, что это копия настроек GOSTEX.</string>
+    <string name="settings_copy_export_failed">Не удалось сохранить файл настроек.</string>
+    <string name="settings_copy_apply_failed">Не удалось сохранить настройки из файла.</string>
+    <string name="settings_copy_no_changes">Настройки совпадают с файлом.</string>
+    <string name="settings_copy_stale">Настройки изменились. Выберите файл ещё раз.</string>
+    <string name="settings_copy_busy">Обработка файла настроек…</string>
+    <string name="settings_copy_applied">Настройки применены.</string>
+    <string name="settings_copy_apply">Применить</string>
+    <plurals name="settings_copy_confirm">
+        <item quantity="one">Применить %1$d настройку из файла?</item>
+        <item quantity="few">Применить %1$d настройки из файла?</item>
+        <item quantity="many">Применить %1$d настроек из файла?</item>
+        <item quantity="other">Применить %1$d настроек из файла?</item>
+    </plurals>
+</resources>

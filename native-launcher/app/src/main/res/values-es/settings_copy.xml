@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_copy_title">Copia de ajustes</string>
+    <string name="settings_copy_hint">Solo incluye los ajustes del lanzador.</string>
+    <string name="settings_copy_export">Exportar JSON</string>
+    <string name="settings_copy_import">Importar JSON</string>
+    <string name="settings_copy_exported">Archivo de ajustes guardado.</string>
+    <string name="settings_copy_import_failed">No se pudo abrir un archivo de ajustes válido.</string>
+    <string name="settings_copy_export_failed">No se pudo guardar el archivo de ajustes.</string>
+    <string name="settings_copy_apply_failed">No se pudieron guardar los ajustes importados.</string>
+    <string name="settings_copy_no_changes">Los ajustes del archivo ya coinciden.</string>
+    <string name="settings_copy_stale">Los ajustes cambiaron. Selecciona el archivo otra vez.</string>
+    <string name="settings_copy_busy">Procesando el archivo de ajustes…</string>
+    <string name="settings_copy_applied">Ajustes aplicados.</string>
+    <string name="settings_copy_apply">Aplicar</string>
+    <plurals name="settings_copy_confirm">
+        <item quantity="one">¿Aplicar %1$d ajuste de este archivo?</item>
+        <item quantity="other">¿Aplicar %1$d ajustes de este archivo?</item>
+    </plurals>
+</resources>

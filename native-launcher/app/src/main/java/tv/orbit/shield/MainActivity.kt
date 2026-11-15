@@ -114,6 +114,7 @@ class MainActivity : ComponentActivity() {
     private val videoPlayer = VideoPlayerChooser(this) { emulatorInstall }
     private val updatesLazy = lazy { LauncherUpdates(this) }
     internal val updates: LauncherUpdates by updatesLazy
+    internal val settingsCopy = SettingsCopyController(this, ::launchDocumentPicker)
     private val diagnosticExport = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
         if (PortableMaintenance.running) return@registerForActivityResult
         if (uri != null) updates.exportDiagnostics(uri)
@@ -2121,7 +2122,7 @@ private fun settingsParent(section: String): String = when {
     section == "portablePreview" -> "portableCopy"
     section in setOf("covers", "portableCopy") -> "libraryGroup"
     section in setOf("libraryGroup", "nowPlaying", "downloads", "playback") -> "mediaGroup"
-    section == "services" -> "systemGroup"
+    section in setOf("services", "settingsCopy") -> "systemGroup"
     else -> "root"
 }
 
@@ -2135,6 +2136,7 @@ private fun settingsTitle(section: String): Int = when {
         "nowPlaying" -> R.string.media_player
         "playback" -> R.string.settings_playback_title
         "services" -> R.string.settings_services_title
+        "settingsCopy" -> R.string.settings_copy_title
         "downloads" -> R.string.torr_download_channel
         "appearanceGroup" -> R.string.settings_appearance_group
         "mediaGroup" -> R.string.settings_media_group
@@ -2155,7 +2157,7 @@ private fun settingsTitle(section: String): Int = when {
     var savedSection by rememberSaveable { mutableStateOf(initialSection) }
     val section = when {
         savedSection == "videoOptions" -> "homeOptions"
-        savedSection.startsWith("clock/") || savedSection in setOf("root", "appearanceGroup", "mediaGroup", "libraryGroup", "controller", "localeGroup", "systemGroup", "language", "art", "grafana", "homeOptions", "appearance", "clock", "covers", "nowPlaying", "playback", "services", "updates", "portableCopy", "portablePreview", "downloads") -> savedSection
+        savedSection.startsWith("clock/") || savedSection in setOf("root", "appearanceGroup", "mediaGroup", "libraryGroup", "controller", "localeGroup", "systemGroup", "language", "art", "grafana", "homeOptions", "appearance", "clock", "covers", "nowPlaying", "playback", "services", "settingsCopy", "updates", "portableCopy", "portablePreview", "downloads") -> savedSection
         else -> "root"
     }
     // The route we leave identifies the exact parent row to restore on Back.
@@ -2214,9 +2216,10 @@ private fun settingsTitle(section: String): Int = when {
         "libraryGroup" -> (if (activity.legacyRecoveryPending) listOf("legacyRecovery") else emptyList()) +
             listOf("addGames", "rescanGames", "folders", "portableCopy", "covers", "ndsEmulator", "androidGames", "groupVersions", "libraryTab", "appsTab")
         "localeGroup" -> listOf("language", "clock")
-        "systemGroup" -> listOf("network", "browserSearch", "defaultHome", "shield", "services", "remote")
+        "systemGroup" -> listOf("network", "browserSearch", "defaultHome", "shield", "services", "settingsCopy", "remote")
         "services" -> listOf("vlcGostex", "torrServer", "torrServeInstall", "revancedManager")
         "portableCopy" -> listOf("copyAction", "portablePreview")
+        "settingsCopy" -> listOf("export", "import")
         else -> emptyList()
     }
     val focusedRow = returnRow.takeIf { it in rows } ?: rows.firstOrNull()
@@ -2303,6 +2306,7 @@ private fun settingsTitle(section: String): Int = when {
                 DefaultHomeSetting(activity, rowFocus("defaultHome"))
                 SettingRow(tr(R.string.settings_device_title), modifier = rowFocus("shield"), onClick = { activity.openSettings() })
                 SettingRow(tr(R.string.settings_services_title), tr(R.string.settings_services_summary), rowFocus("services"), onClick = { onSection("services") })
+                SettingRow(tr(R.string.settings_copy_title), tr(R.string.settings_copy_hint), rowFocus("settingsCopy"), onClick = { onSection("settingsCopy") })
                 SettingRow(tr(R.string.remote_autostart), tr(if (remoteAuto) R.string.enabled else R.string.disabled), rowFocus("remote"), isSelected = remoteAuto, trailing = if (remoteAuto) "✓" else "—", onClick = {
                     remoteAuto = !remoteAuto
                     prefs.edit().putBoolean("remoteAutostart", remoteAuto).apply()
@@ -2315,6 +2319,8 @@ private fun settingsTitle(section: String): Int = when {
                 ReVancedInstallSetting(activity, rowFocus("revancedManager"))
             } else if (section == "updates") {
                 UpdateSettings(activity, initialFocus)
+            } else if (section == "settingsCopy") {
+                SettingsCopySettings(activity, rowFocus("export"), rowFocus("import"))
             } else if (section == "downloads") {
                 TorrDownloadUi(activity, initialFocus)
             } else if (section == "nowPlaying") {

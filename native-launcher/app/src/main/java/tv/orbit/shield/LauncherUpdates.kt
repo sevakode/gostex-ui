@@ -32,9 +32,12 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.IOException
 import java.net.URI
 import java.security.MessageDigest
 import java.util.UUID
+
+private class UnreadableUpdateArchive(message: String, cause: Throwable? = null) : IOException(message, cause)
 
 internal data class UpdateOptions(
     val feedUrl: String = ReleaseChannels.ANDROID_ARM64_FEED,
@@ -364,13 +367,25 @@ internal class LauncherUpdates(private val activity: MainActivity) {
     }
     /** Validate identity/signers and manifest, in addition to the signed feed's size/SHA-256. */
     @Suppress("DEPRECATION") private fun verifyArchive(file: File, target: Release) {
-        require(target.platform == PLATFORM && file.isFile && file.length() == target.size) { "Invalid artifact" }
+        require(target.platform == PLATFORM) { "Wrong update platform" }
+        if (!file.isFile || file.length() != target.size) throw UnreadableUpdateArchive("Missing or truncated artifact")
         val digest = MessageDigest.getInstance("SHA-256")
-        file.inputStream().use { input -> val bytes = ByteArray(64 * 1024); while (true) {
-            if (Thread.currentThread().isInterrupted) throw InterruptedException()
-            val read = input.read(bytes); if (read < 0) break; digest.update(bytes, 0, read)
-        } }
-        require(digest.digest().joinToString("") { "%02x".format(it) }.equals(target.sha256, true)) { "Invalid artifact digest" }
+        try {
+            file.inputStream().use { input ->
+                val bytes = ByteArray(64 * 1024)
+                while (true) {
+                    if (Thread.currentThread().isInterrupted) throw InterruptedException()
+                    val read = input.read(bytes)
+                    if (read < 0) break
+                    digest.update(bytes, 0, read)
+                }
+            }
+        } catch (error: IOException) {
+            throw UnreadableUpdateArchive("Could not read artifact", error)
+        }
+        if (!digest.digest().joinToString("") { "%02x".format(it) }.equals(target.sha256, true)) {
+            throw UnreadableUpdateArchive("Invalid artifact digest")
+        }
         val archive = activity.packageManager.getPackageArchiveInfo(file.absolutePath, PackageManager.GET_SIGNING_CERTIFICATES)
             ?: error("Invalid APK")
         val installed = installedInfo()
@@ -484,6 +499,17 @@ internal class LauncherUpdates(private val activity: MainActivity) {
                 if (generation == operationId) status = R.string.updates_confirm_install
                 AndroidDiagnostics.event("update.install-request", "code=${target.versionCode}")
             } catch (error: CancellationException) { throw error }
+            catch (error: UnreadableUpdateArchive) {
+                if (generation == operationId) {
+                    download = null
+                    ready = false
+                    status = R.string.updates_download_again
+                    activity.notices.show(activity.getString(status), activity.getString(R.string.updates_download)) {
+                        if (release == target && !ready) downloadUpdate()
+                    }
+                }
+                AndroidDiagnostics.failure("update.cache", error)
+            }
             catch (error: Exception) { if (generation == operationId) status = R.string.updates_install_failed; AndroidDiagnostics.failure("update.install", error) }
             finally { if (generation == operationId) { busy = false; operation = null } }
         }

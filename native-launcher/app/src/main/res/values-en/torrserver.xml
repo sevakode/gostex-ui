@@ -12,9 +12,12 @@
     <string name="torr_install_title">Install TorrServe</string>
     <string name="torr_install_hint">Download the official Android client from GitHub</string>
     <string name="torr_install_open">Open TorrServe</string>
-    <string name="torr_install_installed">Android client is already installed</string>
+    <string name="torr_install_installed">Open TorrServe and download its server if needed.</string>
     <string name="torr_install_downloading">Downloading and checking the official APK…</string>
     <string name="torr_install_permission">Allow GOSTEX to install apps, return here and select Install again</string>
-    <string name="torr_install_confirm">Confirm the installation in Android. On first launch, download the server in TorrServe if needed.</string>
+    <string name="torr_install_confirm">Confirm the installation in Android.</string>
+    <string name="torr_install_retry">Retry installing TorrServe</string>
+    <string name="torr_install_cancelled">Installation canceled.</string>
+    <string name="torr_install_incomplete">TorrServe is still unavailable.</string>
     <string name="torr_install_failed">Could not download, verify or open the installer. Check the connection and try again.</string>
 </resources>

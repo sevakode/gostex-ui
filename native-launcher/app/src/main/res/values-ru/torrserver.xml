@@ -12,9 +12,12 @@
     <string name="torr_install_title">Установить TorrServe</string>
     <string name="torr_install_hint">Скачать официальный Android-клиент с GitHub</string>
     <string name="torr_install_open">Открыть TorrServe</string>
-    <string name="torr_install_installed">Android-клиент уже установлен</string>
+    <string name="torr_install_installed">Откройте TorrServe и скачайте в нём сервер, если нужно.</string>
     <string name="torr_install_downloading">Загрузка и проверка официального APK…</string>
     <string name="torr_install_permission">Разрешите GOSTEX установку приложений, вернитесь и снова выберите установку</string>
-    <string name="torr_install_confirm">Подтвердите установку в Android. При первом запуске при необходимости скачайте сервер в TorrServe.</string>
+    <string name="torr_install_confirm">Подтвердите установку в Android.</string>
+    <string name="torr_install_retry">Повторить установку TorrServe</string>
+    <string name="torr_install_cancelled">Установка отменена.</string>
+    <string name="torr_install_incomplete">TorrServe всё ещё недоступен.</string>
     <string name="torr_install_failed">Не удалось скачать, проверить или открыть установку. Проверьте сеть и повторите.</string>
 </resources>

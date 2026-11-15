@@ -16,6 +16,7 @@
     <string name="updates_confirm_install">Подтвердите обновление в установщике Android.</string>
     <string name="updates_install_success">GOSTEX успешно обновлён.</string>
     <string name="updates_install_failed">Обновление не установлено. Можно повторить попытку.</string>
+    <string name="updates_download_again">Сохранённый APK отсутствует или повреждён. Скачайте обновление ещё раз.</string>
     <string name="updates_found_notice">Доступен GOSTEX %1$s. Откройте «Обновления и диагностика» в настройках.</string>
     <string name="updates_ready_notice">GOSTEX %1$s проверен и готов к установке.</string>
     <string name="updates_available_version">Доступно обновление · GOSTEX %1$s</string>

@@ -446,7 +446,7 @@ import kotlinx.coroutines.withContext
                     chosenFiles = if (checked) chosenFiles - file.id else chosenFiles + file.id
                 })
                 if (TorrPlayback.isVideo(file.path)) SettingRow(tr(R.string.torr_play_file), file.path, onClick = {
-                    activity.prepareTorrPlayback(current.hash, file.id)
+                    activity.prepareTorrPlayback(current.hash, file.id, file.size)
                 })
             }
             if (filePage > 0) SettingRow("‹", onClick = { filePage-- })

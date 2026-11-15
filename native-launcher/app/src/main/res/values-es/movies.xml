@@ -97,6 +97,13 @@
     <string name="movies_restore_sent">Solicitud aceptada. Si no hay participantes, añade el torrent original con sus rastreadores.</string>
     <string name="movies_buffer_title">Preparando vídeo</string>
     <string name="movies_buffer_starting">Conectando con los pares…</string>
+    <string name="movies_growing_title">Ver mientras se descarga</string>
+    <string name="movies_growing_waiting">Esperando más datos en el archivo guardado.</string>
+    <string name="movies_growing_ready">El archivo guardado está listo para reproducirse.</string>
+    <string name="movies_growing_queued">El episodio está esperando en la cola de descargas.</string>
+    <string name="movies_growing_paused">La descarga se ha detenido. Reanúdala para ver el archivo guardado.</string>
+    <string name="movies_growing_unavailable">Esta descarga ya no está disponible.</string>
+    <string name="movies_growing_resume">Reanudar descarga</string>
     <string name="movies_buffer_open">Abrir reproductor ahora</string>
     <string name="movies_buffer_unknown">Desconocido</string>
     <string name="movies_buffer_status">Caché: %1$s / %2$s\nVelocidad del torrent: %3$s\n\nAbre el reproductor cuando quieras.</string>

@@ -155,7 +155,10 @@ internal object TorrDownloadStore {
 }
 object PortableMaintenance { var running=false }
 object TorrDownloadSpace { fun read(context:Context)=0 }
-object TorrDownloadActions { fun startMany(context:Context,ids:List<String>) {} }
+object TorrDownloadActions {
+ var starts=0
+ fun startMany(context:Context,ids:List<String>) { starts++ }
+}
 data class PrefetchEpisode(val id:Int,val path:String,val bytes:Long)
 fun planEpisodePrefetch(files:List<PrefetchEpisode>,current:Int,count:Int,existing:Set<Int>,free:Long?,reserve:Long,quota:Long,used:Long,includeCurrent:Boolean=false)=emptyList<PrefetchEpisode>()
 fun orderedEpisodeFiles(files:List<String>)=true
@@ -296,7 +299,35 @@ fun main()=runBlocking {
  check(runCatching { TorrPrefetch.recoverEntry(ctx,"movie",TorrServerCatalog.entry) }.exceptionOrNull() is CancellationException)
  check(TorrDownloadStore.jobs.value.isEmpty())
  check(TorrServerCatalog.peerRequests==0 && ctx.contentResolver.creates==0 && ctx.contentResolver.deletes==0)
- println("PASS: cached-only discovery, bounded directory/header IO, existing/colliding/missing files, zero/truncated video headers, unavailable reads, intact siblings, completed HTTP video versus nonvideo, damaged journal, concurrent requests and cancellation/maintenance/folder change")
+
+ ctx=fixture()
+ val currentEntry=TorrServerCatalog.entry
+ val paused=validJob.copy(hash=hash.uppercase(),state="paused",offset=20)
+ fun store(vararg jobs:TorrDownloadJob) { TorrDownloadStore.jobs.value=jobs.toList() }
+ suspend fun selected(canStart:()->Boolean={true}) =
+  TorrPrefetch.start(ctx,"movie",currentEntry,currentEntry.files,paused.index,canStart)
+ store(paused)
+ check(selected()==paused && TorrDownloadActions.starts==0)
+ check(selected { false }==null)
+ TorrPrefetch.setCount(ctx,0)
+ val running=paused.copy(state="running")
+ store(running)
+ check(selected()==running)
+ val manual=running.copy(prefetchMovieId="")
+ store(manual)
+ check(selected()==manual)
+ store(manual, manual.copy(id="duplicate"))
+ check(selected()==null)
+ store(paused.copy(prefetchMovieId="other-movie"))
+ check(selected()==null)
+ store(paused.copy(tree="content://provider/tree/other"))
+ check(selected()==null)
+ store(paused.copy(total=99), paused.copy(index=9))
+ check(selected()==null)
+ store(paused)
+ PortableMaintenance.running=true
+ check(selected()==null && TorrDownloadActions.starts==0)
+ println("PASS: cached-only discovery, video integrity and exact selected-episode matching, including disabled prefetch and manual pause")
 }
 '''
 

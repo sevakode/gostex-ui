@@ -97,6 +97,13 @@
     <string name="movies_restore_sent">Запрос принят. Если участников нет, добавь исходный торрент с трекерами.</string>
     <string name="movies_buffer_title">Подготовка видео</string>
     <string name="movies_buffer_starting">Подключаемся к раздаче…</string>
+    <string name="movies_growing_title">Смотреть во время загрузки</string>
+    <string name="movies_growing_waiting">Ждём, пока в файле накопится достаточно данных.</string>
+    <string name="movies_growing_ready">Файл уже можно открыть для просмотра.</string>
+    <string name="movies_growing_queued">Эта серия ожидает своей очереди на загрузку.</string>
+    <string name="movies_growing_paused">Загрузка остановилась. Продолжи её, чтобы смотреть сохранённый файл.</string>
+    <string name="movies_growing_unavailable">Эта загрузка больше недоступна.</string>
+    <string name="movies_growing_resume">Продолжить загрузку</string>
     <string name="movies_buffer_open">Открыть плеер сейчас</string>
     <string name="movies_buffer_unknown">Неизвестно</string>
     <string name="movies_buffer_status">Кэш: %1$s / %2$s\nСкорость раздачи: %3$s\n\nОткройте плеер, когда будете готовы.</string>

@@ -97,6 +97,13 @@
     <string name="movies_restore_sent">Request accepted. If peers are unavailable, add the original torrent with its trackers.</string>
     <string name="movies_buffer_title">Preparing video</string>
     <string name="movies_buffer_starting">Connecting to peers…</string>
+    <string name="movies_growing_title">Watch while downloading</string>
+    <string name="movies_growing_waiting">Waiting for enough data in the saved file.</string>
+    <string name="movies_growing_ready">The saved file is ready to play.</string>
+    <string name="movies_growing_queued">Waiting for this episode in the download queue.</string>
+    <string name="movies_growing_paused">This download has stopped. Resume it to watch from the saved file.</string>
+    <string name="movies_growing_unavailable">This download is no longer available.</string>
+    <string name="movies_growing_resume">Resume download</string>
     <string name="movies_buffer_open">Open player now</string>
     <string name="movies_buffer_unknown">Unknown</string>
     <string name="movies_buffer_status">Cache: %1$s / %2$s\nTorrent speed: %3$s\n\nOpen the player when ready.</string>

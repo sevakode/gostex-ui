@@ -2,6 +2,7 @@ package tv.orbit.shield
 
 import android.app.AlertDialog
 import android.content.Context
+import android.net.Uri
 import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
@@ -18,6 +19,99 @@ import kotlinx.coroutines.withContext
 
 /** Shared preparation UI for the media library and direct torrent playback. */
 internal object TorrPreparationDialog {
+    fun matchingDownload(activity: ComponentActivity, hash: String, fileId: Int, fileSize: Long): TorrDownloadJob? {
+        val folder = activity.getSharedPreferences("orbit", Context.MODE_PRIVATE).getString("downloads.folder", "")
+        return TorrDownloadStore.jobs.value.filter {
+            it.http == null && it.hash.equals(hash, true) && it.index == fileId && it.total == fileSize
+        }.let { jobs -> jobs.singleOrNull { it.tree == folder } ?: jobs.singleOrNull() }
+    }
+
+    /** The transfer owns all network reads. This dialog observes only its local document. */
+    fun showGrowing(activity: ComponentActivity, job: TorrDownloadJob, onOpen: (Uri) -> Unit, onDismiss: () -> Unit): AlertDialog {
+        val dialog = AlertDialog.Builder(activity)
+            .setTitle(R.string.movies_growing_title)
+            .setMessage(activity.getString(R.string.movies_growing_waiting))
+            .setNegativeButton(R.string.movies_cancel, null)
+            .setPositiveButton(R.string.movies_buffer_open, null)
+            .create()
+        var monitor: Job? = null
+        var opening: Job? = null
+        var invalid = false
+        var message = ""
+        fun current() = TorrDownloadStore.jobs.value.firstOrNull { it.id == job.id }
+        fun visible() = dialog.isShowing && activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        fun canRead(now: TorrDownloadJob) = now.state == "done" ||
+            (now.state in setOf("running", "finalizing") && TorrGrowingVideo.ready(now.id))
+        fun open(now: TorrDownloadJob) {
+            if (!visible() || opening?.isActive == true || invalid) return
+            opening = activity.lifecycleScope.launch {
+                val uri = if (now.state == "done") {
+                    val intact = withContext(Dispatchers.IO) { TorrPrefetch.playable(activity, now) }
+                    if (!intact) {
+                        invalid = current() == now
+                        null
+                    } else if (current() == now) Uri.parse(now.document) else null
+                } else TorrGrowingVideo.open(activity, now.id)
+                if (uri == null) return@launch
+                if (!visible()) { TorrGrowingVideo.close(activity, uri); return@launch }
+                dialog.dismiss()
+                onOpen(uri)
+            }
+        }
+        dialog.setOnDismissListener { monitor?.cancel(); opening?.cancel(); onDismiss() }
+        dialog.show()
+        val button = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+        button.isEnabled = false
+        button.setOnClickListener {
+            val now = current() ?: return@setOnClickListener
+            if (canRead(now)) open(now)
+            else if (now.state in setOf("paused", "error") && now.error != "video_invalid") {
+                runCatching { TorrDownloadActions.start(activity, now.id) }.onFailure {
+                    android.widget.Toast.makeText(activity, R.string.torr_download_failed, android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+        monitor = activity.lifecycleScope.launch {
+            activity.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                while (isActive && visible()) {
+                    val now = current()
+                    val readable = now != null && canRead(now) && !invalid
+                    val resumable = now != null && now.state in setOf("paused", "error") && now.error != "video_invalid"
+                    val summary = activity.getString(when {
+                        invalid || now?.error == "video_invalid" -> R.string.torr_download_video_invalid
+                        now == null -> R.string.movies_growing_unavailable
+                        readable -> R.string.movies_growing_ready
+                        resumable -> R.string.movies_growing_paused
+                        now.state == "queued" -> R.string.movies_growing_queued
+                        else -> R.string.movies_growing_waiting
+                    })
+                    val text = if (now == null) summary else {
+                        val offset = downloadDisplayOffset(now, TorrDownloadLiveProgress.current.value)
+                        val percent = if (now.total > 0) (offset.toDouble() * 100 / now.total).toInt().coerceIn(0, 100) else 0
+                        val status = when (now.state) {
+                            "queued" -> R.string.torr_download_queued
+                            "running" -> R.string.torr_download_running
+                            "finalizing" -> R.string.torr_download_finalizing
+                            "paused" -> R.string.torr_download_paused
+                            "done" -> R.string.prefetch_ready
+                            else -> R.string.torr_download_error
+                        }
+                        summary + "\n\n" + activity.getString(R.string.prefetch_buffer_progress,
+                            activity.getString(status),
+                            android.text.format.Formatter.formatShortFileSize(activity, offset),
+                            android.text.format.Formatter.formatShortFileSize(activity, now.total), percent)
+                    }
+                    if (text != message) { message = text; dialog.setMessage(text) }
+                    button.setText(if (resumable) R.string.movies_growing_resume else R.string.movies_buffer_open)
+                    button.isEnabled = readable || resumable
+                    if (readable && TorrPlaybackPreferences.autoPlay(activity)) open(requireNotNull(now))
+                    delay(400)
+                }
+            }
+        }
+        return dialog
+    }
+
     fun show(activity: ComponentActivity, hash: String, fileId: Int, onOpen: () -> Unit, onDismiss: () -> Unit, startPreload: Boolean = true, trackDownload: Boolean = false, downloadPreparation: Job? = null,
              damagedLocalCopy: Boolean = false): AlertDialog {
         val warning = if (damagedLocalCopy) activity.getString(R.string.prefetch_damaged_stream) else ""

@@ -18,10 +18,16 @@ internal object TorrPrefetch {
     fun setCount(context: Context, value: Int) { require(value in counts); check(context.getSharedPreferences("orbit", 0).edit().putInt(COUNT, value).commit()) }
     fun setQuota(context: Context, value: Int) { require(value in quotas); check(context.getSharedPreferences("orbit", 0).edit().putInt(QUOTA, value).commit()) }
 
-    fun destinationAvailable(context: Context): Boolean {
+    fun destinationAvailable(context: Context): Boolean = destination(context) != null
+
+    private fun destination(context: Context): Uri? {
         val folder = context.getSharedPreferences("orbit", 0).getString("downloads.folder", "").orEmpty()
-        val tree = runCatching { Uri.parse(folder) }.getOrNull() ?: return false
-        return tree.scheme == "content" && context.contentResolver.persistedUriPermissions.any { it.uri == tree && it.isReadPermission && it.isWritePermission }
+        val tree = runCatching { Uri.parse(folder) }.getOrNull() ?: return null
+        return tree.takeIf {
+            it.scheme == "content" && context.contentResolver.persistedUriPermissions.any { permission ->
+                permission.uri == it && permission.isReadPermission && permission.isWritePermission
+            }
+        }
     }
 
     /** Reconnect previously saved files whose queue records were removed, without starting transfers. */
@@ -66,15 +72,46 @@ internal object TorrPrefetch {
         }
     }
 
-    /** The caller is a visible activity and starts its player after this method returns. */
-    suspend fun start(context: Context, movieId: String, entry: TorrCatalogEntry, videos: List<TorrCatalogFile>, currentId: Int, canStart: () -> Boolean) {
-        if (count(context) == 0 || PortableMaintenance.running) return
-        val folder = context.getSharedPreferences("orbit", 0).getString("downloads.folder", "").orEmpty()
-        val tree = runCatching { Uri.parse(folder) }.getOrNull() ?: return
-        if (tree.scheme != "content" || context.contentResolver.persistedUriPermissions.none { it.uri == tree && it.isReadPermission && it.isWritePermission }) return
-        val jobs = withContext(Dispatchers.IO) { prepare(context, movieId, tree, entry, videos, currentId, includeCurrent = true) }
-        val pending = jobs.filter { it.state != "done" }
-        if (pending.isNotEmpty() && canStart()) TorrDownloadActions.startMany(context, pending.map { it.id })
+    /** Prepare new prefetch jobs and identify the selected episode's file in the same queue. */
+    suspend fun start(
+        context: Context,
+        movieId: String,
+        entry: TorrCatalogEntry,
+        videos: List<TorrCatalogFile>,
+        currentId: Int,
+        canStart: () -> Boolean,
+    ): TorrDownloadJob? {
+        if (PortableMaintenance.running || !canStart()) return null
+        val file = videos.singleOrNull { it.id == currentId && it.size > 0 && it in entry.files } ?: return null
+        val (tree, freshJobs) = withContext(Dispatchers.IO) {
+            if (PortableMaintenance.running) return@withContext null
+            val tree = destination(context) ?: return@withContext null
+            TorrDownloadStore.recover(context)
+            val jobs = if (count(context) > 0)
+                prepare(context, movieId, tree, entry, videos, currentId, includeCurrent = true)
+            else emptyList()
+            tree to jobs
+        } ?: return null
+        if (PortableMaintenance.running || !canStart() ||
+            context.getSharedPreferences("orbit", 0).getString("downloads.folder", "") != tree.toString()) return null
+        val pending = freshJobs.filter { it.state != "done" }
+        if (pending.isNotEmpty() && count(context) > 0) {
+            try {
+                TorrDownloadActions.startMany(context, pending.map { it.id })
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // The queue retains the file even if Android denies the foreground start.
+            }
+        }
+        val matches = TorrDownloadStore.jobs.value.filter {
+            it.http == null && it.tree == tree.toString() && it.hash.equals(entry.hash, ignoreCase = true) &&
+                it.index == file.id && it.total == file.size
+        }
+        val owned = matches.filter { it.prefetchMovieId == movieId }
+        // A manually queued copy can be used when it is the only matching destination.
+        return if (owned.isEmpty()) matches.singleOrNull()?.takeIf { it.prefetchMovieId.isBlank() }
+        else owned.singleOrNull()
     }
 
     /** Called by the already-running foreground worker after one offline episode completes. */

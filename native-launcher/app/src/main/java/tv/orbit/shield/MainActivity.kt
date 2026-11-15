@@ -300,16 +300,25 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    internal fun prepareTorrPlayback(hash: String, fileId: Int, startPreload: Boolean = true) {
+    internal fun prepareTorrPlayback(hash: String, fileId: Int, fileSize: Long, startPreload: Boolean = true) {
         if (PortableMaintenance.running) return
         torrentPlaybackDialog?.dismiss()
         var dialog: android.app.AlertDialog? = null
-        dialog = TorrPreparationDialog.show(this, hash, fileId, onOpen = {
+        val local = TorrPreparationDialog.matchingDownload(this, hash, fileId, fileSize)
+        if (local != null) {
+            dialog = TorrPreparationDialog.showGrowing(this, local, onOpen = { uri ->
+                videoPlayer.open(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "video/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
+                    onError = { torrDownloadMessage = getString(R.string.torr_play_failed) },
+                    resumeIdentity = TorrPlayback.url(hash, fileId),
+                    askResume = true,
+                    onClosed = { TorrGrowingVideo.close(this, uri) })
+            }, onDismiss = { if (torrentPlaybackDialog === dialog) torrentPlaybackDialog = null })
+        } else dialog = TorrPreparationDialog.show(this, hash, fileId, onOpen = {
             runCatching {
                 val url = Uri.parse(TorrPlayback.url(hash, fileId))
                 videoPlayer.open(Intent(Intent.ACTION_VIEW).setDataAndType(url, "video/*"),
                     onError = { torrDownloadMessage = getString(R.string.torr_play_failed) },
-                    onReturned = { if (!isFinishing && !isDestroyed && !PortableMaintenance.running) prepareTorrPlayback(hash, fileId, startPreload = false) })
+                    onReturned = { if (!isFinishing && !isDestroyed && !PortableMaintenance.running) prepareTorrPlayback(hash, fileId, fileSize, startPreload = false) })
             }.onFailure { torrDownloadMessage = getString(R.string.torr_play_failed) }
         }, onDismiss = { if (torrentPlaybackDialog === dialog) torrentPlaybackDialog = null }, startPreload = startPreload)
         torrentPlaybackDialog = dialog

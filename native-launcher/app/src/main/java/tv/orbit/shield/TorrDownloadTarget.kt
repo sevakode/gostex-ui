@@ -14,6 +14,7 @@ catch (_: Exception) { throw TorrStorageFailure() }
 /** Seekable SAF document owned exclusively by the download job. */
 internal class TorrSafTarget private constructor(private val descriptor: ParcelFileDescriptor) : TorrDownloadTarget, Closeable {
     private val fd = descriptor.fileDescriptor
+    val fileDescriptor get() = fd
     private val output = ParcelFileDescriptor.AutoCloseOutputStream(descriptor)
     override fun size(): Long = storageIo { Os.fstat(fd).st_size }
     override fun truncate(size: Long) = storageIo { Os.ftruncate(fd, size) }

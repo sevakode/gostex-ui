@@ -52,6 +52,7 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity, priva
     private var request by mutableStateOf<Request?>(null)
     val isOpen: Boolean get() = request != null
     private var onPlayerReturned: (() -> Unit)? = null
+    private var onPlayerClosed: (() -> Unit)? = null
     private var onPlayerCompleted: (() -> Unit)? = null
     private var onPlayerNavigate: ((Int) -> Unit)? = null
     private var completedPlayerPackage: String? = null
@@ -90,6 +91,7 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity, priva
             editor.apply()
         }
         val callback = onPlayerReturned.also { onPlayerReturned = null }
+        onPlayerClosed.also { onPlayerClosed = null }?.invoke()
         val completed = onPlayerCompleted.also { onPlayerCompleted = null }
         val navigate = onPlayerNavigate.also { onPlayerNavigate = null }
         if (!activity.isFinishing && !activity.isDestroyed) {
@@ -118,7 +120,7 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity, priva
     }
     private data class Player(val component: ComponentName, val label: String)
     private data class Choices(val players: List<Player>, val canInstallVlc: Boolean)
-    private data class Request(val intent: Intent, val choices: Choices, val onStarted: () -> Unit, val onError: () -> Unit, val onReturned: () -> Unit, val onCompleted: (() -> Unit)?, val playlist: VlcSeriesPlaylist?, val playlistUnavailable: Boolean, val resumeIdentity: String?, val fromStart: Boolean, val askResume: Boolean, val onNavigate: ((Int) -> Unit)?)
+    private data class Request(val intent: Intent, val choices: Choices, val onStarted: () -> Unit, val onError: () -> Unit, val onReturned: () -> Unit, val onCompleted: (() -> Unit)?, val playlist: VlcSeriesPlaylist?, val playlistUnavailable: Boolean, val resumeIdentity: String?, val fromStart: Boolean, val askResume: Boolean, val onNavigate: ((Int) -> Unit)?, val onClosed: () -> Unit)
 
     fun takeCompletedPlayerPackage(): String? = completedPlayerPackage.also { completedPlayerPackage = null }
 
@@ -135,14 +137,16 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity, priva
         intent.type?.startsWith("video/") == true &&
             OfficialEmulatorApk.installStatus(activity, OfficialEmulatorApk.VLC_PACKAGE) == OfficialEmulatorApk.InstallStatus.MISSING
 
-    fun open(intent: Intent, force: Boolean = false, onStarted: () -> Unit = {}, onError: () -> Unit, onReturned: () -> Unit = {}, onCompleted: (() -> Unit)? = null, playlist: VlcSeriesPlaylist? = null, playlistUnavailable: Boolean = false, resumeIdentity: String? = null, fromStart: Boolean = false, askResume: Boolean = false, preferredPackage: String? = null, onNavigate: ((Int) -> Unit)? = null) {
+    fun open(intent: Intent, force: Boolean = false, onStarted: () -> Unit = {}, onError: () -> Unit, onReturned: () -> Unit = {}, onCompleted: (() -> Unit)? = null, playlist: VlcSeriesPlaylist? = null, playlistUnavailable: Boolean = false, resumeIdentity: String? = null, fromStart: Boolean = false, askResume: Boolean = false, preferredPackage: String? = null, onNavigate: ((Int) -> Unit)? = null, onClosed: () -> Unit = {}) {
         val players = resolvePlayers(intent, fromStart)
         val preferred = prefs.getString("video.default_player", null)
         val selected = if (preferredPackage != null) players.firstOrNull { it.component.packageName == preferredPackage }
             else players.firstOrNull { it.component.flattenToString() == preferred }
         val canInstall = (force || selected == null) && canInstallVlc(intent)
-        if (players.isEmpty() && !canInstall) { onError(); return }
-        val next = Request(Intent(intent), Choices(players, canInstall), onStarted, onError, onReturned, onCompleted, playlist, playlistUnavailable, resumeIdentity, fromStart, askResume, onNavigate)
+        if (players.isEmpty() && !canInstall) { onClosed(); onError(); return }
+        request?.onClosed?.invoke()
+        request = null
+        val next = Request(Intent(intent), Choices(players, canInstall), onStarted, onError, onReturned, onCompleted, playlist, playlistUnavailable, resumeIdentity, fromStart, askResume, onNavigate, onClosed)
         if (!force && selected != null) launch(next, selected, null) else request = next
     }
 
@@ -164,7 +168,8 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity, priva
                 .setTitle(R.string.prefetch_resume_question)
                 .setPositiveButton(R.string.prefetch_resume) { _, _ -> launch(req.copy(askResume = false), player, rememberDefault) }
                 .setNeutralButton(R.string.prefetch_from_start) { _, _ -> launch(req.copy(fromStart = true, askResume = false), player, rememberDefault) }
-                .setNegativeButton(R.string.cancel, null)
+                .setNegativeButton(R.string.cancel) { _, _ -> req.onClosed() }
+                .setOnCancelListener { req.onClosed() }
                 .show()
             return
         }
@@ -196,6 +201,7 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity, priva
         } else prefs.edit().remove(pendingKey).remove(pendingUriKey).remove(pendingPlayerKey).apply()
         try {
             onPlayerReturned = req.onReturned
+            onPlayerClosed = req.onClosed
             onPlayerCompleted = if (isVlc(player.component.packageName)) req.onCompleted else null
             onPlayerNavigate = if (player.component.packageName in setOf("tv.gostex.vlc", "tv.gostex.vlc.debug")) req.onNavigate else null
             activePlaylist = playlist
@@ -216,6 +222,7 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity, priva
             req.onStarted()
         } catch (_: Exception) {
             onPlayerReturned = null
+            onPlayerClosed = null
             onPlayerCompleted = null
             onPlayerNavigate = null
             resumeSeek?.cancel(); resumeSeek = null
@@ -223,6 +230,7 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity, priva
             activePlaylist = null
             activeLaunchStartedAtMs = null
             prefs.edit().remove(pendingKey).remove(pendingUriKey).remove(pendingPlayerKey).apply()
+            req.onClosed()
             req.onError()
         }
     }
@@ -360,15 +368,16 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity, priva
         val permission = install.permissionPackage == pkg
         val busy = downloading || installing || permission
 
-        fun dismiss() {
+        fun dismiss(cancelled: Boolean = true) {
             if (installRequested) {
                 install.abandonPermission(pkg)
                 install.cancelDownload(pkg)
             }
             request = null
+            if (cancelled) current.onClosed()
         }
 
-        Dialog(onDismissRequest = ::dismiss) {
+        Dialog(onDismissRequest = { dismiss() }) {
             Column(Modifier.fillMaxWidth(0.85f).background(Color(0xFF161E24)).padding(20.dp)) {
                 Text(activity.getString(R.string.video_choose_player), color = Color.White, fontSize = 22.sp)
                 Spacer(Modifier.height(12.dp))
@@ -411,7 +420,7 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity, priva
                         val isDefault = prefs.getString("video.default_player", null) == player.component.flattenToString()
                         val modifier = if (player == firstVlc) Modifier.focusRequester(installedPlayerFocus) else Modifier
                         SettingRow(player.label, value = if (isDefault) activity.getString(R.string.video_current_default) else "", modifier = modifier, trailing = "▶") {
-                            dismiss()
+                            dismiss(cancelled = false)
                             launch(current, player, rememberDefault)
                         }
                     }

@@ -10,14 +10,22 @@ from kotlin_toolchain import JAVA, COMPILER, ROOT
 
 compiler = COMPILER
 DATA = bytes(range(256)) * 4096
+PLAY_DATA = bytes((i ^ (i >> 9) ^ (i >> 16)) & 255 for i in range(len(DATA)))
 LARGE_SIZE = 40 * 1024 * 1024 + 12345
 BROKEN_SIZE = 18 * 1024 * 1024 + 123
+PLAY_TAIL = len(PLAY_DATA) - 64 * 1024
+play_requests = []
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args): pass
     def do_GET(self):
         query = parse_qs(urlparse(self.path).query)
         assert urlparse(self.path).path == '/stream'
         mode = query['link'][0][-1]
+        if mode in 'cdef0':
+            range_header = self.headers.get('Range')
+            if mode != '0' or range_header and not range_header.endswith('-'):
+                self.growing_response(mode, range_header)
+                return
         if mode in ('7', '8'):
             self.send_response(401 if mode == '7' else 403); self.send_header('Content-Length', '0'); self.end_headers(); return
         if mode == '4':
@@ -43,6 +51,26 @@ class Handler(BaseHTTPRequestHandler):
                 chunk = DATA[position % len(DATA):min(len(DATA), position % len(DATA) + end - position)]
                 self.wfile.write(chunk)
                 position += len(chunk)
+        except (BrokenPipeError, ConnectionResetError): pass
+
+    def growing_response(self, mode, range_header):
+        size = len(PLAY_DATA)
+        start, end = 0, size - 1
+        status = 200
+        play_requests.append((mode, range_header, self.headers.get('If-Range')))
+        if range_header and mode != 'c':
+            lower, upper = range_header.removeprefix('bytes=').split('-')
+            start, end = int(lower), int(upper) if upper else end
+            status = 206
+        self.send_response(status)
+        self.send_header('ETag', '"changed"' if mode == 'd' and start < PLAY_TAIL else '"original"')
+        self.send_header('Content-Length', str(end - start + 1))
+        if status == 206:
+            self.send_header('Content-Range', f'bytes {start + (mode == "e")}-{end}/{size}')
+        self.end_headers()
+        if mode == 'f':
+            end = min(end, start + 127)
+        try: self.wfile.write(PLAY_DATA[start:end + 1])
         except (BrokenPipeError, ConnectionResetError): pass
 
 checks = r'''package tv.orbit.shield
@@ -276,9 +304,90 @@ fun main(args: Array<String>) {
         }.exceptionOrNull()
         check(brokenSave is IOException && brokenSave !is TorrSourceFailure && beforeBrokenSave.offset == hardBytes && brokenSaveAttempts == 2)
         check(runCatching { TorrDownloadSource("invalid", 1, 1) }.isFailure)
+        checkGrowing(path, file, port)
         println("PASS: pause/resume, range/identity, crash tail, bounded checkpoint cadence, independent progress/space checks, source-tail recovery and sync/save failures")
       }
     } finally { Files.deleteIfExists(path) }
+}
+
+private fun checkGrowing(path: java.nio.file.Path, file: RandomAccessFile, port: Int) {
+    val size = 1048576L
+    val tail = size - 65536L
+    val source = TorrDownloadSource("0".repeat(40), 1, size)
+    fun content(offset: Long, length: Int): Boolean = RandomAccessFile(path.toFile(), "r").use { input ->
+        input.seek(offset)
+        val actual = ByteArray(length)
+        input.readFully(actual)
+        actual.indices.all { index ->
+            val position = offset + index
+            actual[index] == (position xor (position shr 9) xor (position shr 16)).toByte()
+        }
+    }
+    file.setLength(0)
+    val target = ObservedTarget(file)
+    val empty = TorrDownloadCheckpoint(0, null)
+    var saved = empty
+    var prefix = 0L
+    var tailVisible = false
+    val paused = TorrDownloadEngine.transfer(source, target, saved, port, cancelled = { prefix > 0 },
+        saveCheckpoint = { saved = it }, readable = { offset, tailStart ->
+            prefix = offset
+            if (tailStart == tail && !tailVisible) {
+                check(offset == 0L && target.syncs == 1 && target.size() == size)
+                check(content(tail, (size - tail).toInt()))
+                tailVisible = true
+            }
+        })
+    check(tailVisible && paused == saved && paused.offset in 1 until tail && file.length() == size)
+    file.seek(tail); file.write(0b1010101)
+    val corrupted = Files.readAllBytes(path)
+    for ((mode, expectedReason) in listOf('d' to "source_changed", 'e' to "source_response", 'f' to "source_incomplete")) {
+        val error = runCatching {
+            TorrDownloadEngine.transfer(source.copy(hash = "0".repeat(39) + mode), target, paused, port,
+                saveCheckpoint = { error("unexpected checkpoint") }, readable = { _, _ -> error("unexpected coverage") })
+        }.exceptionOrNull()
+        check(error is TorrSourceFailure && (error.reason == expectedReason || mode == 'f' && error.reason == "source_io"))
+        check(Files.readAllBytes(path).contentEquals(corrupted))
+    }
+    var reset = false
+    val done = TorrDownloadEngine.transfer(source, target, paused, port, saveCheckpoint = { saved = it },
+        readable = { offset, tailStart ->
+            if (!reset) {
+                check(offset == paused.offset && tailStart == size && file.length() == size)
+                reset = true
+            }
+            if (offset == size) check(saved.offset == size)
+        })
+    check(done == saved && done.offset == size && content(0L, size.toInt()))
+
+    file.setLength(0)
+    val compatible = TorrDownloadEngine.transfer(source.copy(hash = "0".repeat(39) + 'c'), target, empty, port,
+        saveCheckpoint = {}, readable = { _, tailStart -> check(tailStart == size) })
+    check(compatible.offset == size && file.length() == size && content(0L, size.toInt()))
+
+    file.setLength(0)
+    var spaceChecks = 0
+    saved = empty
+    val lowSpace = runCatching {
+        TorrDownloadEngine.transfer(source, target, empty, port, saveCheckpoint = { saved = it },
+            readable = { _, _ -> }, spaceAllowance = { when (spaceChecks++) { 0 -> size; 1 -> 65536L; else -> 0L } })
+    }.exceptionOrNull()
+    check(lowSpace is TorrDownloadLowSpace && saved.offset == 65536L && file.length() == size)
+
+    for (failAt in 1..2) {
+        file.setLength(0)
+        val failing = ObservedTarget(file).apply { failSyncAt = failAt }
+        tailVisible = false
+        val error = runCatching {
+            TorrDownloadEngine.transfer(source, failing, empty, port, saveCheckpoint = { error("unexpected checkpoint") },
+                readable = { offset, tailStart ->
+                    check(offset < size)
+                    tailVisible = tailVisible || tailStart == tail
+                })
+        }.exceptionOrNull()
+        check(error is IOException && error !is TorrSourceFailure && tailVisible == (failAt == 2))
+    }
+    println("PASS: growing-file staging, coverage, resume identity, malformed ranges, normal fallback, reserve and failed sync")
 }
 '''
 server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
@@ -295,5 +404,14 @@ try:
         result = subprocess.run([str(JAVA), '-cp', f'{folder / "classes"}:{cp}', 'tv.orbit.shield.ChecksKt', str(server.server_port)], capture_output=True, text=True)
         print(result.stdout, end='')
         if result.returncode: raise SystemExit(result.stderr)
+        tail = f'bytes={PLAY_TAIL}-{len(PLAY_DATA)-1}'
+        prefix = f'bytes=0-{PLAY_TAIL-1}'
+        staged = [(range_header, tag) for mode, range_header, tag in play_requests if mode == '0']
+        assert len(staged) == 10 and staged[:3] == [(tail, None), (prefix, '"original"'), (tail, '"original"')]
+        resumed_prefix, resumed_tag = staged[3]
+        start, end = resumed_prefix.removeprefix('bytes=').split('-')
+        assert 0 < int(start) < PLAY_TAIL and int(end) == PLAY_TAIL-1 and resumed_tag == '"original"'
+        assert staged[4:] == [(tail, None), (prefix, '"original"')] * 3
+        assert [(range_header, tag) for mode, range_header, tag in play_requests if mode == 'c'] == [(tail, None), (None, None)]
 finally:
     server.shutdown(); server.server_close(); thread.join()

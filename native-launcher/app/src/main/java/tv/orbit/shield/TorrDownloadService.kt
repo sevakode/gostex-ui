@@ -125,6 +125,7 @@ internal class TorrDownloadService : Service() {
                     activeTransfer = transfer
                     val cancelled = { stopping.get() || transfer.paused.get() || Thread.currentThread().isInterrupted }
                     var phase = "transfer"
+                    var growingCompleted = false
                     try {
                         var job = TorrDownloadStore.update(this, next.id) {
                             if (it.state == "queued") it.copy(state = "running", error = "") else it
@@ -162,10 +163,15 @@ internal class TorrDownloadService : Service() {
                                                 notificationUpdate(transfer, job, offset)
                                             }
                                             val http = job.http
+                                            val growing = http == null && job.total > 0 &&
+                                                TorrPlayback.isVideo(job.finalName) && TorrGrowingVideo.bind(job, target.fileDescriptor)
+                                            val readable: ((Long, Long) -> Unit)? = if (growing) { prefix, tail ->
+                                                TorrGrowingVideo.update(job, prefix, tail)
+                                            } else null
                                             if (http == null) TorrDownloadEngine.transfer(
                                                 TorrDownloadSource(job.hash, job.index, job.total), target, checkpoint,
                                                 cancelled = cancelled, saveCheckpoint = save, spaceAllowance = space,
-                                                beforeWrite = beforeWrite, reportProgress = progress,
+                                                beforeWrite = beforeWrite, reportProgress = progress, readable = readable,
                                             ) else TorrDownloadEngine.transfer(
                                                 http, job.total, target, checkpoint, cancelled = cancelled,
                                                 saveCheckpoint = save, spaceAllowance = space, beforeWrite = beforeWrite,
@@ -225,6 +231,8 @@ internal class TorrDownloadService : Service() {
                         val completed = TorrDownloadStore.update(this, job.id) {
                             it.copy(document = result.toString(), state = "done", error = "", http = it.http?.copy(url = null))
                         }
+                        growingCompleted = true
+                        TorrGrowingVideo.finish(job.id, success = true)
                         if (completed.prefetchMovieId.isNotBlank() && !cancelled()) {
                             // A failed follow-up must not turn a completed download into an error.
                             runCatching { TorrPrefetch.continueAfter(this, completed) }
@@ -241,6 +249,7 @@ internal class TorrDownloadService : Service() {
                         if (reason == "source_auth" && next.http?.sessionBound == true) TorrDownloadStore.invalidateSession(next.id)
                         runCatching { TorrDownloadStore.update(this, next.id) { if (it.state == "running" || it.state == "finalizing") it.copy(state = "error", error = reason) else it } }
                     } finally {
+                        if (!growingCompleted) TorrGrowingVideo.finish(next.id, success = false)
                         TorrDownloadLiveProgress.clear(next.id)
                         activeTransfer = null
                         transfer.clearPauseAction()

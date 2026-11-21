@@ -18,6 +18,8 @@ maintenance_path = production / "PortableMaintenance.kt"
 controller = controller_path.read_text().split("\n@Composable\n", 1)[0]
 for unused in ("android.app.AlertDialog", "android.text.format.Formatter", "android.widget.ProgressBar"):
     controller = controller.replace(f"import {unused}\n", "")
+# The host boundaries are synchronous, keeping lifecycle ordering deterministic.
+controller = controller.replace("Dispatchers.IO", "Dispatchers.Unconfined")
 
 sources = {
     "Controller.kt": controller,
@@ -46,7 +48,20 @@ object Looper {
 ''',
     "Uri.kt": r'''
 package android.net
-data class Uri(val text: String) { companion object { fun parse(text: String) = Uri(text) } }
+data class Uri(val text: String) {
+    val authority: String? get() = text.substringAfter("content://", "").substringBefore('/').ifEmpty { null }
+    override fun toString(): String = text
+    companion object { fun parse(text: String) = Uri(text) }
+}
+''',
+    "Documents.kt": r'''
+package android.provider
+import android.net.Uri
+object DocumentsContract {
+    fun getDocumentId(uri: Uri) = uri.text.substringAfter("/document/", "")
+    fun getTreeDocumentId(uri: Uri) = uri.text.substringAfter("/tree/", "").substringBefore("/document/")
+    fun buildDocumentUriUsingTree(tree: Uri, id: String) = Uri.parse(tree.text + "/document/" + id)
+}
 ''',
     "Results.kt": r'''
 package androidx.activity.result.contract
@@ -100,9 +115,12 @@ class MainActivity : Context() {
 object R { object string {
     const val platform_unknown = 1
     const val game_archive_invalid = 2
+    const val torr_download_low_space = 18
     const val game_archive_cancelled = 3
     const val game_archive_failed = 4
     const val game_archive_expired = 5
+    const val game_archive_discard_failed = 6
+    const val game_archive_recovery_unavailable = 7
 } }
 object PlatformRegistry {
     fun find(id: String): String? = id.takeIf { it in setOf("SNES", "PSP") }
@@ -114,22 +132,52 @@ object PortableRestoreStartup {
 object PortableAndroidRestoreRecovery {
     fun recoverUnderExclusiveAccess(context: Context) = false
 }
+object GameArchiveRecovery {
+    enum class Phase { EXTRACTING, RENAMING, READY }
+    data class Job(val id: String, val platform: String, val title: String,
+        val totalBytes: Long, val tree: Uri, val phase: Phase = Phase.EXTRACTING, val finalId: String? = null)
+    var saved: Job? = null
+    var reads = 0
+    var clears = 0
+    var failRead = false
+    fun read(context: Context): Job? {
+        reads++
+        if (failRead) error("Unreadable recovery record")
+        return saved
+    }
+    fun clear(context: Context, expected: Job) {
+        check(saved == expected)
+        clears++
+        saved = null
+    }
+    fun reset() { saved = null; reads = 0; clears = 0; failRead = false }
+}
+class TorrDownloadLowSpace : java.io.IOException()
 object GameArchiveStorage {
     class Plan(val source: Uri) { val totalBytes = 1L }
     var inspections = 0
     var extractions = 0
+    var resumes = 0
+    var discards = 0
+    var lastPlatform: String? = null
+    var lastResumed: GameArchiveRecovery.Job? = null
+    var failResume = false
+    var failDiscard = false
     var holdCleanup = false
     var cleanupFinished = false
     var extractionStarted = CompletableDeferred<Unit>()
     var cleanupStarted = CompletableDeferred<Unit>()
     var releaseCleanup = CompletableDeferred<Unit>()
     fun reset() {
-        inspections = 0; extractions = 0; holdCleanup = false; cleanupFinished = false
+        inspections = 0; extractions = 0; resumes = 0; discards = 0; lastPlatform = null; lastResumed = null
+        failResume = false; failDiscard = false; holdCleanup = false; cleanupFinished = false
+        GameArchiveRecovery.reset()
         extractionStarted = CompletableDeferred(); cleanupStarted = CompletableDeferred(); releaseCleanup = CompletableDeferred()
     }
     suspend fun inspect(context: Context, source: Uri): Plan { inspections++; return Plan(source) }
-    suspend fun extract(context: Context, plan: Plan, destination: Uri, progress: (Long) -> Unit): Uri {
+    suspend fun extract(context: Context, plan: Plan, destination: Uri, platform: String, progress: (Long) -> Unit): Uri {
         extractions++
+        lastPlatform = platform
         extractionStarted.complete(Unit)
         if (holdCleanup) {
             try { awaitCancellation() }
@@ -144,6 +192,20 @@ object GameArchiveStorage {
         progress(1)
         return Uri.parse(destination.text + "/prepared")
     }
+    suspend fun resume(context: Context, job: GameArchiveRecovery.Job, progress: (Long) -> Unit): Uri {
+        resumes++
+        lastResumed = job
+        if (failResume) error("Unavailable recovery destination")
+        check(GameArchiveRecovery.saved == job)
+        GameArchiveRecovery.saved = job.copy(phase = GameArchiveRecovery.Phase.READY, finalId = "prepared")
+        progress(job.totalBytes)
+        return android.provider.DocumentsContract.buildDocumentUriUsingTree(job.tree, "prepared")
+    }
+    suspend fun discard(context: Context, job: GameArchiveRecovery.Job) {
+        discards++
+        if (failDiscard) error("Unavailable recovery destination")
+        GameArchiveRecovery.clear(context, job)
+    }
 }
 ''',
     "Checks.kt": r'''
@@ -156,9 +218,13 @@ private class Fixture {
     val activity = MainActivity()
     var pickerAvailable = true
     var added: Pair<String, Uri>? = null
+    var acceptFolder = true
     val controller = GameArchiveController(activity, { _, _, launch ->
         if (pickerAvailable) { launch(); true } else false
-    }) { platform, uri -> added = platform to uri }
+    }) { platform, uri ->
+        if (acceptFolder) added = platform to uri
+        acceptFolder
+    }
     fun close() = activity.scope.cancel()
 }
 private val source = Uri.parse("content://fixture/game.zip")
@@ -181,7 +247,8 @@ fun main() = runBlocking {
         sourceRestored.controller.chooseDestination()
         sourceRestored.activity.deliver(1, destination)
         sourceRestored.controller.addResult()
-        verify("Recreated source selection retains the chosen platform", sourceRestored.added?.first == "PSP")
+        verify("Recreated source selection retains the chosen platform",
+            sourceRestored.added?.first == "PSP" && GameArchiveStorage.lastPlatform == "PSP")
         sourceRestored.close()
 
         GameArchiveStorage.reset()
@@ -278,6 +345,107 @@ fun main() = runBlocking {
         verify("Cancelling the destination picker preserves a retryable preview",
             !retry.controller.picking && retry.controller.plan === preview && GameArchiveStorage.extractions == 0)
         retry.close()
+
+        GameArchiveStorage.reset()
+        val savedJob = GameArchiveRecovery.Job("attempt", "PSP", "game.zip", 42L, destination)
+        GameArchiveRecovery.saved = savedJob
+        val cold = Fixture()
+        cold.controller.restore(null)
+        verify("Cold startup exposes saved recovery without starting storage writes",
+            cold.controller.recovery == savedJob && !cold.controller.recoveryOpen && !cold.controller.busy &&
+                GameArchiveStorage.extractions == 0 && GameArchiveStorage.resumes == 0 && GameArchiveStorage.discards == 0)
+        val interruptedState = Bundle().also { it.putBoolean("gameArchiveHadWork", true) }
+        cold.close()
+        val recovered = Fixture()
+        recovered.controller.restore(interruptedState)
+        verify("Recreation preserves a saved interrupted attempt without reporting an expired preview",
+            recovered.controller.recovery == savedJob && recovered.activity.notice.isEmpty() && GameArchiveRecovery.clears == 0)
+        recovered.controller.chooseSource("SNES")
+        verify("Choosing another ZIP first presents the existing recovery without opening a picker",
+            recovered.controller.recoveryOpen && recovered.activity.launches.isEmpty() && GameArchiveStorage.inspections == 0)
+        recovered.controller.resumeRecovery()
+        verify("Resume is explicit and uses the platform saved with the original attempt",
+            GameArchiveStorage.resumes == 1 && GameArchiveStorage.lastResumed == savedJob &&
+                recovered.controller.result == android.provider.DocumentsContract.buildDocumentUriUsingTree(savedJob.tree, "prepared") && !recovered.controller.busy)
+        recovered.acceptFolder = false
+        val beforeReject = recovered.controller.dialogRevision
+        recovered.controller.addResult()
+        verify("Rejected folder import keeps the prepared result available for retry",
+            recovered.controller.result != null && recovered.added == null &&
+                recovered.controller.dialogRevision > beforeReject && GameArchiveRecovery.clears == 0)
+        recovered.acceptFolder = true
+        recovered.controller.addResult()
+        verify("Choosing import retains the ready recovery until matching folder confirmation",
+            recovered.added?.first == "PSP" && recovered.controller.result == null &&
+                GameArchiveRecovery.saved?.phase == GameArchiveRecovery.Phase.READY && GameArchiveRecovery.clears == 0)
+        val importState = Bundle().also(recovered.controller::save)
+        recovered.close()
+        val importRecreated = Fixture()
+        importRecreated.controller.restore(importState)
+        importRecreated.controller.folderImported(Uri.parse("content://fixture/tree/prepared"))
+        verify("Recreated matching folder confirmation clears only the ready recovery record",
+            GameArchiveRecovery.saved == null && GameArchiveRecovery.clears == 1 &&
+                importRecreated.controller.recovery == null && GameArchiveStorage.discards == 0)
+        importRecreated.close()
+
+        GameArchiveStorage.reset()
+        GameArchiveRecovery.saved = savedJob
+        val denied = Fixture()
+        denied.controller.restore(null)
+        GameArchiveStorage.failResume = true
+        denied.controller.resumeRecovery()
+        verify("A failed resume preserves the saved attempt and allows an explicit retry",
+            GameArchiveStorage.resumes == 1 && denied.controller.result == null && !denied.controller.busy &&
+                denied.controller.recovery == savedJob && GameArchiveRecovery.saved == savedJob && GameArchiveRecovery.clears == 0)
+        GameArchiveStorage.failResume = false
+        GameArchiveStorage.failDiscard = true
+        denied.controller.discardRecovery()
+        verify("Failed discard keeps the recovery open without forgetting the destination",
+            GameArchiveStorage.discards == 1 && denied.controller.recoveryOpen &&
+                denied.controller.recovery == savedJob && GameArchiveRecovery.saved == savedJob &&
+                denied.controller.discardFailed)
+        GameArchiveStorage.failDiscard = false
+        denied.controller.discardRecovery()
+        verify("Only an explicit successful discard removes an interrupted attempt",
+            GameArchiveStorage.discards == 2 && GameArchiveRecovery.saved == null && denied.controller.recovery == null &&
+                !denied.controller.recoveryOpen && !denied.controller.busy && GameArchiveRecovery.clears == 1)
+        denied.close()
+
+        GameArchiveStorage.reset()
+        GameArchiveRecovery.saved = savedJob
+        val forgotten = Fixture()
+        forgotten.controller.restore(null)
+        forgotten.controller.forgetRecovery()
+        verify("Forgetting is offered only after an unsuccessful deletion",
+            GameArchiveRecovery.saved == savedJob && GameArchiveRecovery.clears == 0)
+        GameArchiveStorage.failDiscard = true
+        forgotten.controller.discardRecovery()
+        forgotten.controller.forgetRecovery()
+        verify("The explicit keep-files action clears only the record",
+            GameArchiveStorage.discards == 1 && GameArchiveRecovery.saved == null && GameArchiveRecovery.clears == 1)
+        forgotten.close()
+
+        GameArchiveStorage.reset()
+        GameArchiveRecovery.saved = savedJob
+        val maintenance = Fixture()
+        maintenance.controller.restore(null)
+        PortableMaintenance.runExclusive(maintenance.activity, {}) {
+            maintenance.controller.resumeRecovery()
+            maintenance.controller.discardRecovery()
+            verify("Maintenance blocks resume and discard before any recovery storage action",
+                GameArchiveStorage.resumes == 0 && GameArchiveStorage.discards == 0 && GameArchiveRecovery.saved == savedJob)
+        }
+        maintenance.close()
+
+        GameArchiveStorage.reset()
+        GameArchiveRecovery.failRead = true
+        val unreadable = Fixture()
+        unreadable.controller.restore(null)
+        verify("An unreadable recovery record reports an error without starting or discarding an attempt",
+            unreadable.activity.notice == R.string.game_archive_recovery_unavailable.toString() &&
+                GameArchiveStorage.extractions == 0 && GameArchiveStorage.resumes == 0 && GameArchiveStorage.discards == 0 &&
+                GameArchiveRecovery.clears == 0)
+        unreadable.close()
         println("COUNT|$checks")
     }
 }

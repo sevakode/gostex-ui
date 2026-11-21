@@ -3,11 +3,22 @@
     <string name="game_archive_title">Extraer un archivo ZIP</string>
     <string name="game_archive_invalid">No se pudo leer este ZIP. Puede estar incompleto o usar un formato no compatible.</string>
     <string name="game_archive_cancelled">Extracción cancelada.</string>
-    <string name="game_archive_expired">Se interrumpió la preparación del archivo. Vuelve a seleccionar el ZIP para continuar. El archivo original no se ha modificado.</string>
+    <string name="game_archive_expired">Se interrumpió la preparación. Vuelve a elegir el ZIP para continuar.</string>
     <string name="game_archive_failed">La extracción se detuvo. Comprueba el espacio disponible y el acceso a la carpeta e inténtalo de nuevo.</string>
     <string name="game_archive_inspecting">Leyendo el contenido del archivo…</string>
-    <string name="game_archive_working">Extrayendo archivos… Mantén GOSTEX abierto hasta que termine.</string>
+    <string name="game_archive_working">Extrayendo archivos…</string>
     <string name="game_archive_ready">Los archivos están listos en una carpeta nueva. Confirma esa carpeta para añadirla a tu biblioteca.</string>
     <string name="game_archive_confirm">%1$d archivos · %2$s extraídos. Elige dónde crear su nueva carpeta. Se conserva el archivo original.</string>
     <string name="game_archive_destination">Elegir destino</string>
+    <string name="game_archive_pause">Pausar extracción</string>
+    <string name="game_archive_resume">Continuar extracción del ZIP</string>
+    <string name="game_archive_recover">La extracción del ZIP se interrumpió. Continúa desde los archivos ya preparados.</string>
+    <string name="game_archive_discard">Eliminar extracción parcial</string>
+    <string name="game_archive_discard_confirm">¿Eliminar los archivos parciales de esta extracción?</string>
+    <string name="game_archive_discard_failed">No se pudieron eliminar los archivos parciales. Comprueba el acceso al archivo ZIP y a su destino.</string>
+    <string name="game_archive_recovery_unavailable">No se pudo leer la extracción guardada del ZIP.</string>
+    <string name="game_archive_recover_ready">Los archivos están listos para añadirlos a tu biblioteca.</string>
+    <string name="game_archive_dismiss_ready">Quitar de la lista</string>
+    <string name="game_archive_open_ready">Abrir archivos extraídos</string>
+    <string name="game_archive_keep_files">Conservar archivos y quitar de la lista</string>
 </resources>

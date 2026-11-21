@@ -3,6 +3,7 @@ package tv.orbit.shield
 import java.io.File
 import java.io.IOException
 import java.io.OutputStream
+import java.security.MessageDigest
 import java.util.Locale
 import java.util.zip.CRC32
 import java.util.zip.ZipEntry
@@ -24,6 +25,32 @@ internal object GameZipArchive {
     )
 
     data class Plan(val entries: List<Entry>, val totalBytes: Long, val fileCount: Int)
+
+    /** Identifies ordered metadata for recovery; entry CRCs still require byte verification. */
+    fun fingerprint(plan: Plan): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        fun number(value: Long) {
+            for (shift in 56 downTo 0 step 8) digest.update((value ushr shift).toByte())
+        }
+        fun text(value: String) {
+            val bytes = value.toByteArray(Charsets.UTF_8)
+            number(bytes.size.toLong())
+            digest.update(bytes)
+        }
+        text("gostex-zip-plan-v1")
+        number(plan.entries.size.toLong())
+        number(plan.totalBytes)
+        number(plan.fileCount.toLong())
+        for (entry in plan.entries) {
+            text(entry.path)
+            number(if (entry.directory) 1L else 0L)
+            number(entry.size)
+            number(entry.compressedSize)
+            number(entry.crc)
+            number(entry.method.toLong())
+        }
+        return digest.digest().joinToString("") { "%02x".format(it.toInt() and 255) }
+    }
 
     fun inspect(file: File, checkpoint: () -> Unit = {}): Plan =
         ZipFile(file).use { inspect(it, checkpoint) }
@@ -69,7 +96,7 @@ internal object GameZipArchive {
         return Plan(entries.toList(), total, files)
     }
 
-    /** Target callbacks create new documents only; ownership and rollback belong to the caller. */
+    /** The caller validates completed files and owns document creation, durability and recovery. */
     fun extract(
         file: File,
         expected: Plan,
@@ -77,6 +104,8 @@ internal object GameZipArchive {
         openFile: (String) -> OutputStream,
         checkpoint: () -> Unit = {},
         onProgress: (Long) -> Unit = {},
+        completed: (Entry) -> Boolean = { false },
+        onFileCompleted: (Entry) -> Unit = {},
     ) {
         ZipFile(file).use { zip ->
             val current = inspect(zip, checkpoint)
@@ -87,6 +116,12 @@ internal object GameZipArchive {
             onProgress(total)
             for (entry in current.entries) {
                 checkpoint()
+                if (!entry.directory && completed(entry)) {
+                    checkpoint()
+                    total += entry.size
+                    onProgress(total)
+                    continue
+                }
                 val parts = entry.path.split('/')
                 val directoryCount = if (entry.directory) parts.size else parts.size - 1
                 var parent = ""
@@ -119,6 +154,8 @@ internal object GameZipArchive {
                         if (written != entry.size || crc.value != entry.crc) throw IOException("ZIP checksum mismatch")
                     }
                 }
+                checkpoint()
+                onFileCompleted(entry)
             }
             checkpoint()
             check(total == expected.totalBytes)

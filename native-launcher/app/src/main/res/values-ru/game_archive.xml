@@ -3,11 +3,22 @@
     <string name="game_archive_title">Распаковать ZIP</string>
     <string name="game_archive_invalid">Не удалось прочитать ZIP. Возможно, он недокачан или использует неподдерживаемый формат.</string>
     <string name="game_archive_cancelled">Распаковка отменена.</string>
-    <string name="game_archive_expired">Подготовка архива прервана. Выберите ZIP заново, чтобы продолжить. Исходный архив не изменён.</string>
+    <string name="game_archive_expired">Подготовка архива прервана. Выберите ZIP заново, чтобы продолжить.</string>
     <string name="game_archive_failed">Распаковка остановлена. Проверьте свободное место и доступ к папке, затем повторите.</string>
     <string name="game_archive_inspecting">Читаем содержимое архива…</string>
-    <string name="game_archive_working">Распаковываем файлы… Оставьте GOSTEX открытым до завершения.</string>
+    <string name="game_archive_working">Распаковываем файлы…</string>
     <string name="game_archive_ready">Файлы готовы в новой папке. Подтвердите эту папку, чтобы добавить её в библиотеку.</string>
     <string name="game_archive_confirm">Файлов: %1$d · после распаковки: %2$s. Выберите место для новой папки. Исходный архив сохранится.</string>
     <string name="game_archive_destination">Выбрать папку</string>
+    <string name="game_archive_pause">Приостановить распаковку</string>
+    <string name="game_archive_resume">Продолжить распаковку ZIP</string>
+    <string name="game_archive_recover">Распаковка ZIP прервалась. Можно продолжить с уже подготовленных файлов.</string>
+    <string name="game_archive_discard">Удалить незавершённую распаковку</string>
+    <string name="game_archive_discard_confirm">Удалить частичные файлы этой распаковки?</string>
+    <string name="game_archive_discard_failed">Не удалось удалить частичные файлы. Проверьте доступ к архиву и папке назначения.</string>
+    <string name="game_archive_recovery_unavailable">Не удалось прочитать сохранённую распаковку ZIP.</string>
+    <string name="game_archive_recover_ready">Файлы готовы к добавлению в библиотеку.</string>
+    <string name="game_archive_dismiss_ready">Убрать из списка</string>
+    <string name="game_archive_open_ready">Открыть распакованные файлы</string>
+    <string name="game_archive_keep_files">Оставить файлы и убрать из списка</string>
 </resources>

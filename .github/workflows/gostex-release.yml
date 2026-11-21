@@ -86,6 +86,8 @@ jobs:
             native-launcher/checks/check_import_warnings.py \
             native-launcher/checks/check_game_import_summary.py \
             native-launcher/checks/check_game_archive_lifecycle.py \
+            native-launcher/checks/check_game_archive_recovery.py \
+            native-launcher/checks/check_game_zip_resume.py \
             native-launcher/checks/check_apps_options.py \
             native-launcher/checks/check_portable_settings.py \
             native-launcher/checks/check_remote_install_policy.py \

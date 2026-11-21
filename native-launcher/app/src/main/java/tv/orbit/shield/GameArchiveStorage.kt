@@ -3,21 +3,26 @@ package tv.orbit.shield
 import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
+import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.provider.DocumentsContract as Docs
 import android.provider.OpenableColumns
+import android.system.ErrnoException
 import android.system.Os
 import android.system.OsConstants
+import java.io.File
+import java.io.IOException
+import java.io.OutputStream
+import java.util.Locale
+import java.util.UUID
+import java.util.concurrent.locks.ReentrantLock
+import java.util.zip.CRC32
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.runInterruptible
-import java.io.File
-import java.io.IOException
-import java.io.OutputStream
-import java.util.UUID
 
-/** An explicit ZIP preparation operation. Each destination belongs to one attempt. */
+/** Extract ZIP members into an owned SAF directory and publish it after verification. */
 internal object GameArchiveStorage {
     class Plan internal constructor(
         val title: String,
@@ -28,125 +33,393 @@ internal object GameArchiveStorage {
         val totalBytes: Long get() = archive.totalBytes
     }
 
-    suspend fun inspect(context: Context, source: Uri): Plan {
-        val task = currentCoroutineContext()
-        return runInterruptible(Dispatchers.IO) {
-            check(!PortableMaintenance.running) { "Maintenance is running" }
+    private val operation = ReentrantLock()
+    private const val MAX_SOURCE_BYTES = 64L * 1024 * 1024 * 1024
+
+    suspend fun inspect(context: Context, source: Uri): Plan =
+        perform { checkpoint ->
             val resolver = context.contentResolver
             val title = resolver.query(source, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
                 if (it.moveToFirst()) it.getString(0)?.take(256) else null
-            }.orEmpty().ifBlank { "archive.zip" }
-            withSource(resolver, source) { file ->
-                Plan(title, source, GameZipArchive.inspect(file) { task.ensureActive() })
+            }.orEmpty().map { if (it.isISOControl()) '_' else it }.joinToString("").ifBlank { "archive.zip" }
+            withSource(context, source, checkpoint) { file ->
+                Plan(title, source, GameZipArchive.inspect(file, checkpoint))
             }
         }
+
+    suspend fun extract(
+        context: Context, plan: Plan, destination: Uri, platform: String, onProgress: (Long) -> Unit,
+    ): Uri = perform { checkpoint ->
+        check(GameArchiveRecovery.read(context) == null) { "Another archive must be resolved first" }
+        require(destination.scheme == ContentResolver.SCHEME_CONTENT && Docs.isTreeUri(destination))
+        val id = UUID.randomUUID().toString()
+        val stem = plan.title.substringBeforeLast('.', plan.title).take(40)
+            .map { if (it.isISOControl() || Character.isSurrogate(it) || it in "\\/:*?\"<>|") '_' else it }
+            .joinToString("").trim(' ', '.').ifBlank { "game" }
+        val job = GameArchiveRecovery.Job(
+            id = id, platform = platform, source = plan.source, tree = destination, title = plan.title,
+            fingerprint = GameZipArchive.fingerprint(plan.archive), finalName = "$stem-${id.take(8)}",
+            totalBytes = plan.totalBytes,
+        )
+        val durable = GameArchiveRecovery.retainAccess(context, job)
+        if (durable) GameArchiveRecovery.begin(context, job)
+        prepare(context, job, plan.archive, durable, checkpoint, onProgress)
     }
 
-    suspend fun extract(context: Context, plan: Plan, destination: Uri, onProgress: (Long) -> Unit): Uri {
+    suspend fun resume(context: Context, job: GameArchiveRecovery.Job, onProgress: (Long) -> Unit): Uri =
+        perform { checkpoint ->
+            check(GameArchiveRecovery.read(context) == job) { "Archive preparation changed" }
+            if (job.phase == GameArchiveRecovery.Phase.READY) {
+                return@perform Destination(context, job, checkpoint).ready()
+            }
+            check(GameArchiveRecovery.hasAccess(context, job)) { "Archive or destination access is missing" }
+            prepare(context, job, null, true, checkpoint, onProgress)
+        }
+
+    suspend fun discard(context: Context, job: GameArchiveRecovery.Job) = perform { checkpoint ->
+        check(GameArchiveRecovery.read(context) == job) { "Archive preparation changed" }
+        if (job.phase != GameArchiveRecovery.Phase.READY) {
+            check(GameArchiveRecovery.hasDestinationAccess(context, job)) { "Destination access is missing" }
+            val target = Destination(context, job, checkpoint)
+            val staging = target.stagingForDiscard()
+            if (staging != null) {
+                if (!target.isEmpty(staging)) {
+                val plan = withSource(context, job.source, checkpoint) { file ->
+                        GameZipArchive.inspect(file, checkpoint)
+                    }
+                    verifyPlan(job, plan)
+                    target.useFolder(staging, plan, recovered = true, complete = false, verifyContents = false)
+                }
+                target.deleteStaging()
+            }
+        }
+        GameArchiveRecovery.clear(context, job)
+    }
+
+    private suspend fun <T> perform(block: (() -> Unit) -> T): T {
         val task = currentCoroutineContext()
         return runInterruptible(Dispatchers.IO) {
-            val checkpoint = {
-                task.ensureActive()
-                check(!PortableMaintenance.running) { "Maintenance is running" }
-            }
-            checkpoint()
-            require(destination.scheme == ContentResolver.SCHEME_CONTENT && Docs.isTreeUri(destination))
-            val target = Destination(context, destination, plan.totalBytes, checkpoint)
-            var completed = false
+            check(operation.tryLock()) { "Another archive operation is running" }
             try {
-                withSource(context.contentResolver, plan.source) { file ->
-                    checkpoint()
-                    val stem = plan.title.substringBeforeLast('.', plan.title).take(40)
-                        .map { if (it.isISOControl() || it in "\\/:*?\"<>|") '_' else it }
-                        .joinToString("").trim(' ', '.').ifBlank { "game" }
-                    target.start("$stem-${UUID.randomUUID().toString().take(8)}")
-                    GameZipArchive.extract(file, plan.archive,
-                        createDirectory = target::directory,
-                        openFile = target::open,
-                        checkpoint = checkpoint,
-                        onProgress = onProgress)
-                    checkpoint()
+                val checkpoint = {
+                    task.ensureActive()
+                    check(!PortableMaintenance.running) { "Maintenance is running" }
                 }
-                val result = target.finish()
-                completed = true
-                result
+                checkpoint()
+                block(checkpoint)
             } finally {
-                if (!completed) target.discard()
+                operation.unlock()
             }
         }
     }
 
-    private inline fun <T> withSource(resolver: ContentResolver, source: Uri, block: (File) -> T): T {
+    private fun prepare(
+        context: Context,
+        initial: GameArchiveRecovery.Job,
+        preview: GameZipArchive.Plan?,
+        durable: Boolean,
+        checkpoint: () -> Unit,
+        onProgress: (Long) -> Unit,
+    ): Uri {
+        var job = initial
+        val target = Destination(context, job, checkpoint)
+        var finished = false
+        fun record(replacement: GameArchiveRecovery.Job) {
+            if (durable) GameArchiveRecovery.update(context, job, replacement)
+            job = replacement
+        }
+        try {
+            val alreadyRenamed = withSource(context, job.source, checkpoint) { file ->
+                val plan = preview ?: GameZipArchive.inspect(file, checkpoint)
+                verifyPlan(job, plan)
+                if (job.phase == GameArchiveRecovery.Phase.RENAMING) {
+                    val final = target.recoverRenamed()
+                    if (final != null) {
+                        target.useFolder(final, plan, recovered = true, complete = true)
+                        onProgress(plan.totalBytes)
+                        return@withSource final
+                    }
+                }
+                val existing = target.findStaging()
+                val staging = existing ?: target.createStaging()
+                if (job.stagingId == null) record(job.copy(stagingId = staging.id))
+                target.useFolder(staging, plan, recovered = existing != null, complete = false)
+                GameZipArchive.extract(file, plan,
+                    createDirectory = target::directory,
+                    openFile = target::open,
+                    checkpoint = checkpoint,
+                    onProgress = onProgress,
+                    completed = { it.path in target.completed },
+                    onFileCompleted = { target.promote(it.path) },
+                )
+                checkpoint()
+                null
+            }
+            if (job.phase == GameArchiveRecovery.Phase.EXTRACTING) {
+                record(job.copy(phase = GameArchiveRecovery.Phase.RENAMING))
+            }
+            val ready = alreadyRenamed ?: target.finish()
+            record(job.copy(phase = GameArchiveRecovery.Phase.READY, finalId = ready.id))
+            finished = true
+            return target.uri(ready.id)
+        } finally {
+            if (!finished && !durable) runCatching { target.deleteStaging() }
+        }
+    }
+
+    private fun <T> withSource(context: Context, source: Uri, checkpoint: () -> Unit, block: (File) -> T): T {
         require(source.scheme == ContentResolver.SCHEME_CONTENT)
-        return (resolver.openFileDescriptor(source, "r") ?: throw IOException("Cannot open ZIP")).use { descriptor ->
-            if (descriptor.canDetectErrors()) descriptor.checkError()
-            Os.lseek(descriptor.fileDescriptor, 0, OsConstants.SEEK_CUR)
-            val result = block(File("/proc/self/fd/${descriptor.fd}"))
-            if (descriptor.canDetectErrors()) descriptor.checkError()
+        val scratch = File(context.cacheDir, "archive-preparation-source.zip")
+        // A force-stop may have interrupted the previous provider copy.
+        if (scratch.exists() && !scratch.delete()) throw IOException("Cannot reset ZIP cache")
+        return (context.contentResolver.openFileDescriptor(source, "r") ?: throw IOException("Cannot open ZIP")).use { descriptor ->
+            checkError(descriptor)
+            val path = File("/proc/self/fd/${descriptor.fd}")
+            val canReopen = try {
+                Os.lseek(descriptor.fileDescriptor, 0, OsConstants.SEEK_CUR)
+                Os.close(Os.open(path.path, OsConstants.O_RDONLY, 0))
+                true
+            } catch (_: ErrnoException) { false }
+            val result = if (canReopen) block(path) else try {
+                // Some document providers grant a readable descriptor but forbid reopening
+                // it as a path. ZipFile needs a seekable path for the central directory.
+                copySource(context, descriptor, scratch, checkpoint)
+                block(scratch)
+            } finally {
+                scratch.delete()
+            }
+            checkError(descriptor)
             result
         }
     }
 
-    private class Destination(context: Context, private val tree: Uri, totalBytes: Long, private val checkpoint: () -> Unit) {
+    private fun copySource(context: Context, descriptor: ParcelFileDescriptor, scratch: File, checkpoint: () -> Unit) {
+        val reserve = TorrDownloadSpace.read(context).toLong() * 1024 * 1024
+        val declared = descriptor.statSize
+        if (declared > MAX_SOURCE_BYTES) throw IOException("ZIP source is too large")
+        if (declared > context.cacheDir.usableSpace - reserve) throw TorrDownloadLowSpace()
+        val duplicate = ParcelFileDescriptor.dup(descriptor.fileDescriptor)
+        ParcelFileDescriptor.AutoCloseInputStream(duplicate).use { input ->
+            scratch.outputStream().use { output ->
+                val buffer = ByteArray(64 * 1024)
+                var total = 0L
+                var remainingBudget = 0L
+                while (true) {
+                    checkpoint()
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    if (count.toLong() > MAX_SOURCE_BYTES - total) throw IOException("ZIP source is too large")
+                    if (remainingBudget < count) {
+                        remainingBudget = minOf(context.cacheDir.usableSpace - reserve, 4L * 1024 * 1024)
+                        if (remainingBudget < count) throw TorrDownloadLowSpace()
+                    }
+                    output.write(buffer, 0, count)
+                    total += count
+                    remainingBudget -= count
+                }
+                if (declared >= 0 && declared != total) throw IOException("ZIP source changed")
+                checkError(descriptor)
+            }
+        }
+    }
+
+    private fun checkError(descriptor: ParcelFileDescriptor) {
+        if (descriptor.canDetectErrors()) descriptor.checkError()
+    }
+
+    private fun verifyPlan(job: GameArchiveRecovery.Job, plan: GameZipArchive.Plan) {
+        check(plan.totalBytes == job.totalBytes && GameZipArchive.fingerprint(plan) == job.fingerprint) {
+            "Source archive changed"
+        }
+    }
+
+    private data class Document(val id: String, val name: String, val directory: Boolean)
+    private data class Member(val entry: GameZipArchive.Entry, val scratchName: String)
+    private data class Expected(val name: String, val directory: Boolean, val member: Member?, val scratch: Boolean = false)
+
+    private class Destination(
+        context: Context,
+        private val job: GameArchiveRecovery.Job,
+        private val checkpoint: () -> Unit,
+    ) {
+        private val tree = job.tree
         private val resolver = context.contentResolver
         private val root = Docs.getTreeDocumentId(tree)
         private val reserve = TorrDownloadSpace.read(context).toLong() * 1024 * 1024
-        private var remaining = totalBytes
+        private var remaining = 0L
+        private var staging: Document? = null
         private val directories = mutableMapOf<String, String>()
-        private val createdIds = mutableSetOf<String>()
-        private var folderId: String? = null
-        private var currentName = ""
-        private var finalName = ""
+        private val index = mutableMapOf<String, Directory>()
+        private val knownIds = mutableSetOf(root)
+        private val members = mutableMapOf<String, Member>()
+        private val expected = mutableMapOf<String, MutableMap<String, Expected>>()
+        val completed = mutableSetOf<String>()
 
-        fun start(folderName: String) {
-            finalName = folderName
-            currentName = ".gostex-extract-${UUID.randomUUID()}.partial"
-            val id = create(root, currentName, true)
-            folderId = id
-            directories[""] = id
-            resolver.query(Docs.buildDocumentUriUsingTree(tree, id),
-                arrayOf(Docs.Document.COLUMN_FLAGS), null, null, null)?.use { cursor ->
+        private class Directory {
+            private val byName = linkedMapOf<String, MutableList<Document>>()
+            val documents: List<Document> get() = byName.values.flatten()
+
+            operator fun get(name: String): Document? {
+                val matches = byName[key(name)] ?: return null
+                check(matches.size == 1) { "Ambiguous destination documents" }
+                return matches[0]
+            }
+
+            fun add(row: Document) { byName.getOrPut(key(row.name)) { mutableListOf() }.add(row) }
+            fun remove(row: Document) { byName.remove(key(row.name)) }
+            fun isEmpty(): Boolean = byName.isEmpty()
+        }
+
+        fun uri(id: String): Uri = Docs.buildDocumentUriUsingTree(tree, id)
+        fun isEmpty(folder: Document): Boolean = children(folder.id).isEmpty()
+
+        fun ready(): Uri {
+            val row = children(root)[job.finalName] ?: throw IOException("Prepared folder is missing")
+            check(row.id == job.finalId && row.name == job.finalName && row.directory) { "Prepared folder moved" }
+            requireChild(root, row)
+            return uri(row.id)
+        }
+
+        fun findStaging(): Document? {
+            val rootRows = children(root)
+            check(job.finalId == null && rootRows[job.finalName] == null) { "Final folder already exists" }
+            val row = rootRows[job.stagingName]
+            if (row == null) {
+                check(job.stagingId == null) { "Preparation folder moved or is missing" }
+                return null
+            }
+            check(row.directory && row.name == job.stagingName) { "Unexpected preparation folder" }
+            requireChild(root, row)
+            if (job.stagingId == null) {
+                // The journal is saved before createDocument. A crash between create and recording
+                // its ID can leave just this empty, uniquely named directory.
+                check(children(row.id).isEmpty()) { "Unregistered preparation has files" }
+            } else check(row.id == job.stagingId) { "Preparation folder was replaced" }
+            staging = row
+            return row
+        }
+
+        fun recoverRenamed(): Document? {
+            val rootRows = children(root)
+            val final = rootRows[job.finalName] ?: return null
+            check(rootRows[job.stagingName] == null && final.name == job.finalName && final.directory) {
+                "Cannot verify interrupted rename"
+            }
+            // ExternalStorageProvider changes a path-based ID on rename. Other providers keep it.
+            // In both cases the random final name is already recorded, and the full contents are checked.
+            requireChild(root, final)
+            return final
+        }
+
+        fun createStaging(): Document {
+            val row = create(root, job.stagingName, directory = true)
+            staging = row
+            resolver.query(uri(row.id), arrayOf(Docs.Document.COLUMN_FLAGS), null, null, null)?.use { cursor ->
                 if (cursor.moveToFirst() && !cursor.isNull(0)) {
                     check(cursor.getInt(0) and Docs.Document.FLAG_SUPPORTS_RENAME != 0) {
                         "Destination cannot finish a prepared folder"
                     }
                 }
             }
+            return row
         }
 
-        fun finish(): Uri {
-            checkpoint()
-            val id = checkNotNull(folderId)
-            val before = children(root)
-            check(before.singleOrNull { it.first == id }?.second == currentName) { "Prepared folder moved" }
-            check(before.none { it.second.equals(finalName, ignoreCase = true) }) { "Final folder already exists" }
-            val renamed = Docs.renameDocument(resolver, Docs.buildDocumentUriUsingTree(tree, id), finalName)
-                ?: throw IOException("Cannot finish prepared folder")
-            require(renamed.authority == tree.authority)
-            val renamedId = Docs.getDocumentId(renamed)
-            check(renamedId != root && before.none { it.first == renamedId && it.first != id }) { "Rename reused a document" }
-            folderId = renamedId
-            currentName = finalName
-            createdIds.add(renamedId)
-            check(children(root).singleOrNull { it.first == renamedId }?.second == finalName) { "Destination changed folder name" }
-            return Docs.buildDocumentUriUsingTree(tree, renamedId)
+        fun useFolder(
+            folder: Document, plan: GameZipArchive.Plan, recovered: Boolean, complete: Boolean, verifyContents: Boolean = true,
+        ) {
+            remaining = plan.totalBytes
+            directories[""] = folder.id
+            for ((number, entry) in plan.entries.withIndex()) {
+                checkpoint()
+                val parts = entry.path.split('/')
+                var parent = ""
+                val directoryCount = if (entry.directory) parts.size else parts.size - 1
+                for (part in parts.take(directoryCount)) {
+                    expect(parent, Expected(part, true, null))
+                    parent = if (parent.isEmpty()) part else "$parent/$part"
+                }
+                if (entry.directory) continue
+                val member = Member(entry, ".gostex-${job.id}-$number.partial")
+                members[entry.path] = member
+                expect(parent, Expected(parts.last(), false, member))
+                expect(parent, Expected(member.scratchName, false, member, true))
+            }
+            if (recovered) {
+                val buffer = if (verifyContents) ByteArray(64 * 1024) else null
+                validateExisting("", folder.id, complete, buffer)
+                if (complete) check(remaining == 0L && completed.size == plan.fileCount) { "Prepared files are missing" }
+            }
+        }
+
+        private fun expect(parent: String, row: Expected) {
+            val previous = expected.getOrPut(parent) { mutableMapOf() }.putIfAbsent(key(row.name), row)
+            check(previous == null || (row.directory && previous == row)) { "Archive member conflicts with a temporary name" }
+        }
+
+        private fun validateExisting(path: String, parent: String, complete: Boolean, buffer: ByteArray?) {
+            val expectedChildren = expected[path].orEmpty()
+            val existing = children(parent)
+            for (row in existing.documents) {
+                checkpoint()
+                check(existing[row.name] == row) { "Ambiguous preparation document" }
+                val wanted = expectedChildren[key(row.name)] ?: throw IOException("Unexpected document in preparation")
+                check(wanted.name == row.name && wanted.directory == row.directory) { "Unexpected preparation document" }
+                requireChild(parent, row)
+                if (wanted.scratch) {
+                    val outputName = checkNotNull(wanted.member).entry.path.substringAfterLast('/')
+                    check(!complete && existing[outputName] == null) { "Temporary document conflicts with an output" }
+                } else if (wanted.directory) {
+                    val child = if (path.isEmpty()) row.name else "$path/${row.name}"
+                    directories[child] = row.id
+                    validateExisting(child, row.id, complete, buffer)
+                } else if (buffer != null) {
+                    val entry = checkNotNull(wanted.member).entry
+                    verifyFile(row, entry, buffer)
+                    remaining -= entry.size
+                    completed += entry.path
+                }
+            }
+            if (complete) check(expectedChildren.values.all { it.scratch || existing[it.name] != null }) {
+                "Prepared documents are missing"
+            }
+        }
+
+        private fun verifyFile(row: Document, entry: GameZipArchive.Entry, buffer: ByteArray) {
+            val descriptor = resolver.openFileDescriptor(uri(row.id), "r") ?: throw IOException("Cannot verify archive member")
+            val stream = ParcelFileDescriptor.AutoCloseInputStream(descriptor)
+            stream.use { input ->
+                checkError(descriptor)
+                var size = 0L
+                val crc = CRC32()
+                while (true) {
+                    checkpoint()
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    size += count
+                    check(size <= entry.size) { "Prepared file is too long" }
+                    crc.update(buffer, 0, count)
+                }
+                checkError(descriptor)
+                check(size == entry.size && crc.value == entry.crc) { "Prepared file changed" }
+            }
         }
 
         fun directory(path: String) {
             if (path in directories) return
-            val parent = path.substringBeforeLast('/', "")
-            val id = create(directories.getValue(parent), path.substringAfterLast('/'), true)
-            directories[path] = id
+            val parent = directories.getValue(path.substringBeforeLast('/', ""))
+            directories[path] = create(parent, path.substringAfterLast('/'), directory = true).id
         }
 
         fun open(path: String): OutputStream {
-            val parent = path.substringBeforeLast('/', "")
-            val id = create(directories.getValue(parent), path.substringAfterLast('/'), false)
-            val uri = Docs.buildDocumentUriUsingTree(tree, id)
-            val descriptor = resolver.openFileDescriptor(uri, "w") ?: throw IOException("Cannot create game file")
+            val parent = directories.getValue(path.substringBeforeLast('/', ""))
+            val scratchName = members.getValue(path).scratchName
+            val row = children(parent)[scratchName]?.also { requireChild(parent, it) }
+                ?: create(parent, scratchName, directory = false)
+            val descriptor = resolver.openFileDescriptor(uri(row.id), "rwt") ?: throw IOException("Cannot write archive member")
             val output = ParcelFileDescriptor.AutoCloseOutputStream(descriptor)
             try {
                 checkError(descriptor)
+                check(Os.fstat(descriptor.fileDescriptor).st_size == 0L) { "Temporary file could not be reset" }
                 checkSpace(descriptor)
             } catch (error: Exception) {
                 output.close()
@@ -180,6 +453,38 @@ internal object GameArchiveStorage {
             }
         }
 
+        fun promote(path: String) {
+            val parent = directories.getValue(path.substringBeforeLast('/', ""))
+            val temporary = checkNotNull(children(parent)[members.getValue(path).scratchName])
+            rename(parent, temporary, path.substringAfterLast('/'))
+        }
+
+        fun finish(): Document {
+            checkpoint()
+            check(remaining == 0L) { "Preparation did not write all bytes" }
+            val row = checkNotNull(staging)
+            // Refresh this single parent before exposing the result. Member operations use
+            // one initial listing per directory plus direct metadata queries for changes.
+            index.remove(root)?.documents?.forEach { knownIds.remove(it.id) }
+            check(children(root)[job.stagingName] == row) { "Prepared folder moved" }
+            return rename(root, row, job.finalName).also { staging = null }
+        }
+
+        fun stagingForDiscard(): Document? {
+            val rows = children(root)
+            if (rows[job.stagingName] == null) return null
+            return findStaging()
+        }
+
+        fun deleteStaging() {
+            val row = staging ?: return
+            check(row.name == job.stagingName && row.directory)
+            if (readChildren(root)[job.stagingName] != row) throw IOException("Preparation folder moved")
+            requireChild(root, row)
+            check(Docs.deleteDocument(resolver, uri(row.id))) { "Cannot remove temporary preparation" }
+            staging = null
+        }
+
         private fun checkSpace(descriptor: ParcelFileDescriptor) {
             val stats = try { Os.fstatvfs(descriptor.fileDescriptor) } catch (_: Exception) { return }
             if (stats.f_bavail < 0 || stats.f_frsize <= 0) return
@@ -188,46 +493,88 @@ internal object GameArchiveStorage {
             if (available < remaining + reserve) throw IOException("Insufficient space for archive")
         }
 
-        private fun checkError(descriptor: ParcelFileDescriptor) {
-            if (descriptor.canDetectErrors()) descriptor.checkError()
-        }
-
-        private fun create(parent: String, requestedName: String, directory: Boolean): String {
+        private fun create(parent: String, name: String, directory: Boolean): Document {
             checkpoint()
-            val before = children(parent)
-            require(before.none { it.second.equals(requestedName, ignoreCase = true) }) { "Destination exists" }
-            val mime = if (directory) Docs.Document.MIME_TYPE_DIR else "application/octet-stream"
-            val parentUri = Docs.buildDocumentUriUsingTree(tree, parent)
-            val uri = Docs.createDocument(resolver, parentUri, mime, requestedName)
-                ?: throw IOException("Cannot create archive destination")
-            require(uri.authority == tree.authority)
-            val id = Docs.getDocumentId(uri)
-            require(id != root && before.none { it.first == id } && createdIds.add(id)) { "Destination reused a document" }
-            val actual = children(parent).singleOrNull { it.first == id }
-            check(actual?.second == requestedName) { "Destination changed a file name" }
-            return id
+            val rows = children(parent)
+            require(rows[name] == null) { "Destination exists" }
+            val type = if (directory) Docs.Document.MIME_TYPE_DIR else "application/octet-stream"
+            val result = Docs.createDocument(resolver, uri(parent), type, name) ?: throw IOException("Cannot create archive document")
+            val row = returned(parent, result, name, directory)
+            check(knownIds.add(row.id)) { "Destination reused a document" }
+            rows.add(row)
+            return row
         }
 
-        private fun children(parent: String): List<Pair<String, String>> {
-            val columns = arrayOf(Docs.Document.COLUMN_DOCUMENT_ID, Docs.Document.COLUMN_DISPLAY_NAME)
-            return resolver.query(Docs.buildChildDocumentsUriUsingTree(tree, parent), columns, null, null, null)?.use { cursor ->
-                buildList {
-                    while (cursor.moveToNext()) {
-                        check(size < 10000) { "Too many destination documents" }
-                        add(checkNotNull(cursor.getString(0)) to checkNotNull(cursor.getString(1)))
-                    }
-                    check(!cursor.extras.getBoolean(Docs.EXTRA_LOADING) && cursor.extras.getString(Docs.EXTRA_ERROR) == null)
+        private fun rename(parent: String, old: Document, name: String): Document {
+            checkpoint()
+            val rows = children(parent)
+            check(rows[old.name] == old && rows[name] == null) { "Destination changed" }
+            requireChild(parent, old)
+            val result = Docs.renameDocument(resolver, uri(old.id), name) ?: throw IOException("Cannot rename archive document")
+            val row = returned(parent, result, name, old.directory)
+            check(row.id == old.id || knownIds.add(row.id)) { "Rename reused a document" }
+            rows.remove(old)
+            rows.add(row)
+            return row
+        }
+
+        private fun returned(parent: String, result: Uri, name: String, directory: Boolean): Document {
+            require(result.scheme == ContentResolver.SCHEME_CONTENT && result.authority == tree.authority)
+            val id = Docs.getDocumentId(result)
+            val row = Document(id, name, directory)
+            requireChild(parent, row)
+            return row
+        }
+
+        private fun requireChild(parent: String, row: Document) {
+            check(row.id.isNotBlank() && row.id != root && row.id != parent) { "Invalid archive document" }
+            val actual = resolver.query(uri(row.id), DOCUMENT_COLUMNS, null, null, null)?.use { cursor ->
+                if (!cursor.moveToFirst()) null else {
+                    val document = document(cursor)
+                    check(!cursor.moveToNext()) { "Ambiguous archive document" }
+                    document
                 }
-            } ?: throw IOException("Cannot inspect archive destination")
-        }
-
-        fun discard() {
-            val id = folderId ?: return
-            runCatching {
-                if (id in createdIds && children(root).singleOrNull { it.first == id }?.second == currentName) {
-                    Docs.deleteDocument(resolver, Docs.buildDocumentUriUsingTree(tree, id))
+            }
+            check(actual == row) { "Archive document changed" }
+            if (Build.VERSION.SDK_INT >= 29) {
+                check(Docs.isChildDocument(resolver, uri(parent), uri(row.id))) { "Document moved outside its folder" }
+                val stagingId = staging?.id
+                if (parent != root && stagingId != null && parent != stagingId) {
+                    check(Docs.isChildDocument(resolver, uri(stagingId), uri(parent))) { "Folder moved outside preparation" }
                 }
             }
         }
+
+        private fun children(parent: String): Directory = index.getOrPut(parent) {
+            readChildren(parent).also { rows ->
+                for (row in rows.documents) check(knownIds.add(row.id)) { "Repeated archive document ID" }
+            }
+        }
+
+        private fun readChildren(parent: String): Directory {
+            val children = Docs.buildChildDocumentsUriUsingTree(tree, parent)
+            return resolver.query(children, DOCUMENT_COLUMNS, null, null, null)?.use { cursor ->
+                val rows = Directory()
+                val ids = mutableSetOf<String>()
+                while (cursor.moveToNext()) {
+                    check(ids.size < 10000) { "Too many destination documents" }
+                    val row = document(cursor)
+                    check(ids.add(row.id)) { "Ambiguous destination document ID" }
+                    rows.add(row)
+                }
+                check(!cursor.extras.getBoolean(Docs.EXTRA_LOADING) && cursor.extras.getString(Docs.EXTRA_ERROR) == null)
+                rows
+            } ?: throw IOException("Cannot inspect archive destination")
+        }
+
+        private fun document(cursor: android.database.Cursor): Document {
+            val id = checkNotNull(cursor.getString(0))
+            val name = checkNotNull(cursor.getString(1))
+            return Document(id, name, checkNotNull(cursor.getString(2)) == Docs.Document.MIME_TYPE_DIR)
+        }
+
     }
+
+    private fun key(name: String): String = name.lowercase(Locale.ROOT)
+    private val DOCUMENT_COLUMNS = arrayOf(Docs.Document.COLUMN_DOCUMENT_ID, Docs.Document.COLUMN_DISPLAY_NAME, Docs.Document.COLUMN_MIME_TYPE)
 }

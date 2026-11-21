@@ -1070,10 +1070,12 @@ class MainActivity : ComponentActivity() {
             contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
             val root = LibraryImport.Root(importPlatform, uri.toString(), importSource)
             LibraryImport.addRoot(this, root)
+            gameArchive.folderImported(uri)
             beginGameImport(root)
             notice = ""
             refreshLibrary()
         } catch (e: Exception) { notice = getString(R.string.folder_error, e.localizedMessage.orEmpty()) }
+        else gameArchive.folderImported(null)
     }
     private val gameFilePicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (PortableMaintenance.running) return@registerForActivityResult
@@ -1110,13 +1112,13 @@ class MainActivity : ComponentActivity() {
             val systems = PlatformRegistry.all.map { PlatformRegistry.resolve(it.id, emulator)!! }
             // AlertDialog's ListView scrolls and keeps D-pad focus as the catalog grows.
             val labels = systems.map { "${getString(it.titleRes)} · ${it.emulator}" }.toTypedArray()
-            android.app.AlertDialog.Builder(this).setTitle(getString(R.string.choose_system)).setItems(labels) { _, index -> chooseFolder(systems[index].id) }.setNegativeButton(getString(R.string.cancel), null).show()
+            chooseGameImportAction(R.string.choose_system, labels) { index -> chooseFolder(systems[index].id) }
             return
         }
         if (PlatformRegistry.find(platform) == null) { notice = getString(R.string.platform_unknown); return }
         if (platform == "Nintendo 3DS") {
-            android.app.AlertDialog.Builder(this).setTitle(R.string.three_ds_add_title)
-                .setItems(arrayOf(getString(R.string.import_one_game), getString(R.string.three_ds_rom_folder), getString(R.string.three_ds_installed), getString(R.string.game_archive_title))) { _, index ->
+            gameImportActionDialog(R.string.three_ds_add_title,
+                arrayOf(getString(R.string.import_one_game), getString(R.string.three_ds_rom_folder), getString(R.string.three_ds_installed), getString(R.string.game_archive_title))) { index ->
                     if (index == 0) chooseLibraryFile(platform)
                     else if (index == 1) chooseLibraryFolder(platform, LibrarySource.FILES)
                     else if (index == 3) gameArchive.chooseSource(platform)
@@ -1140,26 +1142,46 @@ class MainActivity : ComponentActivity() {
                 }.setNegativeButton(R.string.cancel, null).show()
             return
         }
-        android.app.AlertDialog.Builder(this).setTitle(R.string.import_source_title)
-            .setItems(arrayOf(getString(R.string.import_one_game), getString(R.string.import_game_folder), getString(R.string.game_archive_title))) { _, index ->
-                if (index == 0) chooseLibraryFile(platform)
-                else if (index == 1) chooseLibraryFolder(platform, LibrarySource.FILES)
-                else gameArchive.chooseSource(platform)
-            }.setNegativeButton(R.string.cancel, null).show()
+        chooseGameImportAction(R.string.import_source_title,
+            arrayOf(getString(R.string.import_one_game), getString(R.string.import_game_folder), getString(R.string.game_archive_title))) { index ->
+            when (index) {
+                0 -> chooseLibraryFile(platform)
+                1 -> chooseLibraryFolder(platform, LibrarySource.FILES)
+                else -> gameArchive.chooseSource(platform)
+            }
+        }
+    }
+
+    private fun chooseGameImportAction(title: Int, labels: Array<String>, select: (Int) -> Unit) {
+        gameImportActionDialog(title, labels, select).show()
+    }
+
+    private fun gameImportActionDialog(title: Int, labels: Array<String>, select: (Int) -> Unit): android.app.AlertDialog.Builder {
+        val recovery = gameArchive.recovery
+        val choices = if (recovery == null) labels else arrayOf(getString(
+            if (recovery.phase == GameArchiveRecovery.Phase.READY) R.string.game_archive_open_ready
+            else R.string.game_archive_resume
+        )) + labels
+        return android.app.AlertDialog.Builder(this).setTitle(title)
+            .setItems(choices) { _, index ->
+                if (recovery == null) select(index)
+                else if (index == 0) gameArchive.openRecovery()
+                else select(index - 1)
+            }.setNegativeButton(R.string.cancel, null)
     }
     private fun chooseLibraryFile(platform: String) {
         importPlatform = platform
         importSource = LibrarySource.SINGLE_FILE
         launchDocumentPicker(Intent.ACTION_OPEN_DOCUMENT, "*/*") { gameFilePicker.launch(arrayOf("*/*")) }
     }
-    private fun chooseLibraryFolder(platform: String, source: LibrarySource, preferred: Uri? = null) {
+    private fun chooseLibraryFolder(platform: String, source: LibrarySource, preferred: Uri? = null): Boolean {
         importPlatform = platform
         importSource = source
-        val existing = (rootsOrNotify() ?: return).lastOrNull { it.platform == platform && it.source == source }?.uri
+        val existing = (rootsOrNotify() ?: return false).lastOrNull { it.platform == platform && it.source == source }?.uri
         val initial = existing?.let { Uri.parse(it) } ?: bundled.firstOrNull { it.platform == platform && it.tree.isNotBlank() }?.tree?.let {
             DocumentsContract.buildTreeDocumentUri("com.android.externalstorage.documents", it)
         }
-        launchDocumentPicker(Intent.ACTION_OPEN_DOCUMENT_TREE) {
+        return launchDocumentPicker(Intent.ACTION_OPEN_DOCUMENT_TREE) {
             folderPicker.launch(preferred ?: initial?.let { DocumentsContract.buildDocumentUriUsingTree(it, DocumentsContract.getTreeDocumentId(it)) })
         }
     }

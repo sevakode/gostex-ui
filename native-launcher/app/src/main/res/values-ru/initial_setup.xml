@@ -1,0 +1,10 @@
+<resources>
+    <string name="initial_setup_title">Начальная настройка</string>
+    <string name="initial_setup_summary">Выбрать папку, приложения и разрешения</string>
+    <string name="initial_setup_storage_checking">Проверяем папку загрузок…</string>
+    <string name="initial_setup_storage_access_lost">Выберите папку заново, чтобы вернуть доступ.</string>
+    <string name="initial_setup_storage_unavailable">Папка недоступна. Подключите накопитель или выберите другую папку.</string>
+    <string name="initial_setup_storage_ready">Папка загрузок готова</string>
+    <string name="initial_setup_storage_named">%1$s · доступна для загрузок</string>
+    <string name="initial_setup_media_optional">Необязательно · показ и управление воспроизведением в других приложениях</string>
+</resources>

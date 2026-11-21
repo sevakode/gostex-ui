@@ -1,0 +1,10 @@
+<resources>
+    <string name="initial_setup_title">Initial setup</string>
+    <string name="initial_setup_summary">Choose storage, apps and permissions</string>
+    <string name="initial_setup_storage_checking">Checking the download folder…</string>
+    <string name="initial_setup_storage_access_lost">Select the folder again to restore access.</string>
+    <string name="initial_setup_storage_unavailable">Folder unavailable. Reconnect the drive or choose another folder.</string>
+    <string name="initial_setup_storage_ready">Download folder ready</string>
+    <string name="initial_setup_storage_named">%1$s · ready for downloads</string>
+    <string name="initial_setup_media_optional">Optional · show and control playback from other apps</string>
+</resources>

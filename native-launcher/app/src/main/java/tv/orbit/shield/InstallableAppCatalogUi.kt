@@ -47,7 +47,8 @@ internal fun InstallableAppCatalogSettings(
     onOptions: () -> Unit,
 ) {
     val options = LocalAppsOptions.current
-    val entries = InstallableAppCatalog.visible(options)
+    val entries = remember(options) { InstallableAppCatalog.visible(options) }
+    val visiblePackages = remember(entries) { entries.mapTo(mutableSetOf()) { it.packageName } }
     val installer = activity.emulatorInstall
     val owner = LocalLifecycleOwner.current
     val view = LocalView.current
@@ -57,11 +58,11 @@ internal fun InstallableAppCatalogSettings(
     var checkingPackage by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf("") }
     val snapshots by produceState<Map<String, CatalogPackageState>?>(null, activity,
-        activity.resumeVersion, installer.revision, refreshVersion) {
+        activity.resumeVersion, installer.revision, refreshVersion, visiblePackages) {
         value = withContext(Dispatchers.IO) {
-            InstallableAppCatalog.all.associate {
+            visiblePackages.associateWith { pkg ->
                 ensureActive()
-                it.packageName to catalogPackageState(activity, it.packageName)
+                catalogPackageState(activity, pkg)
             }
         }
     }

@@ -2269,13 +2269,15 @@ class MainActivity : ComponentActivity() {
 private fun settingsParent(section: String): String = when {
     section == "appCatalog" -> "services"
     section == "appCatalogOptions" -> "appCatalog"
+    section == "setupApps" -> "firstSetup"
+    section == "setupAppOptions" -> "setupApps"
     section == "clock" || section == "language" -> "localeGroup"
     section.startsWith("clock/") -> clockParent(section)
     section in setOf("appearance", "art", "grafana") -> "appearanceGroup"
     section == "portablePreview" -> "portableCopy"
     section in setOf("covers", "portableCopy") -> "libraryGroup"
     section in setOf("libraryGroup", "nowPlaying", "downloads", "playback") -> "mediaGroup"
-    section in setOf("services", "settingsCopy") -> "systemGroup"
+    section in setOf("firstSetup", "services", "settingsCopy") -> "systemGroup"
     else -> "root"
 }
 
@@ -2289,8 +2291,9 @@ private fun settingsTitle(section: String): Int = when {
         "nowPlaying" -> R.string.media_player
         "playback" -> R.string.settings_playback_title
         "services" -> R.string.settings_services_title
-        "appCatalog" -> R.string.app_catalog_title
-        "appCatalogOptions" -> R.string.app_catalog_options_title
+        "firstSetup" -> R.string.initial_setup_title
+        "appCatalog", "setupApps" -> R.string.app_catalog_title
+        "appCatalogOptions", "setupAppOptions" -> R.string.app_catalog_options_title
         "settingsCopy" -> R.string.settings_copy_title
         "downloads" -> R.string.torr_download_channel
         "appearanceGroup" -> R.string.settings_appearance_group
@@ -2312,7 +2315,7 @@ private fun settingsTitle(section: String): Int = when {
     var savedSection by rememberSaveable { mutableStateOf(initialSection) }
     val section = when {
         savedSection == "videoOptions" -> "homeOptions"
-        savedSection.startsWith("clock/") || savedSection in setOf("root", "appearanceGroup", "mediaGroup", "libraryGroup", "controller", "localeGroup", "systemGroup", "language", "art", "grafana", "homeOptions", "appearance", "clock", "covers", "nowPlaying", "playback", "services", "appCatalog", "appCatalogOptions", "settingsCopy", "updates", "portableCopy", "portablePreview", "downloads") -> savedSection
+        savedSection.startsWith("clock/") || savedSection in setOf("root", "appearanceGroup", "mediaGroup", "libraryGroup", "controller", "localeGroup", "systemGroup", "language", "art", "grafana", "homeOptions", "appearance", "clock", "covers", "nowPlaying", "playback", "firstSetup", "setupApps", "setupAppOptions", "services", "appCatalog", "appCatalogOptions", "settingsCopy", "updates", "portableCopy", "portablePreview", "downloads") -> savedSection
         else -> "root"
     }
     // The route we leave identifies the exact parent row to restore on Back.
@@ -2371,13 +2374,15 @@ private fun settingsTitle(section: String): Int = when {
         "libraryGroup" -> (if (activity.legacyRecoveryPending) listOf("legacyRecovery") else emptyList()) +
             listOf("addGames", "rescanGames", "folders", "portableCopy", "covers", "ndsEmulator", "androidGames", "groupVersions", "libraryTab", "appsTab")
         "localeGroup" -> listOf("language", "clock")
-        "systemGroup" -> listOf("network", "browserSearch", "browserQuickDownload", "defaultHome", "shield", "services", "settingsCopy", "remote")
+        "systemGroup" -> listOf("firstSetup", "network", "browserSearch", "browserQuickDownload", "defaultHome", "shield", "services", "settingsCopy", "remote")
+        "firstSetup" -> listOf("setupStorage", "setupApps", "setupTorrServer", "setupTorrServe", "setupMediaAccess", "setupHome")
         "services" -> listOf("appCatalog", "vlcGostex", "torrServer", "torrServeInstall", "revancedManager")
         "portableCopy" -> listOf("copyAction", "portablePreview")
         "settingsCopy" -> listOf("export", "import")
         else -> emptyList()
     }
     val focusedRow = returnRow.takeIf { it in rows } ?: rows.firstOrNull()
+    val catalogSection = section == "appCatalog" || section == "setupApps"
     fun rowFocus(id: String) = if (id == focusedRow) Modifier.focusRequester(initialFocus) else Modifier
     // Each section starts at its own top; requesting the remembered row brings
     // it into view instead of carrying an unrelated panel's scroll offset.
@@ -2444,6 +2449,8 @@ private fun settingsTitle(section: String): Int = when {
                 SettingRow(tr(R.string.language), language, rowFocus("language"), onClick = { onSection("language") })
                 SettingRow(tr(R.string.clock_title), modifier = rowFocus("clock"), onClick = { onSection("clock") })
             } else if (section == "systemGroup") {
+                SettingRow(tr(R.string.initial_setup_title), tr(R.string.initial_setup_summary), rowFocus("firstSetup"),
+                    onClick = { onSection("firstSetup") })
                 SettingRow(tr(R.string.network_settings), modifier = rowFocus("network"), onClick = { activity.openNetworkSettings() })
                 var browserSearch by remember(activity) { mutableStateOf(TvBrowserOptions.searchProvider(activity)) }
                 SettingRow(tr(R.string.browser_settings_search_engine), browserSearch.displayName, rowFocus("browserSearch"), onClick = {
@@ -2485,15 +2492,18 @@ private fun settingsTitle(section: String): Int = when {
                     prefs.edit().putBoolean("remoteAutostart", remoteAuto).apply()
                     if (remoteAuto) RemoteStartup.start(activity)
                 })
+            } else if (section == "firstSetup") {
+                InitialSetupSettings(activity, ::rowFocus, onCatalog = { onSection("setupApps") })
             } else if (section == "services") {
                 SettingRow(tr(R.string.app_catalog_title), tr(R.string.app_catalog_summary), rowFocus("appCatalog"), onClick = { onSection("appCatalog") })
                 VlcGostexInstallSetting(activity, rowFocus("vlcGostex"))
                 TorrServerStatusSetting(rowFocus("torrServer"))
                 TorrServeInstallSetting(activity, rowFocus("torrServeInstall"))
                 ReVancedInstallSetting(activity, rowFocus("revancedManager"))
-            } else if (section == "appCatalog") {
-                InstallableAppCatalogSettings(activity, initialFocus, onOptions = { onSection("appCatalogOptions") })
-            } else if (section == "appCatalogOptions") {
+            } else if (catalogSection) {
+                val optionsSection = if (section == "setupApps") "setupAppOptions" else "appCatalogOptions"
+                InstallableAppCatalogSettings(activity, initialFocus, onOptions = { onSection(optionsSection) })
+            } else if (section == "appCatalogOptions" || section == "setupAppOptions") {
                 InstallableAppCatalogOptions(activity, initialFocus)
             } else if (section == "updates") {
                 UpdateSettings(activity, initialFocus)
@@ -2582,7 +2592,7 @@ private fun settingsTitle(section: String): Int = when {
     }
     LaunchedEffect(section) {
         // The catalog owns the exact package focus when Android's installer returns.
-        val restoringInstallerFocus = section == "appCatalog" && activity.emulatorInstall.returnFocusPackage != null
+        val restoringInstallerFocus = catalogSection && activity.emulatorInstall.returnFocusPackage != null
         if (!restoringInstallerFocus) { withFrameNanos { }; initialFocus.requestFocus() }
     }
     LaunchedEffect(section, activity.portablePreviewFocusRevision) {

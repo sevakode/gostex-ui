@@ -1,0 +1,10 @@
+<resources>
+    <string name="initial_setup_title">Configuración inicial</string>
+    <string name="initial_setup_summary">Elige la carpeta, las apps y los permisos</string>
+    <string name="initial_setup_storage_checking">Comprobando la carpeta de descargas…</string>
+    <string name="initial_setup_storage_access_lost">Vuelve a seleccionar la carpeta para recuperar el acceso.</string>
+    <string name="initial_setup_storage_unavailable">Carpeta no disponible. Conecta la unidad o elige otra carpeta.</string>
+    <string name="initial_setup_storage_ready">Carpeta de descargas lista</string>
+    <string name="initial_setup_storage_named">%1$s · lista para descargas</string>
+    <string name="initial_setup_media_optional">Opcional · muestra y controla la reproducción de otras apps</string>
+</resources>

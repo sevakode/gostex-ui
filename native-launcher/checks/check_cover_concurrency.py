@@ -19,8 +19,6 @@ fun main() = runBlocking {
  val releaseIo = CompletableDeferred<Unit>()
  val sync = async(Dispatchers.Default) {
   gate.synchronize {
-   val snapshot = gate.mutate { index }
-   check(snapshot.original == "old")
    ioStarted.complete(Unit)
    releaseIo.await() // represents a slow provider read; no index lock is held
    gate.mutate { index = mergeSharedCover(index, "new", "wide") }
@@ -44,6 +42,10 @@ fun main() = runBlocking {
  println("PASS: manual edit during slow sync, safe merge, serialized syncs, cancellation")
 }
 '''
+sync = (source_dir / 'ManagedCovers.kt').read_text().split('suspend fun sync(', 1)[1]
+before_provider_read = sync.split('tree.read("updates.json"', 1)[0]
+assert 'read(context)' not in before_provider_read, "Sync reads the index before provider I/O and discards that snapshot"
+
 with tempfile.TemporaryDirectory(prefix='gostex-cover-concurrency-') as temp:
     folder = Path(temp)
     (folder / 'Model.kt').write_text('package tv.orbit.shield\n' + cover)

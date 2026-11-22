@@ -292,7 +292,9 @@ internal class TvBrowserActivity : ComponentActivity() {
 
         override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
             if (page === view) {
+                val pageHadFocus = view.hasFocus()
                 releasePage(rendererGone = true)
+                if (pageHadFocus) reloadButton.requestFocusFromTouch()
                 showStatus(R.string.browser_error_webview)
             }
             return true
@@ -451,6 +453,8 @@ internal class TvBrowserActivity : ComponentActivity() {
         val web = page ?: return
         stopPointer()
         page = null
+        address.nextFocusDownId = View.NO_ID
+        for (index in 0 until tools.childCount) tools.getChildAt(index).nextFocusDownId = View.NO_ID
         if (!rendererGone) web.stopLoading()
         web.setDownloadListener(null)
         content.removeView(web)

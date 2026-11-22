@@ -275,7 +275,6 @@ internal object ManagedCoverStore {
 
     suspend fun sync(context: Context, games: List<Game>, folder: String, importUpdates: Boolean, forceExport: Boolean = false): CoverSyncResult = gate.synchronize {
         val tree = Tree(context, Uri.parse(folder))
-        var entries = gate.mutate { read(context) }
         var applied = 0
         var rejected = 0
         var imagesWritten = false
@@ -304,7 +303,7 @@ internal object ManagedCoverStore {
                     }
                     // Merge into the latest index so a manual choice made during slow
                     // shared-folder IO cannot be overwritten by an older snapshot.
-                    entries = gate.mutate {
+                    gate.mutate {
                         val current = read(context)
                         val next = current.toMutableMap()
                         prepared.forEach { update ->
@@ -314,15 +313,14 @@ internal object ManagedCoverStore {
                         }
                         currentCoroutineContext().ensureActive()
                         if (next != current) save(context, next)
-                        next.toMap()
                     }
                     // Invalid/missing image entries can be retried after their files become ready.
                     if (rejected == 0) lastImport = fingerprint
                 }
             }
         }
-        // Refresh even when updates.json was unchanged: manual edits can occur during IO.
-        entries = gate.mutate { read(context) }
+        // Read after the import attempt so export sees manual edits made during provider IO.
+        val entries = gate.mutate { read(context) }
         export(context, tree, games, entries, forceExport)
         CoverSyncResult(entries, applied, rejected, imagesWritten)
     }

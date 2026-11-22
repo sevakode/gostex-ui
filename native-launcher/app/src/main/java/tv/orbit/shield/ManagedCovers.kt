@@ -235,12 +235,14 @@ internal object ManagedCoverStore {
                 documents
             } ?: error("Folder unavailable")
         }
-        fun find(path: String): Uri? {
+        fun find(path: String, namedChildren: (Uri, String) -> List<Document> = { parent, name ->
+            children(parent).filter { it.name == name }
+        }): Uri? {
             require(ManagedCoverManifest.imagePath(path) || path in setOf("updates.json", "library.json"))
             var parent = rootDoc
             val parts = path.split('/')
             parts.forEachIndexed { i, name ->
-                val matches = children(parent).filter { it.name == name }
+                val matches = namedChildren(parent, name)
                 require(matches.size <= 1) { "Ambiguous file name" }
                 val item = matches.firstOrNull() ?: return null
                 require(i == parts.lastIndex || item.mime == Docs.Document.MIME_TYPE_DIR)
@@ -248,7 +250,22 @@ internal object ManagedCoverStore {
             }
             return parent
         }
-        fun read(path: String, max: Int) = find(path)?.let { resolver.openInputStream(it)?.use { stream -> bounded(stream, max) } }
+        // Keep only the root and most recently visited folder for one read-only import.
+        fun importReader(): (String, Int) -> ByteArray? {
+            val rootListing by lazy { children(rootDoc).groupBy(Document::name) }
+            var lastFolder: Pair<Uri, Map<String, List<Document>>>? = null
+            fun namedChildren(parent: Uri, name: String): List<Document> {
+                if (parent == rootDoc) return rootListing[name].orEmpty()
+                if (lastFolder?.first != parent) {
+                    lastFolder = null
+                    lastFolder = parent to children(parent).groupBy(Document::name)
+                }
+                return lastFolder?.second?.get(name).orEmpty()
+            }
+            return { path, max ->
+                find(path, ::namedChildren)?.let { resolver.openInputStream(it)?.use { stream -> bounded(stream, max) } }
+            }
+        }
         fun folder(name: String): Uri = children(rootDoc).firstOrNull { it.name == name && it.mime == Docs.Document.MIME_TYPE_DIR }?.uri
             ?: Docs.createDocument(resolver, rootDoc, Docs.Document.MIME_TYPE_DIR, name) ?: error("Cannot create folder")
         fun write(parent: Uri, name: String, mime: String, bytes: ByteArray) {
@@ -286,7 +303,8 @@ internal object ManagedCoverStore {
         var rejected = 0
         var imagesWritten = false
         if (importUpdates) {
-            val bytes = tree.read("updates.json", ManagedCoverManifest.MAX_BYTES)
+            val readShared = tree.importReader()
+            val bytes = readShared("updates.json", ManagedCoverManifest.MAX_BYTES)
             if (bytes != null) {
                 val fingerprint = digest(bytes) + games.map { it.id }.sorted().joinToString("|") + folder
                 if (fingerprint != lastImport) {
@@ -299,7 +317,7 @@ internal object ManagedCoverStore {
                         if (update.gameId !in ids) { rejected++; continue }
                         try {
                             suspend fun load(path: String, sha: String, wide: Boolean = false): String? = path.takeIf { it.isNotEmpty() }?.let {
-                                val image = tree.read(it, MAX_IMAGE_BYTES) ?: error("Image missing")
+                                val image = readShared(it, MAX_IMAGE_BYTES) ?: error("Image missing")
                                 currentCoroutineContext().ensureActive()
                                 val validatedSha = validateImage(image, sha, wide)
                                 gate.mutate {

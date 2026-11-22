@@ -25,6 +25,8 @@ import kotlinx.coroutines.runInterruptible
 
 /** Extract archive members into an owned SAF directory and publish it after verification. */
 internal object GameArchiveStorage {
+    enum class SourceReconnect { RESTORED, DIFFERENT_ARCHIVE, FAILED }
+
     class Plan internal constructor(
         val title: String,
         internal val source: Uri,
@@ -37,17 +39,30 @@ internal object GameArchiveStorage {
     private val operation = ReentrantLock()
     private const val MAX_SOURCE_BYTES = 64L * 1024 * 1024 * 1024
 
-    suspend fun inspect(context: Context, source: Uri): Plan =
+    suspend fun inspect(context: Context, source: Uri): Plan = perform { checkpoint ->
+        inspect(context, source, checkpoint)
+    }
+
+    private fun inspect(context: Context, source: Uri, checkpoint: () -> Unit): Plan {
+        val resolver = context.contentResolver
+        val title = resolver.query(source, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
+            if (it.moveToFirst()) it.getString(0)?.take(256) else null
+        }.orEmpty().map { if (it.isISOControl()) '_' else it }.joinToString("")
+        return withSource(context, source, checkpoint) { input ->
+            val archive = input.inspect(checkpoint)
+            val fallback = "archive.${archive.format.extension}"
+            Plan(title.ifBlank { fallback }, source, archive)
+        }
+    }
+
+    suspend fun reconnectIndexedDownload(context: Context, job: GameArchiveRecovery.Job, selected: Uri): SourceReconnect =
         perform { checkpoint ->
-            val resolver = context.contentResolver
-            val title = resolver.query(source, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
-                if (it.moveToFirst()) it.getString(0)?.take(256) else null
-            }.orEmpty().map { if (it.isISOControl()) '_' else it }.joinToString("")
-            withSource(context, source, checkpoint) { input ->
-                val archive = input.inspect(checkpoint)
-                val fallback = "archive.${archive.format.extension}"
-                Plan(title.ifBlank { fallback }, source, archive)
-            }
+            if (!GameArchiveRecovery.canReconnectIndexedDownload(job, selected) ||
+                GameArchiveRecovery.read(context) != job) return@perform SourceReconnect.FAILED
+            val plan = inspect(context, selected, checkpoint)
+            if (plan.title != job.title || !matchesPlan(job, plan.archive)) return@perform SourceReconnect.DIFFERENT_ARCHIVE
+            if (GameArchiveRecovery.reconnectVerifiedDownload(context, job, selected, checkpoint)) SourceReconnect.RESTORED
+            else SourceReconnect.FAILED
         }
 
     suspend fun extract(
@@ -272,11 +287,11 @@ internal object GameArchiveStorage {
         if (descriptor.canDetectErrors()) descriptor.checkError()
     }
 
-    private fun verifyPlan(job: GameArchiveRecovery.Job, plan: GameArchivePlan) {
-        check(plan.totalBytes == job.totalBytes && gameArchiveFingerprint(plan) == job.fingerprint) {
-            "Source archive changed"
-        }
-    }
+    private fun matchesPlan(job: GameArchiveRecovery.Job, plan: GameArchivePlan): Boolean =
+        plan.totalBytes == job.totalBytes && gameArchiveFingerprint(plan) == job.fingerprint
+
+    private fun verifyPlan(job: GameArchiveRecovery.Job, plan: GameArchivePlan) =
+        check(matchesPlan(job, plan)) { "Source archive changed" }
 
     private data class Document(val id: String, val name: String, val directory: Boolean)
     private data class Member(val entry: GameArchiveEntry, val scratchName: String)

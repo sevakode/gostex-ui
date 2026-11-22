@@ -25,7 +25,7 @@ internal class GameArchiveController(
     private val launchPicker: (String, String?, () -> Unit) -> Boolean,
     private val addFolder: (String, Uri) -> Boolean,
 ) {
-    private enum class Picker { SOURCE, DESTINATION, EXPIRED_SOURCE, EXPIRED_DESTINATION, RECONNECT_DESTINATION, EXPIRED_RECONNECT }
+    private enum class Picker { SOURCE, DESTINATION, EXPIRED_SOURCE, EXPIRED_DESTINATION, RECONNECT_DESTINATION, RECONNECT_SOURCE_TREE, RECONNECT_SOURCE_DOCUMENT, EXPIRED_RECONNECT, EXPIRED_RECONNECT_DOCUMENT }
     var plan by mutableStateOf<GameArchiveStorage.Plan?>(null)
         private set
     var busy by mutableStateOf(false)
@@ -41,6 +41,8 @@ internal class GameArchiveController(
     var discardFailed by mutableStateOf(false)
         private set
     var destinationAccessMissing by mutableStateOf(false)
+        private set
+    var sourceAccessMissing by mutableStateOf(false)
         private set
     var recoveryAccessMessage by mutableStateOf<Int?>(null)
         private set
@@ -58,7 +60,9 @@ internal class GameArchiveController(
 
     private val sourcePicker = activity.registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         val request = pendingPicker
-        if (request == Picker.SOURCE || request == Picker.EXPIRED_SOURCE) {
+        if (request == Picker.RECONNECT_SOURCE_DOCUMENT || request == Picker.EXPIRED_RECONNECT_DOCUMENT) {
+            finishReconnect(request, uri)
+        } else if (request == Picker.SOURCE || request == Picker.EXPIRED_SOURCE) {
             pendingPicker = null
             if (request == Picker.EXPIRED_SOURCE || PortableMaintenance.running) expiredNotice()
             else if (uri != null) inspect(platform, uri)
@@ -66,11 +70,9 @@ internal class GameArchiveController(
     }
     private val destinationPicker = activity.registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         val request = pendingPicker
-        if (request == Picker.RECONNECT_DESTINATION || request == Picker.EXPIRED_RECONNECT) {
-            pendingPicker = null
-            val expected = reconnectJob.also { reconnectJob = null }
-            if (request == Picker.RECONNECT_DESTINATION && expected != null && expected == recovery &&
-                !PortableMaintenance.running && uri != null) restoreDestinationAccess(expected, uri)
+        if (request == Picker.RECONNECT_DESTINATION || request == Picker.RECONNECT_SOURCE_TREE ||
+            request == Picker.EXPIRED_RECONNECT) {
+            finishReconnect(request, uri)
         } else if (request == Picker.DESTINATION || request == Picker.EXPIRED_DESTINATION) {
             pendingPicker = null
             val preview = plan
@@ -78,6 +80,11 @@ internal class GameArchiveController(
             else if (uri != null) extract(preview, uri)
         }
     }
+
+    private fun archiveMimeTypes() = arrayOf(
+        "application/zip", "application/x-7z-compressed", "application/vnd.rar", "application/x-rar-compressed",
+        "application/octet-stream", "*/*",
+    )
 
     fun chooseSource(platformId: String) {
         if (busy || picking || PortableMaintenance.running) return
@@ -90,10 +97,7 @@ internal class GameArchiveController(
         clear()
         pendingPicker = Picker.SOURCE
         val started = launchPicker(Intent.ACTION_OPEN_DOCUMENT, "*/*") {
-            sourcePicker.launch(arrayOf(
-                "application/zip", "application/x-7z-compressed", "application/vnd.rar", "application/x-rar-compressed",
-                "application/octet-stream", "*/*",
-            ))
+            sourcePicker.launch(archiveMimeTypes())
         }
         if (!started) pendingPicker = null
     }
@@ -146,40 +150,81 @@ internal class GameArchiveController(
         return true
     }
 
-    fun chooseRecoveryDestination() {
+    fun chooseRecoveryDestination() = chooseReconnect(
+        Picker.RECONNECT_DESTINATION, Intent.ACTION_OPEN_DOCUMENT_TREE,
+    ) { job -> destinationPicker.launch(job.tree) }
+
+    fun chooseRecoverySource() {
         val job = recovery ?: return
-        if (!recoveryOpen || !destinationAccessMissing || busy || picking || PortableMaintenance.running) return
+        val tree = GameArchiveRecovery.sourceTree(job)
+        if (tree != null) {
+            chooseReconnect(Picker.RECONNECT_SOURCE_TREE, Intent.ACTION_OPEN_DOCUMENT_TREE) { destinationPicker.launch(tree) }
+        } else {
+            chooseReconnect(Picker.RECONNECT_SOURCE_DOCUMENT, Intent.ACTION_OPEN_DOCUMENT) {
+                sourcePicker.launch(archiveMimeTypes())
+            }
+        }
+    }
+
+    private fun chooseReconnect(picker: Picker, action: String, launch: (GameArchiveRecovery.Job) -> Unit) {
+        val job = recovery ?: return
+        val missing = if (picker == Picker.RECONNECT_DESTINATION) destinationAccessMissing else sourceAccessMissing
+        if (!recoveryOpen || !missing || busy || picking || PortableMaintenance.running) return
         recoveryAccessMessage = null
         reconnectJob = job
-        pendingPicker = Picker.RECONNECT_DESTINATION
-        if (!launchPicker(Intent.ACTION_OPEN_DOCUMENT_TREE, null) { destinationPicker.launch(job.tree) }) {
+        pendingPicker = picker
+        if (!launchPicker(action, if (action == Intent.ACTION_OPEN_DOCUMENT) "*/*" else null) { launch(job) }) {
             reconnectJob = null
             pendingPicker = null
             dialogRevision++
         }
     }
 
-    private fun restoreDestinationAccess(expected: GameArchiveRecovery.Job, selected: Uri) {
-        if (!GameArchiveRecovery.matchesDestination(expected, selected)) {
-            recoveryAccessMessage = R.string.game_archive_original_destination
+    private fun finishReconnect(request: Picker, selected: Uri?) {
+        pendingPicker = null
+        val expected = reconnectJob.also { reconnectJob = null }
+        if (request == Picker.EXPIRED_RECONNECT || request == Picker.EXPIRED_RECONNECT_DOCUMENT ||
+            expected == null || expected != recovery || PortableMaintenance.running || selected == null) return
+        val destination = request == Picker.RECONNECT_DESTINATION
+        val fromTree = request == Picker.RECONNECT_SOURCE_TREE
+        val matches = if (destination) GameArchiveRecovery.matchesDestination(expected, selected)
+            else GameArchiveRecovery.matchesSource(expected, selected, fromTree)
+        val indexedDownload = request == Picker.RECONNECT_SOURCE_DOCUMENT && !matches &&
+            GameArchiveRecovery.canReconnectIndexedDownload(expected, selected)
+        if (!matches && !indexedDownload) {
+            recoveryAccessMessage = if (destination) R.string.game_archive_original_destination
+                else if (fromTree) R.string.game_archive_original_source_tree else R.string.game_archive_original_source
             return
         }
+        val failure = if (destination) R.string.game_archive_destination_access_failed else R.string.game_archive_source_access_failed
         startOperation {
             try {
-                val restored = withContext(Dispatchers.IO) {
+                val resultMessage = if (indexedDownload) {
+                    when (GameArchiveStorage.reconnectIndexedDownload(activity, expected, selected)) {
+                        GameArchiveStorage.SourceReconnect.RESTORED -> null
+                        GameArchiveStorage.SourceReconnect.DIFFERENT_ARCHIVE -> R.string.game_archive_original_source
+                        GameArchiveStorage.SourceReconnect.FAILED -> failure
+                    }
+                } else withContext(Dispatchers.IO) {
                     currentCoroutineContext().ensureActive()
-                    if (PortableMaintenance.running) return@withContext false
-                    GameArchiveRecovery.reconnectDestination(activity, expected, selected)
+                    if (PortableMaintenance.running) return@withContext failure
+                    val restored = if (destination) GameArchiveRecovery.reconnectDestination(activity, expected, selected)
+                    else {
+                        val task = currentCoroutineContext()
+                        GameArchiveRecovery.reconnectSource(activity, expected, selected, fromTree) {
+                            task.ensureActive()
+                            if (PortableMaintenance.running) throw CancellationException("Archive maintenance started")
+                        }
+                    }
+                    failure.takeUnless { restored }
                 }
                 readRecovery()
-                if (recovery == expected) {
-                    if (restored) discardFailed = false
-                    else recoveryAccessMessage = R.string.game_archive_destination_access_failed
-                }
+                if (resultMessage == null) discardFailed = false
+                else if (recovery == expected) recoveryAccessMessage = resultMessage
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                recoveryAccessMessage = R.string.game_archive_destination_access_failed
+                recoveryAccessMessage = failure
             }
         }
     }
@@ -253,12 +298,14 @@ internal class GameArchiveController(
 
     private suspend fun readRecovery() {
         try {
-            val (job, missing) = withContext(Dispatchers.IO) {
+            val (job, destinationMissing, sourceMissing) = withContext(Dispatchers.IO) {
                 val job = GameArchiveRecovery.read(activity)
-                job to (job != null && !GameArchiveRecovery.hasDestinationAccess(activity, job))
+                Triple(job, job != null && !GameArchiveRecovery.hasDestinationAccess(activity, job),
+                    job != null && job.phase != GameArchiveRecovery.Phase.READY && !GameArchiveRecovery.hasSourceAccess(activity, job))
             }
             recovery = job
-            destinationAccessMissing = missing
+            destinationAccessMissing = destinationMissing
+            sourceAccessMissing = sourceMissing
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
@@ -301,11 +348,13 @@ internal class GameArchiveController(
             Picker.SOURCE.name -> if (platform.isNotEmpty()) Picker.SOURCE else Picker.EXPIRED_SOURCE
             Picker.EXPIRED_SOURCE.name -> Picker.EXPIRED_SOURCE
             Picker.DESTINATION.name, Picker.EXPIRED_DESTINATION.name -> Picker.EXPIRED_DESTINATION
-            Picker.RECONNECT_DESTINATION.name, Picker.EXPIRED_RECONNECT.name -> Picker.EXPIRED_RECONNECT
+            Picker.RECONNECT_DESTINATION.name, Picker.RECONNECT_SOURCE_TREE.name,
+            Picker.EXPIRED_RECONNECT.name -> Picker.EXPIRED_RECONNECT
+            Picker.RECONNECT_SOURCE_DOCUMENT.name, Picker.EXPIRED_RECONNECT_DOCUMENT.name -> Picker.EXPIRED_RECONNECT_DOCUMENT
             else -> null
         }
         // A preview is process-local. Never start extraction from a stale folder result.
-        val reopenRecovery = pendingPicker == Picker.EXPIRED_RECONNECT
+        val reopenRecovery = pendingPicker == Picker.EXPIRED_RECONNECT || pendingPicker == Picker.EXPIRED_RECONNECT_DOCUMENT
         activity.lifecycleScope.launch {
             readRecovery()
             if (reopenRecovery && recovery != null) recoveryOpen = true
@@ -321,7 +370,8 @@ internal class GameArchiveController(
         pendingPicker = when (pendingPicker) {
             Picker.SOURCE -> Picker.EXPIRED_SOURCE
             Picker.DESTINATION -> Picker.EXPIRED_DESTINATION
-            Picker.RECONNECT_DESTINATION -> Picker.EXPIRED_RECONNECT
+            Picker.RECONNECT_DESTINATION, Picker.RECONNECT_SOURCE_TREE -> Picker.EXPIRED_RECONNECT
+            Picker.RECONNECT_SOURCE_DOCUMENT -> Picker.EXPIRED_RECONNECT_DOCUMENT
             else -> pendingPicker
         }
         reconnectJob = null
@@ -413,7 +463,7 @@ internal fun GameArchiveHost(activity: MainActivity) {
         if (total != null && total > 0) progressBar.progress =
             (progress.toDouble() / total * 1000).toInt().coerceIn(0, 1000)
     }
-    DisposableEffect(activity, plan, busy, finished, recovery, confirmDiscard, archive.discardFailed, archive.destinationAccessMissing, archive.recoveryAccessMessage, archive.dialogRevision) {
+    DisposableEffect(activity, plan, busy, finished, recovery, confirmDiscard, archive.discardFailed, archive.destinationAccessMissing, archive.sourceAccessMissing, archive.recoveryAccessMessage, archive.dialogRevision) {
         val title = plan?.title ?: archive.recovery?.title ?: activity.getString(R.string.game_archive_title)
         val builder = AlertDialog.Builder(activity).setTitle(title)
         when {
@@ -426,6 +476,15 @@ internal fun GameArchiveHost(activity: MainActivity) {
                 builder.setMessage(archive.recoveryAccessMessage ?: R.string.game_archive_destination_access_missing)
                     .setPositiveButton(R.string.game_archive_reconnect_destination) { _, _ -> archive.chooseRecoveryDestination() }
                     .setNeutralButton(R.string.game_archive_keep_files) { _, _ -> archive.forgetRecovery() }
+                    .setNegativeButton(R.string.close) { _, _ -> archive.cancel() }
+            recovery != null && archive.sourceAccessMissing ->
+                builder.setMessage(archive.recoveryAccessMessage ?: R.string.game_archive_source_access_missing)
+                    .setPositiveButton(R.string.game_archive_reconnect_source) { _, _ -> archive.chooseRecoverySource() }
+                    .setNeutralButton(
+                        if (archive.discardFailed) R.string.game_archive_keep_files else R.string.game_archive_discard,
+                    ) { _, _ ->
+                        if (archive.discardFailed) archive.forgetRecovery() else confirmDiscard = true
+                    }
                     .setNegativeButton(R.string.close) { _, _ -> archive.cancel() }
             recovery != null && archive.discardFailed -> builder.setMessage(R.string.game_archive_discard_failed)
                 .setPositiveButton(R.string.game_archive_keep_files) { _, _ -> archive.forgetRecovery() }

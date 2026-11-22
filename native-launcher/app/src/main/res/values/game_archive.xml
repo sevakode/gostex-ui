@@ -28,4 +28,9 @@
     <string name="game_archive_reconnect_destination">Restore folder access</string>
     <string name="game_archive_original_destination">Select the original extraction folder.</string>
     <string name="game_archive_destination_access_failed">Could not restore access to the extraction folder.</string>
+    <string name="game_archive_source_access_missing">Access to the original archive is missing.</string>
+    <string name="game_archive_reconnect_source">Restore archive access</string>
+    <string name="game_archive_original_source">Select the original archive.</string>
+    <string name="game_archive_original_source_tree">Select the original archive folder.</string>
+    <string name="game_archive_source_access_failed">Could not restore access to the original archive.</string>
 </resources>

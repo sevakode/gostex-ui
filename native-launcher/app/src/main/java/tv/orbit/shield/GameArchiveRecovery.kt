@@ -41,6 +41,9 @@ internal object GameArchiveRecovery {
     private const val VERSION = 1
     private const val MAX_RECORD_BYTES = 64 * 1024
     private const val MAX_EXPANDED_BYTES = 64L * 1024 * 1024 * 1024
+    private const val DOWNLOADS_AUTHORITY = "com.android.providers.downloads.documents"
+    private val publicDownloads = Regex("/storage/emulated/[0-9]+/Download")
+    private val indexedDownload = Regex("msf:[1-9][0-9]*")
     private val uuid = Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
     private val fingerprint = Regex("[0-9a-f]{64}")
 
@@ -231,8 +234,91 @@ internal object GameArchiveRecovery {
         return hasDestinationAccess(context, expected)
     }
 
+    fun hasSourceAccess(context: Context, job: Job): Boolean =
+        sourceGranted(context.contentResolver.persistedUriPermissions, job.source)
+
+    fun sourceTree(job: Job): Uri? {
+        val source = job.source
+        val parts = source.pathSegments
+        if (parts.size != 4 || parts[0] != "tree" || parts[2] != "document") return null
+        val authority = source.authority ?: return null
+        val tree = Docs.buildTreeDocumentUri(authority, parts[1])
+        return tree.takeIf {
+            Docs.buildDocumentUriUsingTree(it, parts[3]) == source && inGrantedTree(source, it)
+        }
+    }
+
+    fun matchesSource(job: Job, selected: Uri, fromTree: Boolean): Boolean =
+        if (fromTree) sourceTree(job) == selected
+        else !Docs.isTreeUri(job.source) && selected == job.source
+
+    fun reconnectSource(
+        context: Context, expected: Job, selected: Uri, fromTree: Boolean, checkActive: () -> Unit,
+    ): Boolean {
+        if (expected.phase == Phase.READY || !matchesSource(expected, selected, fromTree) ||
+            read(context) != expected) return false
+        checkActive()
+        val resolver = context.contentResolver
+        // The picker grants temporary access. Querying the exact saved child URI
+        // lets the provider enforce membership before we retain the parent grant.
+        if (fromTree) {
+            val id = Docs.getDocumentId(expected.source)
+            val reachable = resolver.query(expected.source, arrayOf(Docs.Document.COLUMN_DOCUMENT_ID),
+                null, null, null)?.use { cursor ->
+                cursor.moveToFirst() && cursor.getString(0) == id && !cursor.moveToNext()
+            } ?: false
+            if (!reachable) return false
+        }
+        return synchronized(this) {
+            checkActive()
+            if (read(context) != expected) return@synchronized false
+            if (hasSourceAccess(context, expected)) return@synchronized true
+            checkActive()
+            take(resolver, selected, Intent.FLAG_GRANT_READ_URI_PERMISSION) && hasSourceAccess(context, expected)
+        }
+    }
+
     private fun sourceGranted(grants: List<UriPermission>, source: Uri): Boolean = grants.any { grant ->
         grant.isReadPermission && (grant.uri == source || inGrantedTree(source, grant.uri))
+    }
+
+    fun canReconnectIndexedDownload(job: Job, selected: Uri): Boolean {
+        if (job.phase == Phase.READY || job.source.authority != DOWNLOADS_AUTHORITY ||
+            selected.authority != DOWNLOADS_AUTHORITY || !validUri(selected)) return false
+        val previous = job.source.pathSegments
+        val replacement = selected.pathSegments
+        if (previous.size != 2 || previous[0] != "document" ||
+            replacement.size != 2 || replacement[0] != "document" ||
+            !previous[1].startsWith("raw:/") || !indexedDownload.matches(replacement[1]) ||
+            Docs.buildDocumentUri(DOWNLOADS_AUTHORITY, previous[1]) != job.source ||
+            Docs.buildDocumentUri(DOWNLOADS_AUTHORITY, replacement[1]) != selected) return false
+        val path = previous[1].removePrefix("raw:")
+        return publicDownloads.matches(path.substringBeforeLast('/')) && path.substringAfterLast('/') == job.title
+    }
+
+    /** Called only after verifying the newly selected download against the saved extraction plan. */
+    @Synchronized
+    fun reconnectVerifiedDownload(context: Context, expected: Job, selected: Uri, checkActive: () -> Unit): Boolean {
+        if (!canReconnectIndexedDownload(expected, selected) || read(context) != expected) return false
+        val replacement = expected.copy(source = selected)
+        validate(replacement)
+        if (hasSourceAccess(context, expected)) return true
+        val resolver = context.contentResolver
+        val needsGrant = !hasSourceAccess(context, replacement)
+        checkActive()
+        if (needsGrant && !take(resolver, selected, Intent.FLAG_GRANT_READ_URI_PERMISSION)) return false
+        var committed = false
+        try {
+            if (!hasSourceAccess(context, replacement)) return false
+            checkActive()
+            write(context, replacement)
+            committed = true
+            return true
+        } finally {
+            if (needsGrant && !committed && runCatching { read(context) == expected }.getOrDefault(false)) {
+                runCatching { resolver.releasePersistableUriPermission(selected, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            }
+        }
     }
 
     private fun inGrantedTree(source: Uri, tree: Uri): Boolean {

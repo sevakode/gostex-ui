@@ -28,4 +28,9 @@
     <string name="game_archive_reconnect_destination">Restablecer acceso a la carpeta</string>
     <string name="game_archive_original_destination">Selecciona la carpeta de extracción original.</string>
     <string name="game_archive_destination_access_failed">No se pudo recuperar el acceso a la carpeta de extracción.</string>
+    <string name="game_archive_source_access_missing">Falta acceso al archivo original.</string>
+    <string name="game_archive_reconnect_source">Restablecer acceso al archivo</string>
+    <string name="game_archive_original_source">Selecciona el archivo original.</string>
+    <string name="game_archive_original_source_tree">Selecciona la carpeta original del archivo.</string>
+    <string name="game_archive_source_access_failed">No se pudo restablecer el acceso al archivo original.</string>
 </resources>

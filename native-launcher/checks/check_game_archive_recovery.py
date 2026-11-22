@@ -19,6 +19,14 @@ class Context(val noBackupFilesDir: File, val contentResolver: ContentResolver)
 data class UriPermission(val uri: Uri, val isReadPermission: Boolean, val isWritePermission: Boolean)
 class ContentResolver {
     val persistedUriPermissions = mutableListOf<UriPermission>()
+    fun query(uri: Uri, columns: Array<String>, selection: String?, args: Array<String>?, order: String?) =
+        Cursor(uri.pathSegments.last())
+    class Cursor(private val id: String) : AutoCloseable {
+        fun moveToFirst() = true
+        fun getString(index: Int) = id
+        fun moveToNext() = false
+        override fun close() {}
+    }
     val requests = mutableListOf<Pair<Uri, Int>>()
     val offered = mutableSetOf<Uri>()
     fun takePersistableUriPermission(uri: Uri, flags: Int) {
@@ -28,6 +36,13 @@ class ContentResolver {
         persistedUriPermissions.remove(old)
         persistedUriPermissions += UriPermission(uri, flags and 1 != 0 || old?.isReadPermission == true,
             flags and 2 != 0 || old?.isWritePermission == true)
+    }
+    fun releasePersistableUriPermission(uri: Uri, flags: Int) {
+        val old = persistedUriPermissions.single { it.uri == uri }
+        persistedUriPermissions.remove(old)
+        val read = old.isReadPermission && flags and 1 == 0
+        val write = old.isWritePermission && flags and 2 == 0
+        if (read || write) persistedUriPermissions += UriPermission(uri, read, write)
     }
     companion object { const val SCHEME_CONTENT = "content" }
 }
@@ -60,10 +75,16 @@ package android.provider
 import android.net.Uri
 
 object DocumentsContract {
+    object Document { const val COLUMN_DOCUMENT_ID = "document_id" }
+    fun getDocumentId(uri: Uri) = uri.pathSegments.last()
+    fun buildDocumentUriUsingTree(uri: Uri, id: String): Uri =
+        Uri.parse(uri.toString() + "/document/" + java.net.URLEncoder.encode(id, Charsets.UTF_8).replace("+", "%20"))
     fun isTreeUri(uri: Uri) = uri.pathSegments.firstOrNull() == "tree"
     fun getTreeDocumentId(uri: Uri) = uri.pathSegments[1]
     fun buildTreeDocumentUri(authority: String, id: String): Uri =
         Uri.parse("content://$authority/tree/" + java.net.URLEncoder.encode(id, Charsets.UTF_8).replace("+", "%20"))
+    fun buildDocumentUri(authority: String, id: String): Uri =
+        Uri.parse("content://$authority/document/" + java.net.URLEncoder.encode(id, Charsets.UTF_8).replace("+", "%20"))
 }
 ''',
     "Os.kt": r'''
@@ -201,6 +222,42 @@ fun main() {
         expect(!journal.retainAccess(context, job.copy(source = otherRoot)) && resolver.requests.last() == (otherRoot to 1))
         resolver.persistedUriPermissions.removeAll { it.uri == source }
         expect(!journal.hasAccess(context, job) && journal.hasDestinationAccess(context, job))
+
+        val downloads = "content://com.android.providers.downloads.documents/document/"
+        val raw = Uri.parse(downloads + "raw%3A%2Fstorage%2Femulated%2F0%2FDownload%2Fgame.zip")
+        val indexed = Uri.parse(downloads + "msf%3A32")
+        val original = job.copy(source = raw, title = "game.zip")
+        val partial = original.copy(stagingId = staged.stagingId)
+        journal.clear(context, job)
+        journal.begin(context, original)
+        journal.update(context, original, partial)
+        val savedBeforeAlias = base.readBytes()
+        expect(journal.canReconnectIndexedDownload(partial, indexed))
+        expect(!journal.canReconnectIndexedDownload(partial.copy(title = "unrelated.zip"), indexed))
+        expect(!journal.canReconnectIndexedDownload(ready.copy(source = raw, title = "game.zip"), indexed))
+        expect(!journal.canReconnectIndexedDownload(partial, Uri.parse(downloads + "42")))
+        val nestedDownload = Uri.parse(downloads + "raw%3A%2Fstorage%2Femulated%2F0%2FOther%2FDownload%2Fgame.zip")
+        expect(!journal.canReconnectIndexedDownload(partial.copy(source = nestedDownload), indexed))
+        expect(!journal.canReconnectIndexedDownload(partial, Uri.parse(indexed.toString() + "?other=1")))
+        expect(!journal.canReconnectIndexedDownload(partial, Uri.parse("content://other/document/msf%3A32")))
+        expect(!journal.reconnectVerifiedDownload(context, original, indexed) { error("Stale selection") })
+        expect(!journal.reconnectVerifiedDownload(context, partial, indexed) {})
+        expect(base.readBytes().contentEquals(savedBeforeAlias))
+        resolver.offered += indexed
+        rejected { journal.reconnectVerifiedDownload(context, partial, indexed) { throw IOException("Cancelled") } }
+        expect(resolver.persistedUriPermissions.none { it.uri == indexed })
+        var checks = 0
+        rejected { journal.reconnectVerifiedDownload(context, partial, indexed) {
+            if (++checks == 2) throw IOException("Cancelled after grant")
+        } }
+        expect(resolver.persistedUriPermissions.none { it.uri == indexed } && base.readBytes().contentEquals(savedBeforeAlias))
+        AtomicFile.dropCommit = true
+        rejected { journal.reconnectVerifiedDownload(context, partial, indexed) {} }
+        AtomicFile.dropCommit = false
+        expect(resolver.persistedUriPermissions.none { it.uri == indexed } && base.readBytes().contentEquals(savedBeforeAlias))
+        expect(journal.reconnectVerifiedDownload(context, partial, indexed) {})
+        expect(journal.read(context) == partial.copy(source = indexed) && resolver.requests.last() == (indexed to 1))
+        expect(resolver.persistedUriPermissions.any { it.uri == indexed && it.isReadPermission && !it.isWritePermission })
         println("PASS ZIP recovery journal: $count checks")
     } finally {
         root.deleteRecursively()

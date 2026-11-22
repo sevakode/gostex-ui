@@ -31,7 +31,23 @@ open class Context {
     val applicationContext: Context get() = this
     val contentResolver = ContentResolver()
 }
-class ContentResolver { companion object { const val SCHEME_CONTENT = "content" } }
+class ContentResolver {
+    val persistedUriPermissions = emptyList<android.net.Uri>()
+    companion object { const val SCHEME_CONTENT = "content" }
+    fun query(uri: android.net.Uri, columns: Array<String>, selection: String?, args: Array<String>?, order: String?): ResultCursor? {
+        val recovery = tv.orbit.shield.GameArchiveRecovery
+        check(!Thread.holdsLock(recovery)) { "External provider queried under journal monitor" }
+        recovery.childQueries++
+        recovery.onChildQuery?.invoke()
+        return if (recovery.childReachable) ResultCursor(uri.pathSegments.last()) else null
+    }
+}
+class ResultCursor(val id: String) : AutoCloseable {
+    fun moveToFirst() = true
+    fun getString(index: Int) = id
+    fun moveToNext() = false
+    override fun close() {}
+}
 class Intent { companion object {
     const val ACTION_OPEN_DOCUMENT = "open"
     const val ACTION_OPEN_DOCUMENT_TREE = "tree"
@@ -62,6 +78,7 @@ object Looper {
     "Uri.kt": r'''
 package android.net
 data class Uri(val text: String) {
+    val pathSegments: List<String> get() = text.substringAfter("://").substringAfter("/", "").split("/")
     val scheme: String? get() = text.substringBefore("://", "").ifEmpty { null }
     val authority: String? get() = text.substringAfter("content://", "").substringBefore('/').ifEmpty { null }
     override fun toString(): String = text
@@ -72,6 +89,7 @@ data class Uri(val text: String) {
 package android.provider
 import android.net.Uri
 object DocumentsContract {
+    object Document { const val COLUMN_DOCUMENT_ID = "document_id" }
     fun isTreeUri(uri: Uri) = "/tree/" in uri.text
     fun buildTreeDocumentUri(authority: String, id: String) = Uri.parse("content://$authority/tree/$id")
     fun getDocumentId(uri: Uri) = uri.text.substringAfter("/document/", "")
@@ -157,6 +175,9 @@ object R { object string {
     const val game_archive_format_rar = 11
     const val game_archive_original_destination = 12
     const val game_archive_destination_access_failed = 13
+    const val game_archive_original_source = 14
+    const val game_archive_original_source_tree = 15
+    const val game_archive_source_access_failed = 16
 } }
 object PlatformRegistry {
     fun find(id: String): String? = id.takeIf { it in setOf("SNES", "PSP") }
@@ -171,16 +192,30 @@ object PortableAndroidRestoreRecovery {
 object GameArchiveRecovery {
     enum class Phase { EXTRACTING, RENAMING, READY }
     data class Job(val id: String, val platform: String, val title: String,
-        val totalBytes: Long, val tree: Uri, val phase: Phase = Phase.EXTRACTING, val finalId: String? = null)
+        val totalBytes: Long, val tree: Uri, val phase: Phase = Phase.EXTRACTING, val finalId: String? = null,
+        val source: Uri = Uri.parse("content://fixture/document/source.zip"))
     var saved: Job? = null
     var reads = 0
     var clears = 0
     var failRead = false
     var destinationAvailable = true
+    var sourceAvailable = true
+    var childReachable = true
+    var childQueries = 0
+    var onChildQuery: (() -> Unit)? = null
+    val sourceGrantRequests = mutableListOf<Uri>()
+    private fun sourceGranted(grants: List<Uri>, source: Uri) = sourceAvailable
+    private fun inGrantedTree(source: Uri, tree: Uri) = source.authority == tree.authority &&
+        source.pathSegments.take(2) == tree.pathSegments
     var denyDestination = false
     val grantRequests = mutableListOf<Uri>()
     fun hasDestinationAccess(context: Context, job: Job) = destinationAvailable
     private fun take(resolver: ContentResolver, uri: Uri, flags: Int): Boolean {
+        if (flags == 1) {
+            sourceGrantRequests += uri
+            sourceAvailable = true
+            return true
+        }
         check(flags == 3)
         grantRequests += uri
         if (denyDestination) return false
@@ -188,6 +223,7 @@ object GameArchiveRecovery {
         return true
     }
     PRODUCTION_RECONNECT
+    fun canReconnectIndexedDownload(job: Job, selected: Uri) = false
     fun read(context: Context): Job? {
         reads++
         if (failRead) error("Unreadable recovery record")
@@ -201,12 +237,15 @@ object GameArchiveRecovery {
     fun reset() {
         saved = null; reads = 0; clears = 0; failRead = false
         destinationAvailable = true; denyDestination = false; grantRequests.clear()
+        sourceAvailable = true; childReachable = true; sourceGrantRequests.clear()
+        childQueries = 0; onChildQuery = null
     }
 }
 class TorrDownloadLowSpace : java.io.IOException()
 enum class GameArchiveFormat { ZIP, SEVEN_Z, RAR }
 data class GameArchivePlan(val format: GameArchiveFormat)
 object GameArchiveStorage {
+    enum class SourceReconnect { RESTORED, DIFFERENT_ARCHIVE, FAILED }
     class Plan(val source: Uri, val archive: GameArchivePlan) { val totalBytes = 1L; val files = 1 }
     var detectedFormat = GameArchiveFormat.ZIP
     var inspections = 0
@@ -230,6 +269,8 @@ object GameArchiveStorage {
         extractionStarted = CompletableDeferred(); cleanupStarted = CompletableDeferred(); releaseCleanup = CompletableDeferred()
     }
     suspend fun inspect(context: Context, source: Uri): Plan { inspections++; return Plan(source, GameArchivePlan(detectedFormat)) }
+    suspend fun reconnectIndexedDownload(context: Context, job: GameArchiveRecovery.Job, selected: Uri): SourceReconnect =
+        error("Unexpected indexed download")
     suspend fun extract(context: Context, plan: Plan, destination: Uri, platform: String, progress: (Long) -> Unit): Uri {
         extractions++
         lastPlatform = platform
@@ -485,6 +526,85 @@ fun main() = runBlocking {
                 GameArchiveRecovery.grantRequests == listOf(replacementJob.tree, replacementJob.tree) &&
                 GameArchiveStorage.resumes == 0 && GameArchiveStorage.discards == 0 && GameArchiveRecovery.clears == 0)
         recreateReconnect.close()
+        GameArchiveStorage.reset()
+        GameArchiveRecovery.saved = savedJob
+        for (scoped in listOf(false, true)) {
+            GameArchiveStorage.reset()
+            val tree = Uri.parse("content://fixture/tree/Downloads")
+            val original = if (scoped) Uri.parse("content://fixture/tree/Downloads/document/source.zip")
+                else Uri.parse("content://fixture/document/source.zip")
+            val job = savedJob.copy(source = original)
+            GameArchiveRecovery.saved = job
+            GameArchiveRecovery.sourceAvailable = false
+            val missing = Fixture()
+            missing.controller.restore(null)
+            check(missing.controller.openRecovery())
+            val picker = if (scoped) 1 else 0
+            val selected = if (scoped) tree else original
+            missing.controller.chooseRecoverySource()
+            check(missing.activity.launches.single() == picker)
+            missing.activity.deliver(picker, null)
+            missing.controller.chooseRecoverySource()
+            missing.activity.deliver(picker, Uri.parse("content://other/tree/Downloads"))
+            verify("Wrong source and Back preserve the interrupted job (tree=$scoped)",
+                missing.controller.recoveryOpen && missing.controller.sourceAccessMissing &&
+                    GameArchiveRecovery.sourceGrantRequests.isEmpty() && GameArchiveRecovery.saved == job)
+            missing.controller.chooseRecoverySource()
+            val state = Bundle().also(missing.controller::save)
+            missing.close()
+            val recreated = Fixture()
+            recreated.controller.restore(state)
+            recreated.activity.deliver(picker, selected)
+            verify("Expired archive picker returns to recovery (tree=$scoped)",
+                recreated.controller.recoveryOpen && GameArchiveRecovery.sourceGrantRequests.isEmpty())
+            recreated.controller.chooseRecoverySource()
+            PortableMaintenance.runExclusive(recreated.activity, {}) {
+                recreated.activity.deliver(picker, selected)
+            }
+            verify("Maintenance ignores the source result (tree=$scoped)",
+                GameArchiveRecovery.sourceGrantRequests.isEmpty() && GameArchiveRecovery.saved == job)
+            if (scoped) {
+                GameArchiveRecovery.childReachable = false
+                recreated.controller.chooseRecoverySource()
+                recreated.activity.deliver(picker, selected)
+                verify("Matching tree cannot be retained when its saved child is unavailable",
+                    recreated.controller.sourceAccessMissing && GameArchiveRecovery.sourceGrantRequests.isEmpty())
+                GameArchiveRecovery.childReachable = true
+                val queriesBeforeCancel = GameArchiveRecovery.childQueries
+                val cancelledBefore = runCatching {
+                    GameArchiveRecovery.reconnectSource(recreated.activity, job, selected, true) {
+                        throw CancellationException("Cancelled before query")
+                    }
+                }
+                verify("Cancellation before source query performs no provider IO",
+                    cancelledBefore.exceptionOrNull() is CancellationException &&
+                        GameArchiveRecovery.childQueries == queriesBeforeCancel)
+                var cancelled = false
+                GameArchiveRecovery.onChildQuery = { cancelled = true }
+                val cancelledDuring = runCatching {
+                    GameArchiveRecovery.reconnectSource(recreated.activity, job, selected, true) {
+                        if (cancelled) throw CancellationException("Cancelled during query")
+                    }
+                }
+                verify("Cancellation during the unlocked source query prevents retaining the grant",
+                    cancelledDuring.exceptionOrNull() is CancellationException && GameArchiveRecovery.sourceGrantRequests.isEmpty())
+                val newer = job.copy(id = "replacement-during-query")
+                GameArchiveRecovery.onChildQuery = { GameArchiveRecovery.saved = newer }
+                verify("A replaced durable job discovered after provider query never receives the grant",
+                    !GameArchiveRecovery.reconnectSource(recreated.activity, job, selected, true) {} &&
+                        GameArchiveRecovery.saved == newer && GameArchiveRecovery.sourceGrantRequests.isEmpty())
+                GameArchiveRecovery.saved = job
+                GameArchiveRecovery.onChildQuery = null
+            }
+            recreated.controller.chooseRecoverySource()
+            recreated.activity.deliver(picker, selected)
+            recreated.activity.deliver(picker, selected)
+            verify("Exact source regrant is read-only and leaves resume explicit (tree=$scoped)",
+                !recreated.controller.sourceAccessMissing && recreated.controller.recoveryOpen &&
+                    recreated.controller.recovery == job && GameArchiveRecovery.sourceGrantRequests == listOf(selected) &&
+                    GameArchiveStorage.resumes == 0 && GameArchiveStorage.discards == 0 && GameArchiveRecovery.clears == 0)
+            recreated.close()
+        }
         GameArchiveStorage.reset()
         GameArchiveRecovery.saved = savedJob
         val cold = Fixture()

@@ -28,4 +28,9 @@
     <string name="game_archive_reconnect_destination">Восстановить доступ к папке</string>
     <string name="game_archive_original_destination">Выберите исходную папку распаковки.</string>
     <string name="game_archive_destination_access_failed">Не удалось восстановить доступ к папке распаковки.</string>
+    <string name="game_archive_source_access_missing">Нет доступа к исходному архиву.</string>
+    <string name="game_archive_reconnect_source">Восстановить доступ к архиву</string>
+    <string name="game_archive_original_source">Выберите исходный архив.</string>
+    <string name="game_archive_original_source_tree">Выберите исходную папку архива.</string>
+    <string name="game_archive_source_access_failed">Не удалось восстановить доступ к исходному архиву.</string>
 </resources>

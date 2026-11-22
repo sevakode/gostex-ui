@@ -40,6 +40,7 @@ android {
 }
 dependencies {
     implementation(project(":release-runtime"))
+    implementation("com.github.junrar:junrar:8.1.2")
     implementation("org.apache.commons:commons-compress:1.28.0")
     implementation("org.tukaani:xz:1.10")
     implementation("androidx.activity:activity-compose:1.13.0")

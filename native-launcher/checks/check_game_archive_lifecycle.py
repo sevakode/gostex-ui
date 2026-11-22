@@ -113,6 +113,7 @@ class MainActivity : Context() {
     fun getString(id: Int, vararg args: Any): String = when (id) {
         R.string.game_archive_format_zip -> "ZIP"
         R.string.game_archive_format_seven_z -> "7z"
+        R.string.game_archive_format_rar -> "RAR"
         R.string.game_archive_confirm -> args.joinToString(" · ")
         else -> id.toString()
     }
@@ -139,6 +140,7 @@ object R { object string {
     const val game_archive_format_zip = 8
     const val game_archive_format_seven_z = 9
     const val game_archive_confirm = 10
+    const val game_archive_format_rar = 11
 } }
 object PlatformRegistry {
     fun find(id: String): String? = id.takeIf { it in setOf("SNES", "PSP") }
@@ -171,7 +173,7 @@ object GameArchiveRecovery {
     fun reset() { saved = null; reads = 0; clears = 0; failRead = false }
 }
 class TorrDownloadLowSpace : java.io.IOException()
-enum class GameArchiveFormat { ZIP, SEVEN_Z }
+enum class GameArchiveFormat { ZIP, SEVEN_Z, RAR }
 data class GameArchivePlan(val format: GameArchiveFormat)
 object GameArchiveStorage {
     class Plan(val source: Uri, val archive: GameArchivePlan) { val totalBytes = 1L; val files = 1 }
@@ -261,8 +263,9 @@ fun main() = runBlocking {
         GameArchiveStorage.reset()
         val oldSource = Fixture()
         oldSource.controller.chooseSource("PSP")
-        verify("The source picker requests ZIP, 7z and the provider fallback MIME types",
-            oldSource.activity.sourceMimeTypes == listOf("application/zip", "application/x-7z-compressed", "application/octet-stream", "*/*"))
+        verify("The source picker requests ZIP, 7z, RAR and the provider fallback MIME types",
+            oldSource.activity.sourceMimeTypes == listOf("application/zip", "application/x-7z-compressed", "application/vnd.rar",
+                "application/x-rar-compressed", "application/octet-stream", "*/*"))
         val sourceState = Bundle().also(oldSource.controller::save)
         oldSource.close()
         val sourceRestored = Fixture()
@@ -277,22 +280,24 @@ fun main() = runBlocking {
             sourceRestored.added?.first == "PSP" && GameArchiveStorage.lastPlatform == "PSP")
         sourceRestored.close()
 
-        GameArchiveStorage.reset()
-        GameArchiveStorage.detectedFormat = GameArchiveFormat.SEVEN_Z
-        val sevenZ = Fixture()
-        val sevenZSource = Uri.parse("content://fixture/opaque")
-        sevenZ.controller.chooseSource("SNES")
-        sevenZ.activity.deliver(0, sevenZSource)
-        verify("The archive picker passes a 7z URI to the shared preview",
-            sevenZ.controller.plan?.source == sevenZSource && GameArchiveStorage.inspections == 1)
-        verify("An opaque source displays 7z from the detected format",
-            sevenZ.controller.plan?.previewMessage(sevenZ.activity) == "7z · 1 · 1 B")
-        sevenZ.controller.chooseDestination()
-        sevenZ.activity.deliver(1, destination)
-        sevenZ.controller.addResult()
-        verify("The 7z preview uses the normal extraction and folder import flow",
-            sevenZ.added?.first == "SNES" && GameArchiveStorage.lastPlatform == "SNES" && GameArchiveStorage.extractions == 1)
-        sevenZ.close()
+        for ((format, label) in listOf(GameArchiveFormat.SEVEN_Z to "7z", GameArchiveFormat.RAR to "RAR")) {
+            GameArchiveStorage.reset()
+            GameArchiveStorage.detectedFormat = format
+            val archive = Fixture()
+            val opaqueSource = Uri.parse("content://fixture/opaque")
+            archive.controller.chooseSource("SNES")
+            archive.activity.deliver(0, opaqueSource)
+            verify("The archive picker passes a $label source to the shared preview",
+                archive.controller.plan?.source == opaqueSource && GameArchiveStorage.inspections == 1)
+            verify("An opaque source displays $label from the detected format",
+                archive.controller.plan?.previewMessage(archive.activity) == "$label · 1 · 1 B")
+            archive.controller.chooseDestination()
+            archive.activity.deliver(1, destination)
+            archive.controller.addResult()
+            verify("The $label preview uses the normal extraction and folder import flow",
+                archive.added?.first == "SNES" && GameArchiveStorage.lastPlatform == "SNES" && GameArchiveStorage.extractions == 1)
+            archive.close()
+        }
 
         GameArchiveStorage.reset()
         val oldDestination = Fixture()

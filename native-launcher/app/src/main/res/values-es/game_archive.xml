@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="game_archive_title">Extraer ZIP o 7z</string>
-    <string name="game_archive_invalid">No se pudo leer el archivo. Elige un ZIP o un 7z de un solo volumen, completo y sin contraseña.</string>
+    <string name="game_archive_title">Extraer ZIP, 7z o RAR</string>
+    <string name="game_archive_invalid">No se pudo leer el archivo. Elige un ZIP, 7z o RAR completo, de un solo volumen y sin contraseña.</string>
     <string name="game_archive_cancelled">Extracción cancelada.</string>
     <string name="game_archive_expired">Se interrumpió la preparación. Vuelve a elegir el archivo para continuar.</string>
     <string name="game_archive_failed">La extracción se detuvo. Comprueba el espacio disponible y el acceso a la carpeta e inténtalo de nuevo.</string>
@@ -10,6 +10,7 @@
     <string name="game_archive_ready">Los archivos están listos en una carpeta nueva. Confirma esa carpeta para añadirla a tu biblioteca.</string>
     <string name="game_archive_format_zip">ZIP</string>
     <string name="game_archive_format_seven_z">7z</string>
+    <string name="game_archive_format_rar">RAR</string>
     <string name="game_archive_confirm">%1$s · %2$d archivos · %3$s extraídos. Elige dónde crear su nueva carpeta. Se conserva el archivo original.</string>
     <string name="game_archive_destination">Elegir destino</string>
     <string name="game_archive_pause">Pausar extracción</string>

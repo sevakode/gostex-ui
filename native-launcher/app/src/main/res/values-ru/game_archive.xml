@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="game_archive_title">Распаковать ZIP или 7z</string>
-    <string name="game_archive_invalid">Не удалось прочитать архив. Выберите полностью загруженный ZIP или однотомный 7z без пароля.</string>
+    <string name="game_archive_title">Распаковать ZIP, 7z или RAR</string>
+    <string name="game_archive_invalid">Не удалось прочитать архив. Выберите полностью загруженный ZIP, 7z или RAR в одном файле без пароля.</string>
     <string name="game_archive_cancelled">Распаковка отменена.</string>
     <string name="game_archive_expired">Подготовка архива прервана. Выберите архив заново, чтобы продолжить.</string>
     <string name="game_archive_failed">Распаковка остановлена. Проверьте свободное место и доступ к папке, затем повторите.</string>
@@ -10,6 +10,7 @@
     <string name="game_archive_ready">Файлы готовы в новой папке. Подтвердите эту папку, чтобы добавить её в библиотеку.</string>
     <string name="game_archive_format_zip">ZIP</string>
     <string name="game_archive_format_seven_z">7z</string>
+    <string name="game_archive_format_rar">RAR</string>
     <string name="game_archive_confirm">%1$s · файлов: %2$d · после распаковки: %3$s. Выберите место для новой папки. Исходный архив сохранится.</string>
     <string name="game_archive_destination">Выбрать папку</string>
     <string name="game_archive_pause">Приостановить распаковку</string>

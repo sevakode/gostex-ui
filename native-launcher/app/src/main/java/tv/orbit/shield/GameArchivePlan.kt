@@ -7,14 +7,16 @@ import java.security.MessageDigest
 import java.util.Locale
 import java.util.zip.CRC32
 
-internal enum class GameArchiveFormat {
-    ZIP, SEVEN_Z;
+internal enum class GameArchiveFormat(val extension: String) {
+    ZIP("zip"), SEVEN_Z("7z"), RAR("rar");
+
+    private val suffix = ".$extension"
 
     companion object {
         private val sevenZSignature = byteArrayOf(0x37, 0x7a, 0xbc.toByte(), 0xaf.toByte(), 0x27, 0x1c)
+        private val rarPrefix = byteArrayOf(0x52, 0x61, 0x72, 0x21, 0x1a, 0x07)
 
-        fun supportsName(name: String): Boolean = name.endsWith(".zip", ignoreCase = true) ||
-            name.endsWith(".7z", ignoreCase = true)
+        fun supportsName(name: String): Boolean = entries.any { name.endsWith(it.suffix, ignoreCase = true) }
 
         fun detect(channel: SeekableByteChannel): GameArchiveFormat {
             val position = channel.position()
@@ -24,8 +26,12 @@ internal enum class GameArchiveFormat {
                 while (header.hasRemaining()) {
                     if (channel.read(header) <= 0) break
                 }
-                // ZipFile checks the central directory and also accepts valid ZIPs with a preamble.
-                return if (header.array().contentEquals(sevenZSignature)) SEVEN_Z else ZIP
+                return when {
+                    header.array().contentEquals(sevenZSignature) -> SEVEN_Z
+                    header.array().contentEquals(rarPrefix) -> RAR
+                    // ZipFile checks the central directory and accepts a preamble.
+                    else -> ZIP
+                }
             } finally {
                 channel.position(position)
             }
@@ -51,6 +57,8 @@ internal data class GameArchivePlan(
 )
 
 internal const val MAX_ARCHIVE_ENTRIES = 10_000
+internal const val MAX_RAR_ENTRIES = 65_536
+internal const val MAX_ARCHIVE_DIRECTORY_CHILDREN = 10_000
 private const val MAX_ARCHIVE_DEPTH = 16
 internal const val MAX_ARCHIVE_OUTPUT = 64L * 1024 * 1024 * 1024
 
@@ -64,22 +72,30 @@ internal fun checkedArchivePlan(
     val ordered = mutableListOf<GameArchiveEntry>()
     val explicitPaths = mutableSetOf<String>()
     val nodes = mutableMapOf<String, Pair<String, Boolean>>()
+    val childrenPerDirectory = if (format == GameArchiveFormat.RAR) mutableMapOf<String, Int>() else null
+    val maxEntries = if (format == GameArchiveFormat.RAR) MAX_RAR_ENTRIES else MAX_ARCHIVE_ENTRIES
     var total = 0L
     var files = 0
     for (entry in entries) {
         checkpoint()
-        require(ordered.size < MAX_ARCHIVE_ENTRIES) { "Too many archive entries" }
+        require(ordered.size < maxEntries) { "Too many archive entries" }
         val parts = TorrDownloadPaths.components(entry.path)
         require(parts.size <= MAX_ARCHIVE_DEPTH) { "Archive path is too deep" }
         require(explicitPaths.add(entry.path.lowercase(Locale.ROOT))) { "Duplicate archive entry" }
         var parent = ""
         parts.forEachIndexed { index, part ->
+            val parentPath = parent
             parent = if (parent.isEmpty()) part else "$parent/$part"
             val directory = index < parts.lastIndex || entry.directory
             val node = parent to directory
             val previous = nodes.putIfAbsent(parent.lowercase(Locale.ROOT), node)
             require(previous == null || previous == node) { "Ambiguous archive path" }
-            require(nodes.size <= MAX_ARCHIVE_ENTRIES) { "Too many archive documents" }
+            require(nodes.size <= maxEntries) { "Too many archive documents" }
+            if (previous == null && childrenPerDirectory != null) {
+                val childCount = (childrenPerDirectory[parentPath] ?: 0) + 1
+                require(childCount <= MAX_ARCHIVE_DIRECTORY_CHILDREN) { "Too many documents in an archive directory" }
+                childrenPerDirectory[parentPath] = childCount
+            }
         }
         require(entry.size in 0..MAX_ARCHIVE_OUTPUT && entry.compressedSize in 0..MAX_ARCHIVE_OUTPUT &&
             entry.crc in 0..0xffffffffL) { "Invalid archive entry metadata" }
@@ -110,6 +126,10 @@ internal fun gameArchiveFingerprint(plan: GameArchivePlan): String {
         GameArchiveFormat.ZIP -> text("gostex-zip-plan-v1")
         GameArchiveFormat.SEVEN_Z -> {
             text("gostex-7z-plan-v1")
+            text(plan.sourceMetadata.orEmpty())
+        }
+        GameArchiveFormat.RAR -> {
+            text("gostex-rar-plan-v1")
             text(plan.sourceMetadata.orEmpty())
         }
     }

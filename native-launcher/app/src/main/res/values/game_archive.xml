@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="game_archive_title">Extract ZIP or 7z</string>
-    <string name="game_archive_invalid">Could not read the archive. Choose a complete ZIP or single-volume 7z without a password.</string>
+    <string name="game_archive_title">Extract ZIP, 7z or RAR</string>
+    <string name="game_archive_invalid">Could not read the archive. Choose a complete ZIP, 7z or RAR in one file and without a password.</string>
     <string name="game_archive_cancelled">Extraction cancelled.</string>
     <string name="game_archive_expired">Archive preparation was interrupted. Select the archive again to continue.</string>
     <string name="game_archive_failed">Extraction stopped. Check available space and folder access, then try again.</string>
@@ -10,6 +10,7 @@
     <string name="game_archive_ready">Files are ready in a new folder. Confirm that folder to add it to your library.</string>
     <string name="game_archive_format_zip">ZIP</string>
     <string name="game_archive_format_seven_z">7z</string>
+    <string name="game_archive_format_rar">RAR</string>
     <string name="game_archive_confirm">%1$s · %2$d files · %3$s unpacked. Choose where to create their new folder. The source archive is kept.</string>
     <string name="game_archive_destination">Choose destination</string>
     <string name="game_archive_pause">Pause extraction</string>

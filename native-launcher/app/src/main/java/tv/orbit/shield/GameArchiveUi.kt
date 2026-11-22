@@ -80,7 +80,10 @@ internal class GameArchiveController(
         clear()
         pendingPicker = Picker.SOURCE
         val started = launchPicker(Intent.ACTION_OPEN_DOCUMENT, "*/*") {
-            sourcePicker.launch(arrayOf("application/zip", "application/x-7z-compressed", "application/octet-stream", "*/*"))
+            sourcePicker.launch(arrayOf(
+                "application/zip", "application/x-7z-compressed", "application/vnd.rar", "application/x-rar-compressed",
+                "application/octet-stream", "*/*",
+            ))
         }
         if (!started) pendingPicker = null
     }
@@ -324,6 +327,7 @@ internal fun GameArchiveStorage.Plan.previewMessage(activity: MainActivity): Str
     val formatLabel = when (archive.format) {
         GameArchiveFormat.ZIP -> R.string.game_archive_format_zip
         GameArchiveFormat.SEVEN_Z -> R.string.game_archive_format_seven_z
+        GameArchiveFormat.RAR -> R.string.game_archive_format_rar
     }
     return activity.getString(R.string.game_archive_confirm, activity.getString(formatLabel), files,
         Formatter.formatFileSize(activity, totalBytes))

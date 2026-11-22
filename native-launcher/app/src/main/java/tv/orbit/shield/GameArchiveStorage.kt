@@ -45,7 +45,7 @@ internal object GameArchiveStorage {
             }.orEmpty().map { if (it.isISOControl()) '_' else it }.joinToString("")
             withSource(context, source, checkpoint) { input ->
                 val archive = input.inspect(checkpoint)
-                val fallback = if (archive.format == GameArchiveFormat.ZIP) "archive.zip" else "archive.7z"
+                val fallback = "archive.${archive.format.extension}"
                 Plan(title.ifBlank { fallback }, source, archive)
             }
         }
@@ -170,6 +170,7 @@ internal object GameArchiveStorage {
         fun inspect(checkpoint: () -> Unit): GameArchivePlan = when (format) {
             GameArchiveFormat.ZIP -> GameZipArchive.inspect(checkNotNull(zipFile), checkpoint)
             GameArchiveFormat.SEVEN_Z -> GameSevenZArchive.inspect(channel.position(0), checkpoint)
+            GameArchiveFormat.RAR -> GameRarArchive.inspect(channel.position(0), checkpoint)
         }
 
         fun extract(plan: GameArchivePlan, target: Destination, checkpoint: () -> Unit, onProgress: (Long) -> Unit) {
@@ -179,6 +180,8 @@ internal object GameArchiveStorage {
                 GameArchiveFormat.ZIP -> GameZipArchive.extract(checkNotNull(zipFile), plan,
                     target::directory, target::open, checkpoint, onProgress, completed, promote)
                 GameArchiveFormat.SEVEN_Z -> GameSevenZArchive.extract(channel.position(0), plan,
+                    target::directory, target::open, checkpoint, onProgress, completed, promote)
+                GameArchiveFormat.RAR -> GameRarArchive.extract(channel.position(0), plan,
                     target::directory, target::open, checkpoint, onProgress, completed, promote)
             }
         }
@@ -202,7 +205,7 @@ internal object GameArchiveStorage {
                     val format = GameArchiveFormat.detect(channel)
                     val path = File("/proc/self/fd/${descriptor.fd}")
                     when {
-                        format == GameArchiveFormat.SEVEN_Z -> block(Source(format, channel))
+                        format != GameArchiveFormat.ZIP -> block(Source(format, channel))
                         canReopen(path) -> block(Source(format, channel, path))
                         else -> withSourceCopy(context, descriptor, scratch, checkpoint, block)
                     }
@@ -598,7 +601,7 @@ internal object GameArchiveStorage {
                 val rows = Directory()
                 val ids = mutableSetOf<String>()
                 while (cursor.moveToNext()) {
-                    check(ids.size < 10000) { "Too many destination documents" }
+                    check(ids.size < MAX_ARCHIVE_DIRECTORY_CHILDREN) { "Too many destination documents" }
                     val row = document(cursor)
                     check(ids.add(row.id)) { "Ambiguous destination document ID" }
                     rows.add(row)

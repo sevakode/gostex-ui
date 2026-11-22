@@ -44,6 +44,7 @@ private object ManagedCoverManifest {
     PRODUCTION_IMAGE_PATH
 }
 private class Context(val contentResolver: Provider) {
+    val cacheDir = java.nio.file.Files.createTempDirectory("cover-cache").toFile()
     fun getString(message: String) = message
     val assets = Assets(contentResolver)
 }
@@ -76,6 +77,7 @@ private class Provider {
     var incomplete: Uri? = null
     var cancelled: Uri? = null
     var failNextWrite = false
+    var truncateNextWrite = false
     var returnOnCreate: Uri? = null
 
     fun query(uri: Uri, columns: Array<String>, selection: String?, args: Array<String>?, order: String?): Cursor? {
@@ -106,7 +108,8 @@ private class Provider {
                     files[uri] = written.copyOf(1)
                     throw IOException("Provider write interrupted")
                 }
-                files[uri] = written
+                files[uri] = if (truncateNextWrite) written.copyOf(1) else written
+                truncateNextWrite = false
             }
         }
     }
@@ -123,13 +126,63 @@ private fun imageFile(context: Context, key: String): File? {
     return null
 }
 
+private class ExportFixture(private val context: Context, private val root: Uri) {
+    private var lastExport = ""
+
+    suspend fun export(force: Boolean) {
+        val tree = Tree(context, root)
+        val fingerprint = "same-fingerprint"
+        PRODUCTION_EXPORT_HEAD
+        PRODUCTION_EXPORT_SETUP
+        PRODUCTION_EXPORT_IMAGE
+        val payload = exportImage("cover.jpg").orEmpty().encodeToByteArray()
+        PRODUCTION_EXPORT_TAIL
+    }
+}
+
 private suspend fun exportFixture(context: Context, root: Uri): String? {
-    val tree = Tree(context, root)
-    PRODUCTION_EXPORT_SETUP
-    PRODUCTION_EXPORT_IMAGE
-    val image = exportImage("cover.jpg")
-    tree.write(root, "library.json", "application/json", image.orEmpty().encodeToByteArray())
-    return image
+    ExportFixture(context, root).export(force = true)
+    return context.contentResolver.files["$root/library.json"]?.decodeToString()
+}
+
+private suspend fun checkManifestRetry() {
+    val provider = Provider()
+    val context = Context(provider)
+    val root = "root"
+    val originals = "$root/originals"
+    val library = "$root/library.json"
+    provider.folders[root] = listOf(Document(originals, "originals", "dir"))
+    provider.folders[originals] = emptyList()
+    provider.assets["cover.jpg"] = byteArrayOf(1, 2, 3)
+
+    val exporter = ExportFixture(context, root)
+    exporter.export(force = false)
+    val complete = provider.files.getValue(library)
+    provider.opened.clear()
+    exporter.export(force = false)
+    check(provider.opened.isEmpty()) { "Unchanged export should not reopen image or manifest bytes" }
+    for (restart in listOf(false, true)) {
+        provider.failNextWrite = true
+        check(runCatching { exporter.export(force = true) }.exceptionOrNull() is IOException)
+        check(provider.files.getValue(library).size == 1)
+        val retry = if (restart) ExportFixture(context, root) else exporter
+        retry.export(force = false)
+        check(provider.files.getValue(library).contentEquals(complete)) {
+            "Failed forced export was skipped on automatic retry (restart=$restart)"
+        }
+    }
+
+    provider.truncateNextWrite = true
+    check(runCatching { exporter.export(force = true) }.exceptionOrNull()?.message == "Folder unavailable")
+    check(provider.files.getValue(library).size == 1)
+    ExportFixture(context, root).export(force = false)
+    check(provider.files.getValue(library).contentEquals(complete))
+    val cache = File(context.cacheDir, "cover-export-fingerprint")
+    check(cache.delete() && cache.mkdir())
+    File(cache, "blocked").writeText("fixture")
+    provider.failNextWrite = true
+    check(runCatching { exporter.export(force = true) }.exceptionOrNull()?.message == "Folder unavailable")
+    check(provider.failNextWrite && provider.files.getValue(library).contentEquals(complete))
 }
 
 private suspend fun checkExportAfterInterruptedWrite() {
@@ -310,7 +363,8 @@ fun main() = runBlocking {
  checkSharedImagePreparation(cancel = true)
  checkImportListings()
  checkExportAfterInterruptedWrite()
- println("PASS: bounded listings, cover coordination, cancellation and verified export recovery")
+ checkManifestRetry()
+ println("PASS: bounded listings, cover coordination, cancellation and verified export/manifest recovery")
 }
 '''
 store = (source_dir / 'ManagedCovers.kt').read_text()
@@ -323,6 +377,8 @@ bounded = store[store.index('private fun bounded('):store.index('private fun val
 tree_reader = store[store.index('private data class Document('):store.index('suspend fun images(')].rstrip()
 digest = next(line.strip() for line in store.splitlines() if 'private fun digest(' in line)
 export = store.split('private suspend fun export(', 1)[1]
+export_head = export[export.index('val cache = File('):export.index('val originals =')].rstrip()
+export_tail = export[export.index('currentCoroutineContext().ensureActive()', export.index('val payload =')):export.rindex('    }')].rstrip()
 export_setup = export[export.index('val originals ='):export.index('val rows = JSONArray()')].rstrip()
 export_image = export[export.index('suspend fun exportImage('):export.index('val original = exportImage(base)')].rstrip()
 # Run the same provider fixture on the previous implementation for the baseline count.
@@ -335,8 +391,9 @@ with tempfile.TemporaryDirectory(prefix='gostex-cover-concurrency-') as temp:
         .replace('PRODUCTION_IMAGE_PATH', image_path).replace('PRODUCTION_BOUNDED', bounded)
         .replace('PRODUCTION_TREE_READER', tree_reader).replace('IMPORT_READER', import_reader)
         .replace('PRODUCTION_DIGEST', digest).replace('PRODUCTION_EXPORT_SETUP', export_setup)
-        .replace('PRODUCTION_EXPORT_IMAGE', export_image))
+        .replace('PRODUCTION_EXPORT_IMAGE', export_image)
+        .replace('PRODUCTION_EXPORT_HEAD', export_head).replace('PRODUCTION_EXPORT_TAIL', export_tail))
     cp = ':'.join(map(str, compiler))
     runtime = ':'.join(map(str, [compiler[1], compiler[4], compiler[5]]))
     subprocess.run([str(java), '-cp', cp, 'org.jetbrains.kotlin.cli.jvm.K2JVMCompiler', '-no-stdlib', '-no-reflect', '-classpath', runtime, '-d', str(folder / 'classes'), str(source_dir / 'CoverOperationGate.kt'), str(folder / 'Model.kt'), str(folder / 'Checks.kt')], check=True)
-    subprocess.run([str(java), '-cp', str(folder / 'classes') + ':' + runtime, 'tv.orbit.shield.ChecksKt'], check=True)
+    subprocess.run([str(java), f'-Djava.io.tmpdir={folder}', '-cp', str(folder / 'classes') + ':' + runtime, 'tv.orbit.shield.ChecksKt'], check=True)

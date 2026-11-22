@@ -286,7 +286,7 @@ internal object ManagedCoverStore {
             }
             return uri
         }
-        private fun hasImageBytes(uri: Uri, bytes: ByteArray): Boolean =
+        private fun hasExportBytes(uri: Uri, bytes: ByteArray): Boolean =
             resolver.openInputStream(uri)?.use { stream ->
                 val buffer = ByteArray(8192)
                 var offset = 0
@@ -311,19 +311,24 @@ internal object ManagedCoverStore {
                     val uri = createUnique(parent, name, mime, before)
                     currentCoroutineContext().ensureActive()
                     writeBytes(uri, bytes)
-                    check(hasImageBytes(uri, bytes)) { "Export image write was incomplete" }
+                    check(hasExportBytes(uri, bytes)) { "Export image write was incomplete" }
                     return name
                 }
                 val document = matches.singleOrNull() ?: continue
-                if (document.mime != Docs.Document.MIME_TYPE_DIR && hasImageBytes(document.uri, bytes)) return name
+                if (document.mime != Docs.Document.MIME_TYPE_DIR && hasExportBytes(document.uri, bytes)) return name
             }
             error("No unambiguous export image name available")
         }
-        fun write(parent: Uri, name: String, mime: String, bytes: ByteArray) {
-            val existing = children(parent).filter { it.name == name }
-            require(existing.size <= 1)
-            val uri = existing.firstOrNull()?.uri ?: Docs.createDocument(resolver, parent, mime, name) ?: error("Cannot create file")
+        fun writeManifest(bytes: ByteArray) {
+            val name = "library.json"
+            val before = children(rootDoc)
+            val matches = before.filter { it.name == name }
+            require(matches.size <= 1 && matches.none { it.mime == Docs.Document.MIME_TYPE_DIR }) {
+                context.getString(R.string.folder_unavailable)
+            }
+            val uri = matches.singleOrNull()?.uri ?: createUnique(rootDoc, name, "application/json", before)
             writeBytes(uri, bytes)
+            check(hasExportBytes(uri, bytes)) { context.getString(R.string.folder_unavailable) }
         }
         private fun writeBytes(uri: Uri, bytes: ByteArray) {
             resolver.openOutputStream(uri, "wt")?.use { it.write(bytes) } ?: error("Cannot write file")
@@ -413,6 +418,9 @@ internal object ManagedCoverStore {
             ManagedCoverManifest.encodeIndex(entries) + options.choices.toSortedMap()).toByteArray())
         val cache = File(context.cacheDir, "cover-export-fingerprint")
         if (!force && (fingerprint == lastExport || runCatching { cache.readText().take(128) == fingerprint }.getOrDefault(false)) && tree.find("library.json") != null) return
+        // Invalidate both success records before any operation can change the shared output.
+        lastExport = ""
+        check(!cache.exists() || cache.delete()) { context.getString(R.string.folder_unavailable) }
         val originals = tree.folder("originals")
         val existing = tree.children(originals).groupBy(Document::name)
         val exportedNames = mutableMapOf<String, String>()
@@ -463,7 +471,7 @@ internal object ManagedCoverStore {
         val payload = JSONObject().put("version", 1).put("tileAspectRatio", TileLayout.aspectRatio.toDouble())
             .put("games", rows).toString(2).toByteArray()
         currentCoroutineContext().ensureActive()
-        tree.write(tree.rootDoc, "library.json", "application/json", payload)
+        tree.writeManifest(payload)
         lastExport = fingerprint
         runCatching { cache.writeText(fingerprint) }
     }

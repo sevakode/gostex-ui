@@ -10,16 +10,18 @@ store = (src / 'TorrDownloadStore.kt').read_text()
 model = store[store.index('internal data class TorrDownloadJob('):store.index('/** Download records')]
 check = r'''
 internal object TorrDownloadStore {
-    val jobs = MutableSharedFlow<List<TorrDownloadJob>>(replay = 1)
+    val jobs = MutableStateFlow<List<TorrDownloadJob>>(emptyList())
 }
 
-private class CountedJobs(private val rows: List<TorrDownloadJob>, private val ui: Thread) : List<TorrDownloadJob> by rows {
+private class CountedJobs(private val rows: List<TorrDownloadJob>, private val ui: Thread,
+                          private val beforeScan: () -> Unit = {}) : List<TorrDownloadJob> by rows {
     val scans = AtomicInteger()
     val rowsRead = AtomicInteger()
     val uiReads = AtomicInteger()
 
     override fun iterator(): Iterator<TorrDownloadJob> {
         scans.incrementAndGet()
+        beforeScan()
         return object : Iterator<TorrDownloadJob> {
             private val entries = rows.iterator()
             override fun hasNext(): Boolean = entries.hasNext()
@@ -50,6 +52,7 @@ fun main() = runBlocking {
     val first = collect("featured", events)
     val second = collect("other", other)
     subscriptions(1)
+    check(next(events) == null && next(other) == null)
 
     val unrelated = List(1_995) { entry("archive$it", "separate$it", "done") }
     val featured = entry("active", "featured", "running", 207)
@@ -80,6 +83,30 @@ fun main() = runBlocking {
     journal.emit(listOf(featured.copy(state = "queued"), saved, savedAgain))
     check(next(events) == MediaDownloadBadge.Completed(2))
 
+    val started = CompletableDeferred<Unit>()
+    val release = CountDownLatch(1)
+    val current = CountedJobs(listOf(featured.copy(offset = 420)), ui) {
+        check(Thread.currentThread() != ui) { "Projection must not run on Main" }
+        started.complete(Unit)
+        check(release.await(10, TimeUnit.SECONDS)) { "Projection gate was not released" }
+    }
+    val newEvents = Channel<MediaDownloadBadge?>(Channel.UNLIMITED)
+    journal.emit(current)
+    val newObserver = try {
+        withTimeout(5_000) { started.await() }
+        // Existing cards keep replay alive. UNDISPATCHED consumes any replay
+        // synchronously, while the new scan cannot run past the gate.
+        collect("featured", newEvents).also {
+            check(newEvents.tryReceive().isFailure) { "New card received stale replay from the prior journal" }
+        }
+    } finally {
+        release.countDown()
+    }
+    check(next(newEvents) == MediaDownloadBadge.Running(42))
+    check(next(events) == MediaDownloadBadge.Running(42))
+    check(current.scans.get() == 1 && current.uiReads.get() == 0)
+    newObserver.cancelAndJoin()
+
     first.cancelAndJoin()
     check(journal.subscriptionCount.value == 1)
     second.cancelAndJoin()
@@ -93,15 +120,18 @@ fun main() = runBlocking {
     check(whileIdle.scans.get() == 1 && whileIdle.uiReads.get() == 0)
     restart.cancelAndJoin()
     subscriptions(0)
-    println("PASS: single shared background scan of ${initial.size} rows, unchanged badge suppression, priority, bounds, unsubscription and fresh replay")
+    println("PASS: one background scan of ${initial.size} rows, unchanged badge suppression, priority, bounds, idle unsubscription and stale replay rejection")
 }
 '''
 imports = '''package tv.orbit.shield
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking

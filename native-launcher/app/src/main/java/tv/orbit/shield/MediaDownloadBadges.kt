@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.shareIn
 
@@ -16,15 +17,22 @@ internal sealed interface MediaDownloadBadge {
 }
 
 internal object MediaDownloadBadges {
+    private class Projection(val jobs: List<TorrDownloadJob>, val byMovie: Map<String, MediaDownloadBadge>)
+
+    private val jobs = TorrDownloadStore.jobs
     // All visible cards share the same projection. Drop it when the last card stops collecting.
-    private val badges = TorrDownloadStore.jobs.map(::project).distinctUntilChanged().conflate().shareIn(
+    private val badges = jobs.map { Projection(it, project(it)) }.conflate().shareIn(
         CoroutineScope(SupervisorJob() + Dispatchers.Default),
         SharingStarted.WhileSubscribed(replayExpirationMillis = 0),
         replay = 1,
     )
 
     fun observe(movieId: String): Flow<MediaDownloadBadge?> =
-        badges.map { it[movieId] }.distinctUntilChanged()
+        badges
+            // Unsubscription and replay reset can interleave with a new card collecting.
+            .filter { it.jobs === jobs.value }
+            .map { it.byMovie[movieId] }
+            .distinctUntilChanged()
 
     private fun project(jobs: List<TorrDownloadJob>): Map<String, MediaDownloadBadge> = buildMap {
         for (job in jobs) {

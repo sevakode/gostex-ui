@@ -110,6 +110,11 @@ internal class TorrDownloadService : Service() {
                 prepared = try { kotlinx.coroutines.runBlocking { TorrDownloadStartup.prepare(applicationContext) } }
                     catch (_: kotlinx.coroutines.CancellationException) { false }
                 if (!prepared) return@execute
+                runCatching {
+                    TorrFinalizeProof.prune(this) { id ->
+                        TorrDownloadStore.jobs.value.any { it.id == id && it.state != "done" }
+                    }
+                }
                 while (true) {
                     if (stopping.get() || isDestroyedForMaintenance || PortableMaintenance.running) break
                     val next = TorrDownloadStore.jobs.value.firstOrNull { it.state == "queued" } ?: break
@@ -229,12 +234,16 @@ internal class TorrDownloadService : Service() {
                         if (job.state != "finalizing") continue
                         notificationUpdate(transfer, job)
                         phase = "finalize"
-                        val result = finalizeDocument(job)
+                        val result = finalizeDocument(job) {
+                            if (cancelled() || PortableMaintenance.running) throw kotlinx.coroutines.CancellationException()
+                        }
                         val completed = TorrDownloadStore.update(this, job.id) {
+                            check(it == job) { "Download finalization changed" }
                             it.copy(document = result.toString(), state = "done", error = "", http = it.http?.copy(url = null))
                         }
                         growingCompleted = true
                         TorrGrowingVideo.finish(job.id, success = true)
+                        runCatching { TorrFinalizeProof.clear(this, job.id) }
                         if (completed.prefetchMovieId.isNotBlank() && !cancelled()) {
                             // A failed follow-up must not turn a completed download into an error.
                             runCatching { TorrPrefetch.continueAfter(this, completed) }
@@ -270,7 +279,7 @@ internal class TorrDownloadService : Service() {
         }
     }
 
-    private fun finalizeDocument(job: TorrDownloadJob): Uri {
+    private fun finalizeDocument(job: TorrDownloadJob, checkActive: () -> Unit): Uri {
         val tree = Uri.parse(job.tree)
         val parentId = job.parentId.ifBlank { DocumentsContract.getTreeDocumentId(tree) }
         val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, parentId)
@@ -290,10 +299,13 @@ internal class TorrDownloadService : Service() {
             }
         } ?: throw IOException("Cannot inspect destination")
         val completed = finalMatch
+        val completedId = completed?.let(DocumentsContract::getDocumentId)
+        val changedId = completedId != null && completedId != partialId
         if (completed != null) {
-            val completedId = DocumentsContract.getDocumentId(completed)
-            if (!torrCanRecoverRenamed(partialId, completedId, job.finalName, finalName.orEmpty(), partialStillPresent) ||
-                !portableSafDirectChild(contentResolver, tree, parentId, completedId)) {
+            val candidateId = checkNotNull(completedId)
+            val originalIdMatches = torrCanRecoverRenamed(partialId, candidateId, job.finalName, finalName.orEmpty(), partialStillPresent)
+            val canVerifyNewId = changedId && !partialStillPresent && finalName == job.finalName && TorrFinalizeProof.supports(job)
+            if ((!originalIdMatches && !canVerifyNewId) || !portableSafDirectChild(contentResolver, tree, parentId, candidateId)) {
                 throw IOException("Destination name conflict or interrupted rename")
             }
             val rootId = DocumentsContract.getTreeDocumentId(tree)
@@ -311,8 +323,15 @@ internal class TorrDownloadService : Service() {
             TorrDownloadEngine.verifyCompleted(job.total, target, TorrDownloadCheckpoint(job.offset, job.etag),
                 requireStrongEtag = job.http?.let { it.expectedEtag != null } ?: true)
         }
-        requireVideoHeader(job, document)
-        if (completed != null) return completed
+        requireVideoHeader(job, document, checkActive)
+        if (completed != null) {
+            if (changedId && !TorrFinalizeProof.matches(this, job, completed, checkActive)) {
+                throw IOException("Renamed download content does not match")
+            }
+            return completed
+        }
+        if (TorrFinalizeProof.supports(job)) TorrFinalizeProof.record(this, job, document, checkActive)
+        checkActive()
         val renamed = DocumentsContract.renameDocument(contentResolver, document, job.finalName)
             ?: throw IOException("Cannot finish download")
         if (renamed.scheme != "content" || renamed.authority != tree.authority) {

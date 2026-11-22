@@ -827,6 +827,7 @@ class MainActivity : ComponentActivity() {
     }
     private var refreshPending = false
     private var manualRefreshPending = false
+    private var validatingLibraryFile = false
     private var libraryVisible = false
     private var importJob: Job? = null
     private var mediaReceiverRegistered = false
@@ -898,8 +899,10 @@ class MainActivity : ComponentActivity() {
         allowMeteredRecoveryOnce = false
         coversLoop?.cancel()
         coverSyncPending = false
-        refreshPending = false
-        manualRefreshPending = false
+        if (!validatingLibraryFile) {
+            refreshPending = false
+            manualRefreshPending = false
+        }
         importJob?.cancel()
         super.onStop()
     }
@@ -1091,19 +1094,27 @@ class MainActivity : ComponentActivity() {
         else gameArchive.folderImported(null)
     }
     private val gameFilePicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (PortableMaintenance.running) return@registerForActivityResult
+        if (PortableMaintenance.running || validatingLibraryFile || !importRoot.isActive) return@registerForActivityResult
         val platform = importPlatform
         if (uri != null && PlatformRegistry.find(platform) != null) {
-            val alreadyGranted = contentResolver.persistedUriPermissions.any { it.uri == uri && it.isReadPermission }
-            importScope.launch {
+            val catalog = bundled
+            // Activity results can arrive before onResume. Mark the validation before
+            // dispatching provider I/O so the resume scan can include the new source.
+            importScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                validatingLibraryFile = true
+                var acquired = false
                 var retained = false
                 try {
-                    contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     val root = LibraryImport.Root(platform, uri.toString(), LibrarySource.SINGLE_FILE)
-                    // Validate before saving the source: CIA packages and multi-file discs
-                    // cannot become phantom entries. No ROM data is copied.
-                    val selected = withContext(Dispatchers.IO) { LibraryImport.scan(this@MainActivity, root, bundled, showHints = false) }
+                    // OpenDocument supplies a temporary read grant for validation.
+                    val selected = withContext(Dispatchers.IO) {
+                        LibraryImport.scan(this@MainActivity, root, catalog, showHints = false)
+                    }
                     require(selected.isNotEmpty()) { getString(R.string.import_file_unavailable) }
+                    if (contentResolver.persistedUriPermissions.none { it.uri == uri && it.isReadPermission }) {
+                        contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        acquired = true
+                    }
                     LibraryImport.addRoot(this@MainActivity, root)
                     retained = true
                     notice = ""
@@ -1112,9 +1123,11 @@ class MainActivity : ComponentActivity() {
                 } catch (e: kotlinx.coroutines.CancellationException) { throw e }
                 catch (e: Exception) { notice = e.localizedMessage ?: getString(R.string.import_file_unavailable) }
                 finally {
-                    if (!retained && !alreadyGranted) runCatching {
+                    if (acquired && !retained) runCatching {
                         contentResolver.releasePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     }
+                    validatingLibraryFile = false
+                    drainPendingLibraryRefresh()
                 }
             }
         }
@@ -1183,6 +1196,10 @@ class MainActivity : ComponentActivity() {
             }.setNegativeButton(R.string.cancel, null)
     }
     private fun chooseLibraryFile(platform: String) {
+        if (validatingLibraryFile) {
+            notice = getString(R.string.scanning)
+            return
+        }
         importPlatform = platform
         importSource = LibrarySource.SINGLE_FILE
         launchDocumentPicker(Intent.ACTION_OPEN_DOCUMENT, "*/*") { gameFilePicker.launch(arrayOf("*/*")) }
@@ -1335,7 +1352,7 @@ class MainActivity : ComponentActivity() {
     }
     fun refreshLibrary(manual: Boolean = false) {
         if (PortableMaintenance.running) { if (manual) manualLibraryScanStatus = R.string.library_rescan_failed; return }
-        if (!libraryVisible || scanning) { refreshPending = true; manualRefreshPending = manualRefreshPending || manual; return }
+        if (!libraryVisible || scanning || validatingLibraryFile) { refreshPending = true; manualRefreshPending = manualRefreshPending || manual; return }
         val reportManualResult = manual || manualRefreshPending
         refreshPending = false
         manualRefreshPending = false
@@ -1443,9 +1460,13 @@ class MainActivity : ComponentActivity() {
             }
             finally {
                 scanning = false
-                if (refreshPending && libraryVisible && !isDestroyed) refreshLibrary()
+                drainPendingLibraryRefresh()
             }
         }
+    }
+    private fun drainPendingLibraryRefresh() {
+        if (refreshPending && libraryVisible && !scanning && !validatingLibraryFile &&
+            importRoot.isActive && !isDestroyed && !PortableMaintenance.running) refreshLibrary()
     }
     private val picker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (PortableMaintenance.running) return@registerForActivityResult

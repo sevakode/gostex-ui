@@ -12,23 +12,21 @@ import re
 import subprocess
 import tempfile
 
-root = Path(__file__).resolve().parents[2]
-source_dir = root / 'native-launcher/app/src/main/java/tv/orbit/shield'
+from kotlin_toolchain import COMPILER, JAVA, ROOT, jar
+
+source_dir = ROOT / 'native-launcher/app/src/main/java/tv/orbit/shield'
 sources = [source_dir / name for name in ('LibraryImport.kt', 'ThreeDsInstalledLayout.kt',
     'ThreeDsMetadata.kt', 'LibrarySnapshot.kt', 'DiscImport.kt', 'LibraryRootCodec.kt', 'ArchiveAdmission.kt')]
-cache = root / '.tools/native/gradle-cache/caches/modules-2/files-2.1'
-def jar(group, artifact, version):
-    return next((cache / group / artifact / version).glob('*/*.jar'))
-compiler = [jar('org.jetbrains.kotlin', a, v) for a, v in [
-    ('kotlin-compiler-embeddable', '2.4.21'), ('kotlin-stdlib', '2.4.21'),
-    ('kotlin-script-runtime', '2.4.21'), ('kotlin-reflect', '1.6.10')]]
-coroutines = jar('org.jetbrains.kotlinx', 'kotlinx-coroutines-core-jvm', '1.9.0')
-compiler += [coroutines, jar('org.jetbrains', 'annotations', '13.0')]
-gson = jar('com.google.code.gson', 'gson', '2.11.0')
-json_jar = Path(os.environ.get('PORTABLE_TEST_JSON_JAR', root / '.tools/native/test-json/json-20240303.jar'))
-assert hashlib.sha256(json_jar.read_bytes()).hexdigest() == '3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed'
-classpath = ':'.join(map(str, [compiler[1], coroutines, gson, json_jar]))
-java = root / '.tools/native/jdk/jdk-21.0.13+9/Contents/Home/bin/java'
+local_json = ROOT / '.tools/native/test-json/json-20240303.jar'
+json_jar = (Path(os.environ['PORTABLE_TEST_JSON_JAR']) if os.environ.get('PORTABLE_TEST_JSON_JAR')
+            else local_json if local_json.is_file() else jar('org.json', 'json', '20180813'))
+verified_json = {
+    '3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed',
+    '518080049ba83181914419d11a25d9bc9833a2d729b6a6e7469fa52851356da8',
+}
+if not json_jar.is_file() or hashlib.sha256(json_jar.read_bytes()).hexdigest() not in verified_json:
+    raise SystemExit('Provide a verified org.json 20180813 or 20240303 test jar in PORTABLE_TEST_JSON_JAR')
+classpath = os.pathsep.join(map(str, [COMPILER[1], COMPILER[4], json_jar]))
 stubs = {
 'Uri.kt': r'''package android.net
 data class Uri(val raw:String) {
@@ -105,27 +103,6 @@ class Context(val filesDir:java.io.File) {
  fun getSharedPreferences(name:String,mode:Int)=prefs
 }
 ''',
-'Json.kt': r'''package org.json
-import com.google.gson.*
-class JSONObject(val o:JsonObject=JsonObject()) {
- fun put(k:String,v:Any?):JSONObject {o.add(k,encode(v));return this}
- fun getString(k:String)=o.get(k).asString
- fun optString(k:String)=o.get(k)?.takeUnless{it.isJsonNull}?.asString ?: ""
- fun optBoolean(k:String)=o.get(k)?.takeUnless{it.isJsonNull}?.asBoolean ?: false
- fun getJSONArray(k:String)=JSONArray(o.getAsJsonArray(k))
- override fun toString()=o.toString()
-}
-fun encode(v:Any?):JsonElement=when(v) {null->JsonNull.INSTANCE;is JSONObject->v.o;is JSONArray->v.a;is Boolean->JsonPrimitive(v);is Number->JsonPrimitive(v);else->JsonPrimitive(v.toString())}
-class JSONArray(val a:JsonArray=JsonArray()) {
- constructor(text:String?):this(JsonParser.parseString(text ?: "[]").asJsonArray)
- constructor(items:Collection<*>):this(JsonArray()) {items.forEach{put(it)}}
- fun put(v:Any?):JSONArray {a.add(encode(v));return this}
- fun length()=a.size()
- fun getJSONObject(i:Int)=JSONObject(a.get(i).asJsonObject)
- fun getString(i:Int)=a.get(i).asString
- override fun toString()=a.toString()
-}
-''',
 'Models.kt': r'''package tv.orbit.shield
 data class Game(val id:String,val title:String,val platform:String,val emulator:String,val component:String,val files:List<String>,val tree:String="",val cover:String="",val scene:String="",val genre:String="",val year:String="",val developer:String="",val players:String="",val demo:Boolean=false,val description:String="")
 enum class LaunchKind {VIEW,DUCKSTATION}
@@ -134,7 +111,6 @@ object PlatformRegistry {fun find(platform:String)=if(platform in setOf("Nintend
 object GameMetadataMatcher {fun find(context:android.content.Context,platform:String,name:String,bundled:List<Game>):Game?=null}
 ''',
 }
-stubs.pop('Json.kt')
 stubs['AtomicFile.kt'] = r'''package android.util
 class AtomicFile(private val file:java.io.File) {
  fun openRead()=file.inputStream()
@@ -385,17 +361,17 @@ with tempfile.TemporaryDirectory(prefix='gostex-3ds-import-') as tmp:
     for name,body in stubs.items(): (folder/name).write_text(body)
     (folder/'Checks.kt').write_text(checks)
     out=folder/'classes'
-    command=[str(java),'-cp',':'.join(map(str,compiler)),'org.jetbrains.kotlin.cli.jvm.K2JVMCompiler',
+    command=[str(JAVA),'-cp',os.pathsep.join(map(str, COMPILER)),'org.jetbrains.kotlin.cli.jvm.K2JVMCompiler',
              '-no-stdlib','-no-reflect','-classpath',classpath,'-d',str(out)]+list(map(str,sources))+list(map(str,folder.glob('*.kt')))
     compiled=subprocess.run(command,text=True,capture_output=True)
     report['compile']={'returncode':compiled.returncode,'stderr':compiled.stderr}
     report['passed']=False
     if compiled.returncode==0:
-        result=subprocess.run([str(java),'-cp',str(out)+':'+classpath,'tv.orbit.shield.ChecksKt',str(folder/'fixtures')],text=True,capture_output=True)
+        result=subprocess.run([str(JAVA),'-cp',str(out)+os.pathsep+classpath,'tv.orbit.shield.ChecksKt',str(folder/'fixtures')],text=True,capture_output=True)
         report['run']={'returncode':result.returncode,'stdout':result.stdout,'stderr':result.stderr}
         report['checks']=[line.removeprefix('PASS|') for line in result.stdout.splitlines() if line.startswith('PASS|')]
         report['passed']=result.returncode==0
-path=root/'.reports/three-ds-library-checks.json';path.parent.mkdir(exist_ok=True)
+path=ROOT/'.reports/three-ds-library-checks.json';path.parent.mkdir(exist_ok=True)
 path.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
 print(json.dumps({'passed':report['passed'],'checks':len(report.get('checks',[])),'report':str(path)}))
 if not report['passed']:

@@ -66,6 +66,7 @@ internal data class CoverSyncResult(val entries: Map<String, ManagedCover>, val 
  * A failed batch leaves both the prior index and its original images available. */
 internal object ManagedCoverStore {
     private const val MAX_IMAGE_BYTES = 10 * 1024 * 1024
+    private const val MAX_TREE_CHILDREN = 4096
     private const val STORE_BUDGET = 128L * 1024 * 1024
     private val gate = CoverOperationGate()
     private var lastImport = ""
@@ -227,7 +228,7 @@ internal object ManagedCoverStore {
                 requireComplete()
                 val documents = buildList {
                     while (cursor.moveToNext()) {
-                        check(size < 4096) { "Folder contains too many files" }
+                        check(size < MAX_TREE_CHILDREN) { "Folder contains too many files" }
                         add(Document(Docs.buildDocumentUriUsingTree(root, cursor.getString(0)), cursor.getString(1), cursor.getString(2)))
                     }
                 }
@@ -266,12 +267,65 @@ internal object ManagedCoverStore {
                 find(path, ::namedChildren)?.let { resolver.openInputStream(it)?.use { stream -> bounded(stream, max) } }
             }
         }
-        fun folder(name: String): Uri = children(rootDoc).firstOrNull { it.name == name && it.mime == Docs.Document.MIME_TYPE_DIR }?.uri
-            ?: Docs.createDocument(resolver, rootDoc, Docs.Document.MIME_TYPE_DIR, name) ?: error("Cannot create folder")
+        fun folder(name: String): Uri {
+            val before = children(rootDoc)
+            val matches = before.filter { it.name == name }
+            if (matches.isEmpty()) return createUnique(rootDoc, name, Docs.Document.MIME_TYPE_DIR, before)
+            val folder = matches.singleOrNull()
+            require(folder?.mime == Docs.Document.MIME_TYPE_DIR) { "Ambiguous export folder" }
+            return folder.uri
+        }
+        private fun createUnique(parent: Uri, name: String, mime: String, before: List<Document>): Uri {
+            check(before.size < MAX_TREE_CHILDREN) { "Folder contains too many files" }
+            val uri = Docs.createDocument(resolver, parent, mime, name) ?: error("Cannot create export document")
+            check(before.none { it.uri == uri }) { "Provider reused an existing export document" }
+            val created = children(parent).singleOrNull { it.name == name || it.uri == uri }
+            check(created?.name == name && created.uri == uri &&
+                (created.mime == Docs.Document.MIME_TYPE_DIR) == (mime == Docs.Document.MIME_TYPE_DIR)) {
+                "Provider did not create the requested export document"
+            }
+            return uri
+        }
+        private fun hasImageBytes(uri: Uri, bytes: ByteArray): Boolean =
+            resolver.openInputStream(uri)?.use { stream ->
+                val buffer = ByteArray(8192)
+                var offset = 0
+                while (offset < bytes.size) {
+                    val size = stream.read(buffer, 0, minOf(buffer.size, bytes.size - offset))
+                    if (size <= 0) return@use false
+                    for (index in 0 until size) if (buffer[index] != bytes[offset + index]) return@use false
+                    offset += size
+                }
+                stream.read() == -1
+            } ?: false
+
+        suspend fun ensureExportImage(parent: Uri, existing: Map<String, List<Document>>, hash: String, ext: String, bytes: ByteArray): String {
+            for (suffix in 0..MAX_TREE_CHILDREN) {
+                currentCoroutineContext().ensureActive()
+                val name = if (suffix == 0) "$hash.$ext" else "$hash-$suffix.$ext"
+                val listed = existing[name].orEmpty()
+                val before = if (listed.isEmpty()) children(parent) else null
+                val matches = before?.filter { it.name == name } ?: listed
+                if (matches.isEmpty() && before != null) {
+                    val mime = if (ext == "jpg") "image/jpeg" else "image/$ext"
+                    val uri = createUnique(parent, name, mime, before)
+                    currentCoroutineContext().ensureActive()
+                    writeBytes(uri, bytes)
+                    check(hasImageBytes(uri, bytes)) { "Export image write was incomplete" }
+                    return name
+                }
+                val document = matches.singleOrNull() ?: continue
+                if (document.mime != Docs.Document.MIME_TYPE_DIR && hasImageBytes(document.uri, bytes)) return name
+            }
+            error("No unambiguous export image name available")
+        }
         fun write(parent: Uri, name: String, mime: String, bytes: ByteArray) {
             val existing = children(parent).filter { it.name == name }
             require(existing.size <= 1)
             val uri = existing.firstOrNull()?.uri ?: Docs.createDocument(resolver, parent, mime, name) ?: error("Cannot create file")
+            writeBytes(uri, bytes)
+        }
+        private fun writeBytes(uri: Uri, bytes: ByteArray) {
             resolver.openOutputStream(uri, "wt")?.use { it.write(bytes) } ?: error("Cannot write file")
         }
     }
@@ -355,12 +409,13 @@ internal object ManagedCoverStore {
     }
     private suspend fun export(context: Context, tree: Tree, games: List<Game>, entries: Map<String, ManagedCover>, force: Boolean) {
         val options = ManagedCoverPreferences.read(context)
-        val fingerprint = digest((tree.root.toString() + games.filterNot { it.demo }.joinToString { "${it.id}|${it.title}|${it.platform}|${it.cover}|${it.scene}" } +
+        val fingerprint = digest(("cover-export-v2|" + tree.root.toString() + games.filterNot { it.demo }.joinToString { "${it.id}|${it.title}|${it.platform}|${it.cover}|${it.scene}" } +
             ManagedCoverManifest.encodeIndex(entries) + options.choices.toSortedMap()).toByteArray())
         val cache = File(context.cacheDir, "cover-export-fingerprint")
         if (!force && (fingerprint == lastExport || runCatching { cache.readText().take(128) == fingerprint }.getOrDefault(false)) && tree.find("library.json") != null) return
         val originals = tree.folder("originals")
-        val existing = tree.children(originals).map { it.name }.toMutableSet()
+        val existing = tree.children(originals).groupBy(Document::name)
+        val exportedNames = mutableMapOf<String, String>()
         val rows = JSONArray()
         for (game in games.filterNot { it.demo }) {
             currentCoroutineContext().ensureActive()
@@ -381,8 +436,7 @@ internal object ManagedCoverStore {
                     bytes.size > 12 && bytes.copyOfRange(0, 4).toString(Charsets.US_ASCII) == "RIFF" -> "webp"
                     else -> "jpg"
                 }
-                val name = "$hash.$ext"
-                if (existing.add(name)) tree.write(originals, name, "image/$ext", bytes)
+                val name = exportedNames.getOrPut("$hash.$ext") { tree.ensureExportImage(originals, existing, hash, ext, bytes) }
                 return "originals/$name"
             }
             val original = exportImage(base)
@@ -408,6 +462,7 @@ internal object ManagedCoverStore {
         }
         val payload = JSONObject().put("version", 1).put("tileAspectRatio", TileLayout.aspectRatio.toDouble())
             .put("games", rows).toString(2).toByteArray()
+        currentCoroutineContext().ensureActive()
         tree.write(tree.rootDoc, "library.json", "application/json", payload)
         lastExport = fingerprint
         runCatching { cache.writeText(fingerprint) }

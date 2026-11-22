@@ -1,4 +1,4 @@
-"""Exercise shared cover listing, slow provider I/O and image validation."""
+"""Exercise shared cover listing, slow provider I/O and export recovery."""
 from pathlib import Path
 import subprocess
 import tempfile
@@ -13,7 +13,11 @@ cover = model[model.index('internal data class ManagedCover('):model.index('inte
 checks = '''package tv.orbit.shield
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.IOException
 import java.io.InputStream
+import java.security.MessageDigest
 import kotlinx.coroutines.*
 
 private typealias Uri = String
@@ -30,6 +34,8 @@ private object Docs {
     fun getDocumentId(uri: Uri) = uri
     fun buildDocumentUriUsingTree(root: Uri, id: String) = id.also { check(it.startsWith(root)) }
     fun buildChildDocumentsUriUsingTree(root: Uri, id: String) = buildDocumentUriUsingTree(root, id)
+    fun createDocument(resolver: Provider, parent: Uri, mime: String, name: String): Uri? =
+        resolver.create(parent, mime, name)
 }
 private object R {
     object string { const val folder_unavailable = "Folder unavailable" }
@@ -39,6 +45,10 @@ private object ManagedCoverManifest {
 }
 private class Context(val contentResolver: Provider) {
     fun getString(message: String) = message
+    val assets = Assets(contentResolver)
+}
+private class Assets(private val provider: Provider) {
+    fun open(path: String) = provider.assets.getValue(path).inputStream()
 }
 private class Cursor(private val rows: List<Document>, private val incomplete: Boolean) : AutoCloseable {
     private var row = -1
@@ -60,10 +70,13 @@ private class Extras(private val loading: Boolean) {
 private class Provider {
     val folders = mutableMapOf<Uri, List<Document>>()
     val files = mutableMapOf<Uri, ByteArray>()
+    val assets = mutableMapOf<String, ByteArray>()
     val queries = mutableListOf<Uri>()
     val opened = mutableListOf<Uri>()
     var incomplete: Uri? = null
     var cancelled: Uri? = null
+    var failNextWrite = false
+    var returnOnCreate: Uri? = null
 
     fun query(uri: Uri, columns: Array<String>, selection: String?, args: Array<String>?, order: String?): Cursor? {
         check(columns.contentEquals(arrayOf("id", "name", "mime")))
@@ -76,10 +89,90 @@ private class Provider {
         opened += uri
         return files[uri]?.inputStream()
     }
+    fun create(parent: Uri, mime: String, name: String): Uri {
+        returnOnCreate?.let { return it }
+        val uri = "$parent/$name"
+        folders[parent] = folders.getValue(parent) + Document(uri, name, mime)
+        return uri
+    }
+    fun openOutputStream(uri: Uri, mode: String): ByteArrayOutputStream? {
+        check(mode == "wt")
+        if (folders.values.none { rows -> rows.any { it.uri == uri } }) return null
+        return object : ByteArrayOutputStream() {
+            override fun close() {
+                val written = toByteArray()
+                if (failNextWrite) {
+                    failNextWrite = false
+                    files[uri] = written.copyOf(1)
+                    throw IOException("Provider write interrupted")
+                }
+                files[uri] = written
+            }
+        }
+    }
 }
 
 PRODUCTION_BOUNDED
 PRODUCTION_TREE_READER
+PRODUCTION_DIGEST
+
+private const val MAX_IMAGE_BYTES = 10 * 1024 * 1024
+private const val MAX_TREE_CHILDREN = 4096
+private fun imageFile(context: Context, key: String): File? {
+    check(key in context.contentResolver.assets)
+    return null
+}
+
+private suspend fun exportFixture(context: Context, root: Uri): String? {
+    val tree = Tree(context, root)
+    PRODUCTION_EXPORT_SETUP
+    PRODUCTION_EXPORT_IMAGE
+    val image = exportImage("cover.jpg")
+    tree.write(root, "library.json", "application/json", image.orEmpty().encodeToByteArray())
+    return image
+}
+
+private suspend fun checkExportAfterInterruptedWrite() {
+    val provider = Provider()
+    val context = Context(provider)
+    val root = "root"
+    val originals = "$root/originals"
+    val library = "$root/library.json"
+    val bytes = byteArrayOf(1, 2, 3)
+    val canonical = "$originals/${digest(bytes)}.jpg"
+    provider.folders[root] = listOf(Document(originals, "originals", "dir"))
+    provider.folders[originals] = emptyList()
+    provider.assets["cover.jpg"] = bytes
+    provider.failNextWrite = true
+    check(runCatching { exportFixture(context, root) }.exceptionOrNull() is IOException)
+    check(library !in provider.files && provider.files.getValue(canonical).contentEquals(byteArrayOf(1)))
+    val image = checkNotNull(exportFixture(context, root))
+    check(provider.files.getValue("$root/$image").contentEquals(bytes)) { "Export published an incomplete image" }
+    check(provider.files.getValue(canonical).contentEquals(byteArrayOf(1)))
+    check(provider.files.getValue(library).decodeToString() == image)
+    check(exportFixture(context, root) == image)
+    check(provider.folders.getValue(originals).size == 2)
+
+    val badBytes = byteArrayOf(1, 9, 3)
+    provider.files["$root/$image"] = badBytes
+    val replacement = checkNotNull(exportFixture(context, root))
+    check(replacement != image && provider.files.getValue("$root/$replacement").contentEquals(bytes))
+    check(provider.files.getValue("$root/$image").contentEquals(badBytes))
+    check(exportFixture(context, root) == replacement)
+
+    provider.assets["cover.jpg"] = byteArrayOf(4, 5, 6)
+    provider.returnOnCreate = canonical
+    check(runCatching { exportFixture(context, root) }.exceptionOrNull()?.message ==
+        "Provider reused an existing export document")
+    check(provider.files.getValue(canonical).contentEquals(byteArrayOf(1)))
+    check(provider.files.getValue(library).decodeToString() == replacement)
+
+    provider.returnOnCreate = null
+    val full = List(MAX_TREE_CHILDREN) { Document("$originals/item$it.png", "item$it.png", "image/png") }
+    provider.folders[originals] = full
+    check(runCatching { exportFixture(context, root) }.exceptionOrNull()?.message == "Folder contains too many files")
+    check(provider.folders.getValue(originals) == full)
+}
 
 private fun checkImportListings() {
     val provider = Provider()
@@ -216,7 +309,8 @@ fun main() = runBlocking {
  checkSharedImagePreparation(cancel = false)
  checkSharedImagePreparation(cancel = true)
  checkImportListings()
- println("PASS: bounded listings, missing and ambiguous files, manual edits, safe merge, serialized syncs, cancellation")
+ checkExportAfterInterruptedWrite()
+ println("PASS: bounded listings, cover coordination, cancellation and verified export recovery")
 }
 '''
 store = (source_dir / 'ManagedCovers.kt').read_text()
@@ -226,7 +320,11 @@ assert 'read(context)' not in before_provider_read, "Sync reads the index before
 shared_image_load = sync[sync.index('suspend fun load('):sync.index('prepared += PreparedUpdate')].rstrip()
 image_path = model[model.index('fun imagePath('):model.index('fun parse(')].rstrip()
 bounded = store[store.index('private fun bounded('):store.index('private fun validateImage(')].rstrip()
-tree_reader = store[store.index('private data class Document('):store.index('fun folder(name: String)')].rstrip() + '\n}'
+tree_reader = store[store.index('private data class Document('):store.index('suspend fun images(')].rstrip()
+digest = next(line.strip() for line in store.splitlines() if 'private fun digest(' in line)
+export = store.split('private suspend fun export(', 1)[1]
+export_setup = export[export.index('val originals ='):export.index('val rows = JSONArray()')].rstrip()
+export_image = export[export.index('suspend fun exportImage('):export.index('val original = exportImage(base)')].rstrip()
 # Run the same provider fixture on the previous implementation for the baseline count.
 import_reader = 'tree.importReader()' if 'fun importReader(' in tree_reader else 'tree::read'
 
@@ -235,7 +333,9 @@ with tempfile.TemporaryDirectory(prefix='gostex-cover-concurrency-') as temp:
     (folder / 'Model.kt').write_text('package tv.orbit.shield\n' + cover)
     (folder / 'Checks.kt').write_text(checks.replace('SHARED_IMAGE_LOAD', shared_image_load)
         .replace('PRODUCTION_IMAGE_PATH', image_path).replace('PRODUCTION_BOUNDED', bounded)
-        .replace('PRODUCTION_TREE_READER', tree_reader).replace('IMPORT_READER', import_reader))
+        .replace('PRODUCTION_TREE_READER', tree_reader).replace('IMPORT_READER', import_reader)
+        .replace('PRODUCTION_DIGEST', digest).replace('PRODUCTION_EXPORT_SETUP', export_setup)
+        .replace('PRODUCTION_EXPORT_IMAGE', export_image))
     cp = ':'.join(map(str, compiler))
     runtime = ':'.join(map(str, [compiler[1], compiler[4], compiler[5]]))
     subprocess.run([str(java), '-cp', cp, 'org.jetbrains.kotlin.cli.jvm.K2JVMCompiler', '-no-stdlib', '-no-reflect', '-classpath', runtime, '-d', str(folder / 'classes'), str(source_dir / 'CoverOperationGate.kt'), str(folder / 'Model.kt'), str(folder / 'Checks.kt')], check=True)

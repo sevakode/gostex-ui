@@ -767,7 +767,10 @@ class MainActivity : ComponentActivity() {
     private var coverRevision = 0L
     internal var coverRenderRevision by mutableLongStateOf(0L)
         private set
-    private var coverSyncPending = false
+    private data class CoverSyncRequest(val folder: String, val generation: Long, val manual: Boolean)
+    private var coverFolderGeneration = 0L
+    private var coverSyncPending: CoverSyncRequest? = null
+    private var activeCoverSync: Job? = null
     var coversStatus by mutableStateOf("")
     private var pendingCoverId: String? = null
     private var coversLoop: Job? = null
@@ -786,7 +789,7 @@ class MainActivity : ComponentActivity() {
         importHintRoot = null
         refreshPending = false
         manualRefreshPending = false
-        coverSyncPending = false
+        invalidateCoverFolder()
         allowMeteredRecoveryOnce = false
         coversLoop?.cancel()
         if (updatesLazy.isInitialized()) updates.onStop()
@@ -902,7 +905,7 @@ class MainActivity : ComponentActivity() {
         if (mediaReceiverRegistered) { unregisterReceiver(mediaReceiver); mediaReceiverRegistered = false }
         allowMeteredRecoveryOnce = false
         coversLoop?.cancel()
-        coverSyncPending = false
+        if (coverSyncPending?.manual != true) coverSyncPending = null
         if (!validatingLibraryFile) {
             refreshPending = false
             manualRefreshPending = false
@@ -1016,6 +1019,7 @@ class MainActivity : ComponentActivity() {
             contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
             val old = ManagedCoverPreferences.read(this).folder
             ManagedCoverPreferences.folder(this, uri.toString())
+            if (old != uri.toString()) invalidateCoverFolder()
             if (old.isNotEmpty() && old != uri.toString() && runCatching { LibraryImport.roots(this).none { it.uri == old } }.getOrDefault(false)) {
                 runCatching { contentResolver.releasePersistableUriPermission(Uri.parse(old), Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }
             }
@@ -1031,6 +1035,7 @@ class MainActivity : ComponentActivity() {
     fun disconnectCoversFolder() {
         val old = ManagedCoverPreferences.read(this).folder
         ManagedCoverPreferences.folder(this, "")
+        invalidateCoverFolder()
         coversLoop?.cancel()
         if (old.isNotEmpty() && runCatching { LibraryImport.roots(this).none { it.uri == old } }.getOrDefault(false)) runCatching {
             contentResolver.releasePersistableUriPermission(Uri.parse(old), Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
@@ -1059,29 +1064,51 @@ class MainActivity : ComponentActivity() {
         }
     }
     fun syncCovers(manual: Boolean) { if (!PortableMaintenance.running) importScope.launch { performCoverSync(manual) } }
+    private fun invalidateCoverFolder() {
+        coverFolderGeneration++
+        coverSyncPending = null
+        activeCoverSync?.cancel()
+        coversStatus = ""
+    }
+
     private suspend fun performCoverSync(manual: Boolean) {
-        if (coversBusy) { coverSyncPending = true; return }
+        if (PortableMaintenance.running) return
         val options = ManagedCoverPreferences.read(this)
         if (options.folder.isEmpty()) return
+        val generation = coverFolderGeneration
+        val pending = coverSyncPending?.takeIf { it.folder == options.folder && it.generation == generation }
+        val request = CoverSyncRequest(options.folder, generation, manual || pending?.manual == true)
+        if (coversBusy || !libraryVisible) {
+            coverSyncPending = request.takeIf { libraryVisible || it.manual }
+            return
+        }
+        coverSyncPending = null
         coversBusy = true
         val startedRevision = coverRevision
+        fun stillCurrent() = !PortableMaintenance.running &&
+            request.generation == coverFolderGeneration && ManagedCoverPreferences.read(this).folder == request.folder
         try {
             val currentGames = library.toList()
-            val result = withContext(Dispatchers.IO) {
-                ManagedCoverStore.sync(this@MainActivity, currentGames, options.folder, manual || options.automatic, forceExport = manual)
+            val result = kotlinx.coroutines.coroutineScope {
+                activeCoverSync = currentCoroutineContext()[Job]
+                withContext(Dispatchers.IO) {
+                    ManagedCoverStore.sync(this@MainActivity, currentGames, request.folder,
+                        request.manual || options.automatic, forceExport = request.manual)
+                }
             }
+            if (!stillCurrent()) return
             if (startedRevision == coverRevision) managedCovers = result.entries
             if (result.applied > 0 || result.imagesWritten) coverRenderRevision++
             coversStatus = getString(R.string.covers_sync_result, result.applied, result.rejected)
         } catch (e: kotlinx.coroutines.CancellationException) { throw e }
         catch (e: Exception) {
+            if (!stillCurrent()) return
             coversStatus = getString(R.string.cover_error, e.localizedMessage.orEmpty())
-            if (manual) notice = coversStatus
+            if (request.manual) notice = coversStatus
         } finally {
+            activeCoverSync = null
             coversBusy = false
-            val retry = coverSyncPending && libraryVisible
-            coverSyncPending = false
-            if (retry) syncCovers(false)
+            if (coverSyncPending != null && libraryVisible && !PortableMaintenance.running) syncCovers(false)
         }
     }
     private val folderPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->

@@ -267,8 +267,9 @@ internal object ManagedCoverStore {
                 find(path, ::namedChildren)?.let { resolver.openInputStream(it)?.use { stream -> bounded(stream, max) } }
             }
         }
-        fun folder(name: String): Uri {
+        suspend fun folder(name: String): Uri {
             val before = children(rootDoc)
+            currentCoroutineContext().ensureActive()
             val matches = before.filter { it.name == name }
             if (matches.isEmpty()) return createUnique(rootDoc, name, Docs.Document.MIME_TYPE_DIR, before)
             val folder = matches.singleOrNull()
@@ -307,6 +308,7 @@ internal object ManagedCoverStore {
                 val before = if (listed.isEmpty()) children(parent) else null
                 val matches = before?.filter { it.name == name } ?: listed
                 if (matches.isEmpty() && before != null) {
+                    currentCoroutineContext().ensureActive()
                     val mime = if (ext == "jpg") "image/jpeg" else "image/$ext"
                     val uri = createUnique(parent, name, mime, before)
                     currentCoroutineContext().ensureActive()
@@ -319,14 +321,16 @@ internal object ManagedCoverStore {
             }
             error("No unambiguous export image name available")
         }
-        fun writeManifest(bytes: ByteArray) {
+        suspend fun writeManifest(bytes: ByteArray) {
             val name = "library.json"
             val before = children(rootDoc)
+            currentCoroutineContext().ensureActive()
             val matches = before.filter { it.name == name }
             require(matches.size <= 1 && matches.none { it.mime == Docs.Document.MIME_TYPE_DIR }) {
                 context.getString(R.string.folder_unavailable)
             }
             val uri = matches.singleOrNull()?.uri ?: createUnique(rootDoc, name, "application/json", before)
+            currentCoroutineContext().ensureActive()
             writeBytes(uri, bytes)
             check(hasExportBytes(uri, bytes)) { context.getString(R.string.folder_unavailable) }
         }
@@ -357,6 +361,7 @@ internal object ManagedCoverStore {
     private data class PreparedUpdate(val gameId: String, val original: String?, val wide: String?)
 
     suspend fun sync(context: Context, games: List<Game>, folder: String, importUpdates: Boolean, forceExport: Boolean = false): CoverSyncResult = gate.synchronize {
+        currentCoroutineContext().ensureActive()
         val tree = Tree(context, Uri.parse(folder))
         var applied = 0
         var rejected = 0
@@ -364,6 +369,7 @@ internal object ManagedCoverStore {
         if (importUpdates) {
             val readShared = tree.importReader()
             val bytes = readShared("updates.json", ManagedCoverManifest.MAX_BYTES)
+            currentCoroutineContext().ensureActive()
             if (bytes != null) {
                 val fingerprint = digest(bytes) + games.map { it.id }.sorted().joinToString("|") + folder
                 if (fingerprint != lastImport) {
@@ -421,6 +427,7 @@ internal object ManagedCoverStore {
         // Invalidate both success records before any operation can change the shared output.
         lastExport = ""
         check(!cache.exists() || cache.delete()) { context.getString(R.string.folder_unavailable) }
+        currentCoroutineContext().ensureActive()
         val originals = tree.folder("originals")
         val existing = tree.children(originals).groupBy(Document::name)
         val exportedNames = mutableMapOf<String, String>()

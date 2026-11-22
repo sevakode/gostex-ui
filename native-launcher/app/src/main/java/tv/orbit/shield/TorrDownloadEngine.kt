@@ -355,7 +355,6 @@ internal object TorrDownloadEngine {
             target.sync()
             saveCheckpoint(TorrDownloadCheckpoint(written, etag))
             committed = written
-            if (written == size) readable?.invoke(size, size)
             lastCheckpointNanos = nowNanos()
         }
         fun report(force: Boolean = false) {
@@ -389,7 +388,8 @@ internal object TorrDownloadEngine {
                     target.write(buffer, count)
                     written += count
                     if (written == tailStart) written = size
-                    if (written < size) readable?.invoke(written, tailStart)
+                    // Playback can read written bytes while the durable checkpoint is being saved.
+                    readable?.invoke(written, if (written == size) size else tailStart)
                     allowance -= count
                     val delta = written - committed
                     if (delta >= HARD_CHECKPOINT_BYTES ||

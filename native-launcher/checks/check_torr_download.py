@@ -81,6 +81,7 @@ private class ObservedTarget(private val file: RandomAccessFile) : TorrDownloadT
     var syncs = 0
     var failSyncAt = Int.MAX_VALUE
     var lastSynced = -1L
+    var beforeSync: () -> Unit = {}
     val syncOffsets = mutableListOf<Long>()
     override fun size() = file.length()
     override fun truncate(size: Long) = file.setLength(size)
@@ -88,6 +89,7 @@ private class ObservedTarget(private val file: RandomAccessFile) : TorrDownloadT
     override fun write(buffer: ByteArray, count: Int) = file.write(buffer, 0, count)
     override fun sync() {
         syncs++
+        beforeSync()
         if (syncs == failSyncAt) throw IOException("controlled sync failure")
         file.fd.sync()
         lastSynced = file.filePointer
@@ -350,20 +352,39 @@ private fun checkGrowing(path: java.nio.file.Path, file: RandomAccessFile, port:
         check(Files.readAllBytes(path).contentEquals(corrupted))
     }
     var reset = false
-    val done = TorrDownloadEngine.transfer(source, target, paused, port, saveCheckpoint = { saved = it },
+    var fullReadable = false
+    val finalTarget = ObservedTarget(file)
+    finalTarget.beforeSync = {
+        if (finalTarget.syncs == 2) {
+            check(content(0L, size.toInt()))
+            check(fullReadable && saved == paused) { "Final staged bytes are written but unavailable before sync" }
+        }
+    }
+    val done = TorrDownloadEngine.transfer(source, finalTarget, paused, port, saveCheckpoint = {
+        check(fullReadable && finalTarget.syncs == 2 && saved == paused)
+        saved = it
+    },
         readable = { offset, tailStart ->
             if (!reset) {
                 check(offset == paused.offset && tailStart == size && file.length() == size)
                 reset = true
             }
-            if (offset == size) check(saved.offset == size)
+            if (offset == size) fullReadable = true
         })
     check(done == saved && done.offset == size && content(0L, size.toInt()))
 
     file.setLength(0)
-    val compatible = TorrDownloadEngine.transfer(source.copy(hash = "0".repeat(39) + 'c'), target, empty, port,
-        saveCheckpoint = {}, readable = { _, tailStart -> check(tailStart == size) })
-    check(compatible.offset == size && file.length() == size && content(0L, size.toInt()))
+    fullReadable = false
+    saved = empty
+    val fallbackTarget = ObservedTarget(file)
+    fallbackTarget.beforeSync = {
+        check(content(0L, size.toInt()))
+        check(fullReadable && saved == empty) { "Final sequential bytes are written but unavailable before sync" }
+    }
+    val compatible = TorrDownloadEngine.transfer(source.copy(hash = "0".repeat(39) + 'c'), fallbackTarget, empty, port,
+        saveCheckpoint = { check(fullReadable && fallbackTarget.syncs == 1); saved = it },
+        readable = { offset, tailStart -> check(tailStart == size); if (offset == size) fullReadable = true })
+    check(compatible == saved && compatible.offset == size && file.length() == size && content(0L, size.toInt()))
 
     file.setLength(0)
     var spaceChecks = 0
@@ -374,19 +395,26 @@ private fun checkGrowing(path: java.nio.file.Path, file: RandomAccessFile, port:
     }.exceptionOrNull()
     check(lowSpace is TorrDownloadLowSpace && saved.offset == 65536L && file.length() == size)
 
-    for (failAt in 1..2) {
+    for (failAt in 1..3) {
         file.setLength(0)
         val failing = ObservedTarget(file).apply { failSyncAt = failAt }
         tailVisible = false
+        fullReadable = false
+        var saveAttempted = false
         val error = runCatching {
-            TorrDownloadEngine.transfer(source, failing, empty, port, saveCheckpoint = { error("unexpected checkpoint") },
+            TorrDownloadEngine.transfer(source, failing, empty, port, saveCheckpoint = {
+                saveAttempted = true
+                throw IOException("controlled checkpoint failure")
+            },
                 readable = { offset, tailStart ->
-                    check(offset < size)
+                    fullReadable = fullReadable || offset == size
                     tailVisible = tailVisible || tailStart == tail
                 })
         }.exceptionOrNull()
-        check(error is IOException && error !is TorrSourceFailure && tailVisible == (failAt == 2))
+        check(error is IOException && error !is TorrSourceFailure)
+        check(saveAttempted == (failAt == 3) && tailVisible == (failAt >= 2) && fullReadable == (failAt >= 2))
     }
+    println("PASS: final staged and sequential writes are readable before sync; sync and checkpoint failures still fail the transfer")
     println("PASS: growing-file staging, coverage, resume identity, malformed ranges, normal fallback, reserve and failed sync")
 }
 '''
@@ -407,11 +435,11 @@ try:
         tail = f'bytes={PLAY_TAIL}-{len(PLAY_DATA)-1}'
         prefix = f'bytes=0-{PLAY_TAIL-1}'
         staged = [(range_header, tag) for mode, range_header, tag in play_requests if mode == '0']
-        assert len(staged) == 10 and staged[:3] == [(tail, None), (prefix, '"original"'), (tail, '"original"')]
+        assert len(staged) == 12 and staged[:3] == [(tail, None), (prefix, '"original"'), (tail, '"original"')]
         resumed_prefix, resumed_tag = staged[3]
         start, end = resumed_prefix.removeprefix('bytes=').split('-')
         assert 0 < int(start) < PLAY_TAIL and int(end) == PLAY_TAIL-1 and resumed_tag == '"original"'
-        assert staged[4:] == [(tail, None), (prefix, '"original"')] * 3
+        assert staged[4:] == [(tail, None), (prefix, '"original"')] * 4
         assert [(range_header, tag) for mode, range_header, tag in play_requests if mode == 'c'] == [(tail, None), (None, None)]
 finally:
     server.shutdown(); server.server_close(); thread.join()

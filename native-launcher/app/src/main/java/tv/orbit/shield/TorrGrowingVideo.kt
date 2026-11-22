@@ -29,6 +29,7 @@ internal object TorrGrowingVideo {
     private const val READ_WAIT_MS = 8_000L
     private const val IDLE_GRANT_MS = 5 * 60_000L
     private const val MAX_GRANTS_PER_TRANSFER = 2
+    private const val AUTHORITY_SUFFIX = ".growing-video"
     private val readers = Semaphore(4)
     private val expiryHandler by lazy { Handler(Looper.getMainLooper()) }
     private val transfers = ConcurrentHashMap<String, Transfer>()
@@ -62,6 +63,7 @@ internal object TorrGrowingVideo {
     private class Session(val transfer: Transfer) {
         var closed = false
         var openReaders = 0
+        var terminalReadError = false
         var expiration: Runnable? = null
     }
 
@@ -127,7 +129,7 @@ internal object TorrGrowingVideo {
         val transfer = transfers[jobId] ?: return null
         return transfer.lock.withLock {
             if (!transfer.ready() || transfer.grants >= MAX_GRANTS_PER_TRANSFER) return null
-            val uri = Uri.Builder().scheme("content").authority("${context.packageName}.growing-video")
+            val uri = Uri.Builder().scheme("content").authority(context.packageName + AUTHORITY_SUFFIX)
                 .appendPath(UUID.randomUUID().toString())
                 .appendPath(transfer.metadata.name)
                 .build()
@@ -142,6 +144,16 @@ internal object TorrGrowingVideo {
     fun close(context: Context, uri: Uri) {
         val session = sessions[uri] ?: return
         expire(context, uri, session)
+    }
+
+    /** Before closing the grant, verify the exact file served to this player. */
+    fun playbackSourceComplete(context: Context, uri: Uri): Boolean {
+        if (uri.scheme != "content" || uri.authority != context.packageName + AUTHORITY_SUFFIX) return true
+        val session = sessions[uri] ?: return false
+        val transfer = session.transfer
+        return transfer.lock.withLock {
+            !session.closed && !session.terminalReadError && transfer.finished && !transfer.failed
+        }
     }
 
     internal fun metadata(uri: Uri): Metadata? = sessions[uri]?.transfer?.metadata
@@ -191,8 +203,17 @@ internal object TorrGrowingVideo {
                             Os.pread(transfer.descriptor.fileDescriptor, data, copied, count - copied, offset + copied)
                         } catch (_: InterruptedIOException) {
                             throw ErrnoException("pread", OsConstants.EINTR)
+                        } catch (error: ErrnoException) {
+                            if (error.errno != OsConstants.EAGAIN && error.errno != OsConstants.EINTR) {
+                                session.terminalReadError = true
+                            }
+                            throw error
                         }
-                        if (amount <= 0) throw ErrnoException("pread", OsConstants.EIO)
+                        if (amount <= 0) {
+                            // A short underlying file contradicts the writer's announced coverage.
+                            session.terminalReadError = true
+                            throw ErrnoException("pread", OsConstants.EIO)
+                        }
                         copied += amount
                     }
                     copied

@@ -47,9 +47,11 @@ fun main() {
                patched: Boolean = true, explicitEnd: Boolean = true,
                hasPosition: Boolean = true, hasDuration: Boolean = true,
                position: Long = duration, returnedDuration: Long = duration,
-               launchedAt: Long? = 1_000_000L, returnedAt: Long = 1_002_000L) {
+               launchedAt: Long? = 1_000_000L, returnedAt: Long = 1_002_000L,
+               sourceComplete: Boolean = true) {
         val actual = videoShouldAdvanceAfterLaunch(success, exactItem, patched, explicitEnd,
-            hasPosition, hasDuration, position, returnedDuration, launchedAt, returnedAt)
+            hasPosition, hasDuration, position, returnedDuration, launchedAt, returnedAt,
+            sourceComplete = sourceComplete)
         check(actual == expected) { "$name: expected $expected, got $actual" }
         completionChecks++
     }
@@ -63,6 +65,13 @@ fun main() {
     }
     verify("boundary explicit end", true, returnedAt = 1_001_500L)
     verify("normal explicit end", true)
+    verify("incomplete growing file with explicit end", false, returnedAt = 1_008_000L,
+        sourceComplete = false)
+    verify("incomplete growing file near end in legacy player", false, patched = false,
+        explicitEnd = false, position = duration - 1_000L, sourceComplete = false)
+    verify("completed growing file with explicit end", true, returnedAt = 1_008_000L,
+        hasPosition = false, hasDuration = false, position = -1L, returnedDuration = -1L,
+        sourceComplete = true)
     verify("short clip after launch floor", true, position = 1_600L, returnedDuration = 1_600L)
     verify("legitimate near-end continuation after launch floor", true,
         position = duration - 250L)

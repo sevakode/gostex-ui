@@ -29,8 +29,9 @@ internal fun videoShouldAdvanceAfterLaunch(
     duration: Long,
     launchedAtMs: Long?,
     returnedAtMs: Long,
+    sourceComplete: Boolean,
 ): Boolean {
-    if (!success || !exactItem || launchedAtMs == null || launchedAtMs < 0L ||
+    if (!success || !exactItem || !sourceComplete || launchedAtMs == null || launchedAtMs < 0L ||
         returnedAtMs < launchedAtMs || returnedAtMs - launchedAtMs < 1_500L) return false
     // Our patched VLC reports EndReached explicitly. A plain Back near the end
     // is not completion; keep the positional fallback only for older external VLC.

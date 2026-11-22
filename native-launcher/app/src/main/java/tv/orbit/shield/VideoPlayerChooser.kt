@@ -91,8 +91,10 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity, priva
             editor.apply()
         }
         val callback = onPlayerReturned.also { onPlayerReturned = null }
-        onPlayerClosed.also { onPlayerClosed = null }?.invoke()
         val completed = onPlayerCompleted.also { onPlayerCompleted = null }
+        val sourceComplete = completed != null && playedKey != null && uri != null &&
+            TorrGrowingVideo.playbackSourceComplete(activity, Uri.parse(uri))
+        onPlayerClosed.also { onPlayerClosed = null }?.invoke()
         val navigate = onPlayerNavigate.also { onPlayerNavigate = null }
         if (!activity.isFinishing && !activity.isDestroyed) {
             val patchedVlc = playerPackage in setOf("tv.gostex.vlc", "tv.gostex.vlc.debug")
@@ -107,6 +109,7 @@ internal class VideoPlayerChooser(private val activity: ComponentActivity, priva
                 duration = data?.getLongExtra("extra_duration", -1) ?: -1,
                 launchedAtMs = launchedAtMs,
                 returnedAtMs = returnedAtMs,
+                sourceComplete = sourceComplete,
             )
             val step = data?.getIntExtra("tv.gostex.extra.EPISODE_STEP", 0) ?: 0
             if (playerPackage in setOf("tv.gostex.vlc", "tv.gostex.vlc.debug") && response.resultCode == android.app.Activity.RESULT_OK && playedKey != null && step in listOf(-1, 1) && navigate != null) {

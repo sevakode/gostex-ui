@@ -105,7 +105,7 @@ internal object ManagedCoverStore {
         }
         return bytes.toByteArray()
     }
-    private fun putImage(context: Context, bytes: ByteArray, expected: String? = null, wide: Boolean = false, onWritten: () -> Unit = {}): String {
+    private fun validateImage(bytes: ByteArray, expected: String?, wide: Boolean = false): String {
         require(bytes.isNotEmpty() && bytes.size <= MAX_IMAGE_BYTES)
         val sha = digest(bytes)
         require(expected == null || expected == sha) { "Image checksum mismatch" }
@@ -120,6 +120,13 @@ internal object ManagedCoverStore {
         val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })
             ?: error("Image cannot be decoded")
         bitmap.recycle()
+        return sha
+    }
+    private fun putImage(context: Context, bytes: ByteArray, expected: String? = null): String =
+        storeImage(context, bytes, validateImage(bytes, expected))
+
+    // Call under the mutation gate so the budget check and write are serialized together.
+    private fun storeImage(context: Context, bytes: ByteArray, sha: String, onWritten: () -> Unit = {}): String {
         val key = managedCoverKey(sha)
         val file = imageFile(context, key)!!
         if (!file.exists() || file.length() != bytes.size.toLong() ||
@@ -294,7 +301,11 @@ internal object ManagedCoverStore {
                             suspend fun load(path: String, sha: String, wide: Boolean = false): String? = path.takeIf { it.isNotEmpty() }?.let {
                                 val image = tree.read(it, MAX_IMAGE_BYTES) ?: error("Image missing")
                                 currentCoroutineContext().ensureActive()
-                                gate.mutate { putImage(context, image, sha, wide) { imagesWritten = true } }
+                                val validatedSha = validateImage(image, sha, wide)
+                                gate.mutate {
+                                    currentCoroutineContext().ensureActive()
+                                    storeImage(context, image, validatedSha) { imagesWritten = true }
+                                }
                             }
                             prepared += PreparedUpdate(update.gameId, load(update.original, update.originalSha256),
                                 load(update.wide, update.wideSha256, wide = true))

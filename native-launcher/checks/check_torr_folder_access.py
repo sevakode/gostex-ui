@@ -13,6 +13,8 @@ class Uri private constructor(private val value: String) {
  private val parsed = URI(value)
  val scheme: String? get() = parsed.scheme
  val authority: String? get() = parsed.rawAuthority
+ val query: String? get() = parsed.rawQuery
+ val fragment: String? get() = parsed.rawFragment
  val pathSegments: List<String> get() = parsed.rawPath.orEmpty().split('/').filter { it.isNotEmpty() }
   .map { URLDecoder.decode(it.replace("+", "%2B"), "UTF-8") }
  override fun toString() = value
@@ -61,7 +63,8 @@ private class Resolver: ContentResolver() {
 }
 fun main() {
  val access = TorrDownloadFolderAccess
- val request = TorrDownloadFolderAccess.Request("job-id", TREE, "content://storage.example/tree/USB%3AGames%2FPS1/document/USB%3AGames%2FPS1%2F.gostex-job.partial")
+ val request = TorrDownloadFolderAccess.Request("job-id", TREE,
+  "content://storage.example/tree/USB%3AGames%2FPS1/document/USB%3AGames%2FPS1%2F.gostex-job.partial", "error", "storage")
  val original = request.copy()
  val identity = access.identity(TREE) ?: error("Valid tree rejected")
  check(identity.authority == "storage.example" && identity.documentId == "USB:Games/PS1")
@@ -69,7 +72,7 @@ fun main() {
  check(access.identity("content://STORAGE.EXAMPLE/tree/USB%3AGames%2FPS1") != identity)
  check(access.identity(TREE + "/document/USB%3AGames%2FPS1") == null)
  check(access.identity("content://storage.example/tree/USB%3AGames%2Fps1") != identity)
- for (invalid in listOf("", "broken URI", "file:///tree/USB%3AGames%2FPS1", "content:///tree/x", "content://storage.example/document/x", "content://storage.example/tree", "content://storage.example/tree/%20")) {
+ for (invalid in listOf("", "broken URI", "file:///tree/USB%3AGames%2FPS1", "content:///tree/x", "content://storage.example/document/x", "content://storage.example/tree", "content://storage.example/tree/%20", TREE + "?query=1", TREE + "#fragment")) {
   check(access.identity(invalid) == null) { "Invalid tree accepted: $invalid" }
  }
  check(!access.needsAccess(TREE, null)) // unknown snapshot is not proof of missing access
@@ -83,20 +86,42 @@ fun main() {
  check(access.needsAccess(TREE, access.snapshot(partial)))
  partial.grants += UriPermission(Uri.parse("content://storage.example/tree/USB%3aGames%2fPS1"), true, true)
  check(!access.needsAccess(TREE, access.snapshot(partial)))
+ // The worker records finalize when all bytes were saved but publication failed.
+ // Recovery after interruption during publication records finalizing instead.
+ for (retryable in listOf(request, request.copy(state="paused", error=""),
+  request.copy(error="finalize"), request.copy(error="finalizing"))) {
+  check(access.needsRestore(retryable.state, retryable.error, TREE, emptySet()))
+  check(!access.needsRestore(retryable.state, retryable.error, TREE, setOf(identity)))
+  check(!access.needsRestore(retryable.state, retryable.error, TREE, null))
+  val resolver = Resolver()
+  val outcome = access.restore(resolver, retryable, retryable, Uri.parse(TREE))
+  check(outcome.outcome == TorrDownloadFolderAccess.Outcome.RESTORED && resolver.takes == 1)
+ }
+ for ((state, error) in listOf("running" to "storage", "queued" to "", "done" to "",
+  "finalizing" to "", "error" to "video_invalid", "error" to "source_auth", "paused" to "video_invalid")) {
+  val changed = request.copy(state=state, error=error)
+  check(!access.needsRestore(state, error, TREE, emptySet()))
+  val resolver = Resolver()
+  check(access.restore(resolver, changed, changed, Uri.parse(TREE)).outcome == TorrDownloadFolderAccess.Outcome.STALE)
+  check(resolver.takes == 0)
+ }
  // Every picker outcome takes one permission snapshot, and only an exact match can take a grant.
  for ((selected, expected) in listOf(
   null to TorrDownloadFolderAccess.Outcome.CANCELLED,
   Uri.parse("content://elsewhere.example/tree/USB%3AGames%2FPS1") to TorrDownloadFolderAccess.Outcome.DIFFERENT_FOLDER,
   Uri.parse("content://storage.example/tree/USB%3AOther") to TorrDownloadFolderAccess.Outcome.DIFFERENT_FOLDER,
   Uri.parse("content://storage.example/document/USB%3AGames%2FPS1") to TorrDownloadFolderAccess.Outcome.DIFFERENT_FOLDER,
-  Uri.parse(TREE + "/document/USB%3AGames%2FPS1%2FChild") to TorrDownloadFolderAccess.Outcome.DIFFERENT_FOLDER)) {
+  Uri.parse(TREE + "/document/USB%3AGames%2FPS1%2FChild") to TorrDownloadFolderAccess.Outcome.DIFFERENT_FOLDER,
+  Uri.parse(TREE + "?query=1") to TorrDownloadFolderAccess.Outcome.DIFFERENT_FOLDER)) {
   val resolver = Resolver()
   val result = access.restore(resolver, request, request, selected)
   check(result.outcome == expected && result.grants == emptySet<TorrDownloadFolderAccess.Identity>())
   check(resolver.takes == 0 && resolver.reads == 1 && resolver.grants.isEmpty())
   check(request == original)
  }
- for (changed in listOf(null, request.copy(id="new-id"), request.copy(tree=TREE+"Other"), request.copy(document="content://storage.example/document/replaced"))) {
+ for (changed in listOf(null, request.copy(id="new-id"), request.copy(tree=TREE+"Other"),
+  request.copy(document="content://storage.example/document/replaced"),
+  request.copy(state="paused", error=""), request.copy(error="finalize"), request.copy(error="source_auth"))) {
   val resolver = Resolver()
   check(access.restore(resolver, request, changed, Uri.parse(TREE)).outcome == TorrDownloadFolderAccess.Outcome.STALE)
   check(resolver.takes == 0 && resolver.reads == 1 && request == original)
@@ -118,7 +143,7 @@ fun main() {
  check(unavailable.outcome == TorrDownloadFolderAccess.Outcome.UNAVAILABLE && unavailable.grants == null)
  check(unknown.takes == 1 && unknown.reads == 1)
  check(request == original)
- println("PASS: exact decoded tree identity, full grants, unknown snapshot, cancel/mismatch/stale preservation, verified regrant and single snapshot per result")
+ println("PASS: paused and publication-error recovery, exact tree/state, verified regrant, missing or unknown grants, stale and ambiguous result rejection")
 }
 ''',
 }
@@ -155,4 +180,7 @@ assert 'startTorrDownload' not in callback and 'TorrDownloadStore.update' not in
 assert 'putString' not in callback and 'chooseTorrFolder' not in callback
 assert 'TorrDownloadFolderAccess.restore' in callback and 'folderAccessReturnFocus = request?.id' in callback
 assert ui.count('TorrDownloadFolderAccess.snapshot(') == 1
-print('PASS: localized resource parity and no auto-start/job/default-folder write in picker callback')
+assert 'val restoreAccess = needsFolderAccess(job)' in ui
+assert 'filter(::canResumeInBatch)' in ui and '!needsFolderAccess(job)' in ui
+assert 'if (needsFolderAccess(current)) restoreFolderAccess(current)' in ui
+print('PASS: shared row, restart and bulk policy, localized parity and no auto-start or default-folder write')

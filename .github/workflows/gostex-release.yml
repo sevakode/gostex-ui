@@ -91,6 +91,7 @@ jobs:
             native-launcher/checks/check_game_seven_z.py \
             native-launcher/checks/check_apps_options.py \
             native-launcher/checks/check_portable_settings.py \
+            native-launcher/checks/check_settings_copy_lifecycle.py \
             native-launcher/checks/check_remote_install_policy.py \
             native-launcher/checks/check_official_apk_policy.py \
             native-launcher/checks/check_torr_saf_target.py \

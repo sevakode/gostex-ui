@@ -8,13 +8,14 @@ import android.provider.DocumentsContract
 /** Permission metadata only; never opens, scans, moves or changes a download. */
 internal object TorrDownloadFolderAccess {
     data class Identity(val authority: String, val documentId: String)
-    data class Request(val id: String, val tree: String, val document: String)
+    data class Request(val id: String, val tree: String, val document: String, val state: String, val error: String)
     enum class Outcome { RESTORED, CANCELLED, DIFFERENT_FOLDER, UNAVAILABLE, STALE }
     data class Result(val outcome: Outcome, val grants: Set<Identity>?)
 
     fun identity(tree: String): Identity? = runCatching {
         val uri = Uri.parse(tree)
-        require(uri.scheme == ContentResolver.SCHEME_CONTENT && DocumentsContract.isTreeUri(uri))
+        require(uri.scheme == ContentResolver.SCHEME_CONTENT && uri.query == null && uri.fragment == null &&
+            DocumentsContract.isTreeUri(uri))
         // A grant for /tree/ROOT/document/CHILD need not cover ROOT or its siblings.
         require(uri.pathSegments.size == 2 && uri.pathSegments[0] == "tree")
         val authority = uri.authority?.takeIf { it.isNotBlank() } ?: return null
@@ -32,11 +33,21 @@ internal object TorrDownloadFolderAccess {
     fun needsAccess(tree: String, grants: Set<Identity>?): Boolean =
         grants != null && identity(tree)?.let { it !in grants } == true
 
+    fun canRestore(state: String, error: String): Boolean = when (state) {
+        "paused" -> error != "video_invalid"
+        "error" -> error == "storage" || error == "finalize" || error == "finalizing"
+        else -> false
+    }
+
+    fun needsRestore(state: String, error: String, tree: String, grants: Set<Identity>?): Boolean =
+        canRestore(state, error) && needsAccess(tree, grants)
+
     /** The picker result can only regrant the recorded destination, never select a replacement. */
     fun restore(resolver: ContentResolver, request: Request?, current: Request?, selected: Uri?): Result {
         val expected = request?.let { identity(it.tree) }
         var outcome = when {
-            request == null || request != current || expected == null -> Outcome.STALE
+            request == null || request != current || expected == null ||
+                !canRestore(request.state, request.error) -> Outcome.STALE
             selected == null -> Outcome.CANCELLED
             identity(selected.toString()) != expected -> Outcome.DIFFERENT_FOLDER
             else -> try {

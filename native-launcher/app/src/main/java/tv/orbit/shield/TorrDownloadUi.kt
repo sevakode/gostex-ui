@@ -80,6 +80,10 @@ import kotlinx.coroutines.withContext
     var folderAccessBusy by remember { mutableStateOf(false) }
     var folderGrants by remember { mutableStateOf<Set<TorrDownloadFolderAccess.Identity>?>(null) }
     fun needsSiteSession(job: TorrDownloadJob) = job.requiresHttpSession && TorrDownloadStore.sessionFor(job.id) == null
+    fun needsFolderAccess(job: TorrDownloadJob) =
+        TorrDownloadFolderAccess.needsRestore(job.state, job.error, job.tree, folderGrants)
+    fun captureFolderRequest(job: TorrDownloadJob) =
+        TorrDownloadFolderAccess.Request(job.id, job.tree, job.document, job.state, job.error)
     val folderSnapshotGeneration = remember { intArrayOf(0) }
     LaunchedEffect(activity.resumeVersion) {
         val generation = ++folderSnapshotGeneration[0]
@@ -89,7 +93,8 @@ import kotlinx.coroutines.withContext
     val folderAccessPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         val saved = folderAccessRequest
         folderAccessRequest = null
-        val request = saved?.takeIf { it.size == 3 }?.let { TorrDownloadFolderAccess.Request(it[0], it[1], it[2]) }
+        val request = saved?.takeIf { it.size == 5 }
+            ?.let { TorrDownloadFolderAccess.Request(it[0], it[1], it[2], it[3], it[4]) }
         folderAccessBusy = true
         ++folderSnapshotGeneration[0]
         scope.launch {
@@ -97,8 +102,7 @@ import kotlinx.coroutines.withContext
                 val ready = TorrDownloadStartup.prepare(activity.applicationContext)
                 val result = withContext(Dispatchers.IO) {
                     val current = if (ready && !PortableMaintenance.running) TorrDownloadStore.jobs.value
-                        .firstOrNull { it.id == request?.id && it.state == "error" && it.error == "storage" }
-                        ?.let { TorrDownloadFolderAccess.Request(it.id, it.tree, it.document) } else null
+                        .firstOrNull { it.id == request?.id }?.let(::captureFolderRequest) else null
                     TorrDownloadFolderAccess.restore(activity.contentResolver, request, current, uri)
                 }
                 ++folderSnapshotGeneration[0]
@@ -128,7 +132,7 @@ import kotlinx.coroutines.withContext
         }
     }
     fun restoreFolderAccess(job: TorrDownloadJob) {
-        if (folderAccessBusy || folderAccessRequest != null || PortableMaintenance.running) return
+        if (folderAccessBusy || folderAccessRequest != null || PortableMaintenance.running || !needsFolderAccess(job)) return
         val probe = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT_TREE)
         val resolved = runCatching { activity.packageManager.resolveActivity(probe,
             android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo }.getOrNull()
@@ -137,7 +141,7 @@ import kotlinx.coroutines.withContext
             activity.torrDownloadMessage = activity.getString(R.string.document_picker_unavailable)
             return
         }
-        folderAccessRequest = arrayListOf(job.id, job.tree, job.document)
+        folderAccessRequest = arrayListOf(job.id, job.tree, job.document, job.state, job.error)
         activity.torrDownloadMessage = activity.getString(R.string.torr_folder_access_hint)
         try { folderAccessPicker.launch(android.net.Uri.parse(job.tree)) }
         catch (_: Exception) {
@@ -641,11 +645,12 @@ import kotlinx.coroutines.withContext
             finishedFocusId = null
         }
     }
-    val pausedCount = activeJobs.count { it.state == "paused" && !it.requiresHttpRestart && !needsSiteSession(it) }
+    fun canResumeInBatch(job: TorrDownloadJob) = job.state == "paused" && !job.requiresHttpRestart &&
+        !needsSiteSession(job) && !needsFolderAccess(job)
+    val pausedCount = activeJobs.count(::canResumeInBatch)
     if (!showFinished && !journalLoading && !journalFailed && pausedCount > 1) SettingRow(tr(R.string.torr_download_resume_paused, pausedCount), onClick = {
-        val paused = TorrDownloadStore.jobs.value.filter {
-            it.state == "paused" && !it.requiresHttpRestart && !needsSiteSession(it)
-        }.map { it.id }
+        if (folderAccessBusy || folderAccessRequest != null) return@SettingRow
+        val paused = TorrDownloadStore.jobs.value.filter(::canResumeInBatch).map { it.id }
         if (paused.isNotEmpty()) runCatching { activity.startTorrDownloads(paused) }
             .onFailure { activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed) }
     })
@@ -661,8 +666,7 @@ import kotlinx.coroutines.withContext
             }
         }
         var restartOffset by remember(job.id) { mutableStateOf<Long?>(null) }
-        val restoreAccess = job.state == "error" && job.error == "storage" &&
-            TorrDownloadFolderAccess.needsAccess(job.tree, folderGrants)
+        val restoreAccess = needsFolderAccess(job)
         fun dismissRestart() {
             restartOffset = null
             scope.launch {
@@ -678,11 +682,13 @@ import kotlinx.coroutines.withContext
                 dismissRestart()
                 if (confirmed && current != null && current.requiresHttpRestart && current.offset == offset &&
                     current.state in setOf("paused", "error") &&
-                    !(current.error == "storage" && TorrDownloadFolderAccess.needsAccess(current.tree, folderGrants)) &&
                     !PortableMaintenance.running &&
                     !folderAccessBusy && folderAccessRequest == null && activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
-                    runCatching { activity.startTorrDownload(current.id, restartId = current.id) }
-                        .onFailure { activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed) }
+                    if (needsFolderAccess(current)) restoreFolderAccess(current)
+                    else {
+                        runCatching { activity.startTorrDownload(current.id, restartId = current.id) }
+                            .onFailure { activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed) }
+                    }
                 }
             })
         }
@@ -771,7 +777,7 @@ import kotlinx.coroutines.withContext
             val hideDescription = tr(R.string.torr_download_hide_finished)
             if (job.state == "done") SettingRow("×", modifier = Modifier.width(72.dp).semantics { contentDescription = hideDescription }, trailing = "", onClick = { hideFinished(job) })
         }
-        if (job.state == "error" && job.error == "storage") Text(
+        if (restoreAccess || (job.state == "error" && TorrDownloadFolderAccess.canRestore(job.state, job.error))) Text(
             tr(when {
                 restoreAccess -> R.string.torr_folder_access_hint
                 job.requiresHttpRestart -> R.string.http_download_restart_access_check

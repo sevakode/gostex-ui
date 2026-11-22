@@ -20,24 +20,32 @@ internal class SettingsCopyController(
     private val activity: MainActivity,
     private val launchPicker: (String, String?, () -> Unit) -> Boolean,
 ) {
+    private enum class Picker { EXPORT, IMPORT }
+    private data class PickerRequest(val picker: Picker, val pageRevision: Int)
+
     var preview by mutableStateOf<PortableSettingsTransfer.Preview?>(null)
         private set
     private var busy by mutableStateOf(false)
     private var message by mutableStateOf<Int?>(null)
     val status: Int? get() = if (busy) R.string.settings_copy_busy else message
     private var pageRevision = 0
+    private var pendingPicker: PickerRequest? = null
 
     private val exportPicker = activity.registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (pendingPicker?.picker == Picker.IMPORT) return@registerForActivityResult
+        consumePicker(Picker.EXPORT)
+        // A restored CreateDocument result already carries the user's chosen destination.
         if (uri != null) start(R.string.settings_copy_export_failed) {
             PortableSettingsTransfer.export(activity, uri)
             message = R.string.settings_copy_exported
         }
     }
     private val importPicker = activity.registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        val request = consumePicker(Picker.IMPORT) ?: return@registerForActivityResult
+        if (request.pageRevision != pageRevision) return@registerForActivityResult
         if (uri != null) start(R.string.settings_copy_import_failed) {
-            val revision = pageRevision
             val candidate = PortableSettingsTransfer.preview(activity, uri)
-            if (pageRevision == revision) {
+            if (request.pageRevision == pageRevision) {
                 if (candidate.count == 0) message = R.string.settings_copy_no_changes
                 else preview = candidate
             }
@@ -45,15 +53,26 @@ internal class SettingsCopyController(
     }
 
     fun chooseExport() {
-        if (busy) return
-        launchPicker(Intent.ACTION_CREATE_DOCUMENT, "application/json") { exportPicker.launch("gostex-settings.json") }
+        choose(Picker.EXPORT, Intent.ACTION_CREATE_DOCUMENT, "application/json") { exportPicker.launch("gostex-settings.json") }
     }
 
     fun chooseImport() {
-        if (busy) return
-        launchPicker(Intent.ACTION_OPEN_DOCUMENT, "*/*") {
+        choose(Picker.IMPORT, Intent.ACTION_OPEN_DOCUMENT, "*/*") {
             importPicker.launch(arrayOf("application/json", "text/plain", "application/octet-stream"))
         }
+    }
+
+    private fun choose(picker: Picker, action: String, mime: String, launch: () -> Unit) {
+        if (busy || preview != null || pendingPicker != null) return
+        val request = PickerRequest(picker, pageRevision)
+        pendingPicker = request
+        if (!launchPicker(action, mime, launch) && pendingPicker === request) pendingPicker = null
+    }
+
+    private fun consumePicker(picker: Picker): PickerRequest? {
+        val request = pendingPicker?.takeIf { it.picker == picker } ?: return null
+        pendingPicker = null
+        return request
     }
 
     fun apply(candidate: PortableSettingsTransfer.Preview) {
@@ -110,8 +129,13 @@ internal fun SettingsCopySettings(activity: MainActivity, exportFocus: Modifier,
                 .create()
             dialog.setOnDismissListener { controller.dismiss(review) }
             dialog.show()
-            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).requestFocus()
+            // DocumentsUI may return in touch mode even though the next input is a TV remote.
+            val cancel = dialog.getButton(AlertDialog.BUTTON_NEGATIVE)
+            cancel.isFocusableInTouchMode = true
+            val focusCancel = Runnable { cancel.requestFocus() }
+            cancel.post(focusCancel)
             onDispose {
+                cancel.removeCallbacks(focusCancel)
                 dialog.setOnDismissListener(null)
                 dialog.dismiss()
             }

@@ -2149,9 +2149,10 @@ class MainActivity : ComponentActivity() {
                             Text(tabTitle(tab).uppercase(), fontSize = 28.sp, fontWeight = FontWeight.Bold, color = White)
                             Spacer(Modifier.width(16.dp)); Text(gameCount(filtered.size + filteredAndroidGames.size), color = Muted, fontSize = 13.sp)
                         }
-                        @Composable fun actions() {
+                        @Composable fun RowScope.actions(compact: Boolean) {
                             if (searchQuery.isNotBlank()) {
-                                Text(searchQuery, Modifier.widthIn(max = 120.dp).padding(end = 12.dp), color = Lime,
+                                val querySpace = if (compact) Modifier.weight(1f, fill = false) else Modifier
+                                Text(searchQuery, querySpace.widthIn(max = 120.dp).padding(end = 12.dp), color = Lime,
                                     fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 CompactIconButton(CompactIcon.Clear, tr(R.string.clear_search), onClick = { applySearch("") })
                                 Spacer(Modifier.width(6.dp))
@@ -2166,9 +2167,9 @@ class MainActivity : ComponentActivity() {
                         }
                         if (compact) Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) { title() }
-                            Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) { actions() }
+                            Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) { actions(compact = true) }
                         } else Row(Modifier.fillMaxWidth().padding(start = 36.dp, end = 36.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            title(); Spacer(Modifier.weight(1f)); actions()
+                            title(); Spacer(Modifier.weight(1f)); actions(compact = false)
                         }
                     }
                     if (games.isNotEmpty() || showAndroidGamesFilter || searchQuery.isNotBlank()) {

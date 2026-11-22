@@ -851,7 +851,20 @@ class MainActivity : ComponentActivity() {
         // supported for system-only receivers, including on Android 14.
         mediaReceiverRegistered = runCatching { registerReceiver(mediaReceiver, filter); true }.getOrDefault(false)
     }
-    override fun onResume() { super.onResume(); if (!PortableRestoreStartup.ready || PortableMaintenance.running) return; AgentStateHooks.attach(this); updates.onResume(); libraryVisible = true; watchMountedMedia(); resumeVersion++; refreshLibrary(); startCoverSync() }
+    override fun onResume() {
+        super.onResume()
+        if (!PortableRestoreStartup.ready || PortableMaintenance.running) return
+        AgentStateHooks.attach(this)
+        updates.onResume()
+        // A translucent activity can pause the launcher without stopping it.
+        // Mounted-media observation and explicit refresh requests stay active in that case.
+        val returnedFromStop = !libraryVisible
+        libraryVisible = true
+        watchMountedMedia()
+        resumeVersion++
+        if (returnedFromStop) refreshLibrary()
+        startCoverSync()
+    }
     override fun onPostResume() {
         super.onPostResume()
         resumeInterruptedDownloads()
@@ -1323,19 +1336,21 @@ class MainActivity : ComponentActivity() {
     fun refreshLibrary(manual: Boolean = false) {
         if (PortableMaintenance.running) { if (manual) manualLibraryScanStatus = R.string.library_rescan_failed; return }
         if (!libraryVisible || scanning) { refreshPending = true; manualRefreshPending = manualRefreshPending || manual; return }
+        val reportManualResult = manual || manualRefreshPending
+        refreshPending = false
+        manualRefreshPending = false
         manualLibraryScanStatus = null
         if (legacyRecoveryStateError) {
             notice = getString(R.string.legacy_recovery_state_error)
             completeGameImport(gameImportRequest, gameImportRequest?.let { GameImportSummary(it.root.platform, 0, 0, true, listOf(notice)) })
-            if (manual) manualLibraryScanStatus = R.string.library_rescan_failed
+            if (reportManualResult) manualLibraryScanStatus = R.string.library_rescan_failed
             return
         }
-        refreshPending = false
         val meteredApproved = allowMeteredRecoveryOnce
         allowMeteredRecoveryOnce = false
         val roots = rootsOrNotify() ?: run {
             completeGameImport(gameImportRequest, gameImportRequest?.let { GameImportSummary(it.root.platform, 0, 0, true, listOf(notice)) })
-            if (manual) manualLibraryScanStatus = R.string.library_rescan_failed
+            if (reportManualResult) manualLibraryScanStatus = R.string.library_rescan_failed
             return
         }
         val hintRoot = importHintRoot
@@ -1414,25 +1429,21 @@ class MainActivity : ComponentActivity() {
                 if (result.warnings.isNotEmpty()) notice = result.warnings.joinToString("; ")
                 else if (recoveryRequired) notice = getString(R.string.legacy_recovery_done)
                 completeGameImport(importRequest, result.imported)
-                if (manual) manualLibraryScanStatus = if (result.warnings.isEmpty()) R.string.library_rescan_done else R.string.library_rescan_failed
+                if (reportManualResult) manualLibraryScanStatus = if (result.warnings.isEmpty()) R.string.library_rescan_done else R.string.library_rescan_failed
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
             catch (e: LegacyRecoveryNotice) {
                 notice = getString(e.messageId)
                 completeGameImport(importRequest, importRequest?.let { GameImportSummary(it.root.platform, 0, 0, true, listOf(notice)) })
-                if (manual) manualLibraryScanStatus = e.messageId
+                if (reportManualResult) manualLibraryScanStatus = e.messageId
             }
             catch (e: Exception) {
                 notice = getString(R.string.refresh_error, e.localizedMessage.orEmpty())
                 completeGameImport(importRequest, importRequest?.let { GameImportSummary(it.root.platform, 0, 0, true, listOf(notice)) })
-                if (manual) manualLibraryScanStatus = R.string.library_rescan_failed
+                if (reportManualResult) manualLibraryScanStatus = R.string.library_rescan_failed
             }
             finally {
                 scanning = false
-                if (refreshPending && libraryVisible && !isDestroyed) {
-                    val nextManual = manualRefreshPending
-                    refreshPending = false; manualRefreshPending = false
-                    refreshLibrary(nextManual)
-                }
+                if (refreshPending && libraryVisible && !isDestroyed) refreshLibrary()
             }
         }
     }
@@ -1445,8 +1456,10 @@ class MainActivity : ComponentActivity() {
             contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
             if (request != null) {
                 val expected = request.first.tree.let { if (it.startsWith("content:")) DocumentsContract.getTreeDocumentId(Uri.parse(it)) else it }
-                if (DocumentsContract.getTreeDocumentId(uri) == expected) launchGame(request.first, request.second)
-                else notice = getString(R.string.wrong_folder, expected.removePrefix("primary:"))
+                if (DocumentsContract.getTreeDocumentId(uri) == expected) {
+                    if (libraryVisible) refreshLibrary()
+                    launchGame(request.first, request.second)
+                } else notice = getString(R.string.wrong_folder, expected.removePrefix("primary:"))
             }
         } catch (e: Exception) { notice = getString(R.string.access_error, e.localizedMessage.orEmpty()) }
     }

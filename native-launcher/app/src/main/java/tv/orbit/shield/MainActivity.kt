@@ -1,6 +1,7 @@
 package tv.orbit.shield
 
 import android.content.Intent
+import android.content.res.Configuration
 import android.net.Uri
 import android.os.Bundle
 import android.provider.DocumentsContract
@@ -1550,8 +1551,11 @@ class MainActivity : ComponentActivity() {
         pendingCoverId = savedInstanceState?.getString("pendingCoverId")
         managedCovers = ManagedCoverStore.read(this)
         RemoteStartup.start(this)
-        @Suppress("DEPRECATION")
-        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+        val interfaceMode = resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK
+        if (interfaceMode == Configuration.UI_MODE_TYPE_TELEVISION) {
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+        }
         bundled = loadGames()
         try { legacyRecoveryPending = LegacyRecoveryState.initialize(this, bundled) }
         catch (_: Exception) { legacyRecoveryStateError = true; legacyRecoveryPending = true; notice = getString(R.string.legacy_recovery_state_error) }

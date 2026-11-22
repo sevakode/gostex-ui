@@ -313,15 +313,28 @@ internal class TorrDownloadService : Service() {
         }
         requireVideoHeader(job, document)
         if (completed != null) return completed
-        val result = DocumentsContract.renameDocument(contentResolver, Uri.parse(job.document), job.finalName)
+        val renamed = DocumentsContract.renameDocument(contentResolver, document, job.finalName)
             ?: throw IOException("Cannot finish download")
-        if (result.authority != tree.authority || !portableSafDirectChild(contentResolver, tree, parentId, DocumentsContract.getDocumentId(result))) {
+        if (renamed.scheme != "content" || renamed.authority != tree.authority) {
             throw IOException("Unexpected renamed document")
         }
+        val renamedId = DocumentsContract.getDocumentId(renamed)
+        if (!portableSafDirectChild(contentResolver, tree, parentId, renamedId)) {
+            throw IOException("Unexpected renamed document")
+        }
+        val result = DocumentsContract.buildDocumentUriUsingTree(tree, renamedId)
         val name = contentResolver.query(result, arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME), null, null, null)?.use {
             if (it.moveToFirst()) it.getString(0) else null
         }
         if (name != job.finalName) throw IOException("Provider renamed document unexpectedly")
+        // A provider can return a different document. Check what the library will open.
+        val size = contentResolver.openFileDescriptor(result, "r")?.use { descriptor ->
+            val actual = descriptor.statSize
+            if (descriptor.canDetectErrors()) descriptor.checkError()
+            actual
+        }
+        if (size != job.total) throw TorrStorageFailure()
+        requireVideoHeader(job, result)
         return result
     }
 

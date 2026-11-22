@@ -17,16 +17,20 @@ internal class TorrDownloadThrottle(
             val time = now()
             if (rate <= 0) { lastRate = 0; deadline = time; return true }
             if (rate != lastRate) { lastRate = rate; deadline = time }
-            // A delayed source cannot accumulate a burst of write credit.
-            if (deadline < time) deadline = time
             deadline += bytes.toLong() * 1_000_000_000L / (rate.toLong() * 1024)
             while (true) {
                 if (cancelled() || Thread.currentThread().isInterrupted) return false
                 if (rateKiB() != rate) break
-                val remaining = deadline - now()
+                val checkedAt = now()
+                val remaining = deadline - checkedAt
                 // Accumulate sub-millisecond debt; sleeping for every tiny
                 // network read would otherwise impose a much lower rate.
-                if (remaining <= 1_000_000L) return true
+                if (remaining <= 1_000_000L) {
+                    // Time spent reading or writing counts toward the interval.
+                    // Start from this write if late so idle time earns no burst credit.
+                    deadline = maxOf(deadline, checkedAt)
+                    return true
+                }
                 try { sleep(minOf(remaining / 1_000_000L, 100L)) }
                 catch (_: InterruptedException) { Thread.currentThread().interrupt(); return false }
             }

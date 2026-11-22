@@ -1,18 +1,52 @@
-"""Exercise the production bounded retry policy."""
+"""Exercise the production write throttle with a deterministic clock."""
 from pathlib import Path
 import subprocess
 import tempfile
 
-ROOT = Path(__file__).resolve().parents[2]
-CACHE = ROOT / '.tools/native/gradle-cache/caches/modules-2/files-2.1'
-JAVA = ROOT / '.tools/native/jdk/jdk-21.0.13+9/Contents/Home/bin/java'
-def jar(group, artifact, version):
-    return next((CACHE / group / artifact / version).glob('*/*.jar'))
-compiler = [jar('org.jetbrains.kotlin', a, v) for a, v in [
-    ('kotlin-compiler-embeddable', '2.4.21'), ('kotlin-stdlib', '2.4.21'),
-    ('kotlin-script-runtime', '2.4.21'), ('kotlin-reflect', '1.6.10'),
-]] + [jar('org.jetbrains.kotlinx', 'kotlinx-coroutines-core-jvm', '1.9.0'), jar('org.jetbrains', 'annotations', '13.0')]
+from kotlin_toolchain import COMPILER, JAVA, ROOT
+
 checks = '''package tv.orbit.shield
+
+private fun verifySourcePacing() {
+  var time = 0L
+  val limiter = TorrDownloadThrottle({ 1024 }, { time }, { ms -> time += ms * 1_000_000L })
+  fun admit() { check(limiter.beforeWrite(65536) { false }) }
+
+  admit()
+  check(time in 61_500_000L..62_500_000L)
+  repeat(8) {
+    time += 80_000_000L
+    val arrival = time
+    admit()
+    check(time == arrival) { "Slow source paid again: ${time - arrival}ns after arrival" }
+  }
+
+  time += 30_000_000L
+  val arrival = time
+  admit()
+  check(time - arrival in 31_500_000L..32_500_000L) { "Partial source delay was not credited" }
+
+  time += 10_000_000_000L
+  val idleEnd = time
+  admit()
+  check(time == idleEnd) { "First chunk after idle should pass immediately" }
+  admit()
+  check(time - idleEnd in 61_500_000L..62_500_000L) { "Idle time banked a burst" }
+}
+
+private fun verifySleepOvershoot() {
+  var time = 0L
+  var overshoot = 30_000_000L
+  val limiter = TorrDownloadThrottle({ 1024 }, { time }, { ms ->
+    time += ms * 1_000_000L + overshoot
+    overshoot = 0L
+  })
+  check(limiter.beforeWrite(65536) { false })
+  val firstAdmission = time
+  check(limiter.beforeWrite(65536) { false })
+  check(time - firstAdmission in 61_500_000L..62_500_000L) { "Late sleep banked a burst" }
+}
+
 fun main() {
   var time = 0L; var rate = 512; var sleeps = 0
   val limiter = TorrDownloadThrottle({ rate }, { time }, { ms -> sleeps++; time += ms * 1_000_000L })
@@ -28,13 +62,16 @@ fun main() {
   val tiny = TorrDownloadThrottle({ 512 }, { tinyTime }, { ms -> tinySleeps++; tinyTime += ms * 1_000_000L })
   repeat(4096) { check(tiny.beforeWrite(1) { false }) }
   check(tinyTime in 6_000_000L..9_000_000L && tinySleeps < 20)
-  check(sleeps > 0); println("PASS: rate, no limit, change while waiting, and cancellation")
+  check(sleeps > 0)
+  verifySourcePacing()
+  verifySleepOvershoot()
+  println("PASS: rate cap, slow and partial source delay, no burst after idle or oversleep, live rate changes and cancellation")
 }
 '''
 with tempfile.TemporaryDirectory(prefix='gostex-throttle-test-') as td:
     folder = Path(td); (folder / 'Checks.kt').write_text(checks)
-    cp = str(compiler[1]); src = ROOT / 'native-launcher/app/src/main/java/tv/orbit/shield/TorrDownloadThrottle.kt'
-    result = subprocess.run([str(JAVA), '-cp', ':'.join(map(str, compiler)), 'org.jetbrains.kotlin.cli.jvm.K2JVMCompiler',
+    cp = str(COMPILER[1]); src = ROOT / 'native-launcher/app/src/main/java/tv/orbit/shield/TorrDownloadThrottle.kt'
+    result = subprocess.run([str(JAVA), '-cp', ':'.join(map(str, COMPILER)), 'org.jetbrains.kotlin.cli.jvm.K2JVMCompiler',
         '-no-stdlib', '-no-reflect', '-classpath', cp, '-d', str(folder / 'classes'), str(src), str(folder / 'Checks.kt')], capture_output=True, text=True)
     if result.returncode: raise SystemExit(result.stderr)
     result = subprocess.run([str(JAVA), '-cp', f'{folder / "classes"}:{cp}', 'tv.orbit.shield.ChecksKt'], capture_output=True, text=True)

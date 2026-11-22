@@ -21,6 +21,7 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.border
@@ -1745,10 +1746,20 @@ class MainActivity : ComponentActivity() {
     }
     var platform by rememberSaveable { mutableStateOf("all") }
     var chosenId by rememberSaveable { mutableStateOf(HomePreferences.selectedId(activity)) }
-    var detail by remember { mutableStateOf<Game?>(null) }
+    var detailId by rememberSaveable { mutableStateOf<String?>(null) }
+    val detail = remember(games, detailId) { detailId?.let { id -> games.firstOrNull { it.id == id } } }
+    var versionGameId by rememberSaveable { mutableStateOf<String?>(null) }
+    var versionFile by rememberSaveable { mutableStateOf<String?>(null) }
+    var versionPickerOpen by remember { mutableStateOf(false) }
+    fun closeGameDetail() {
+        detailId = null
+        versionGameId = null
+        versionFile = null
+        versionPickerOpen = false
+    }
     val incomingTorrent = activity.incomingTorrentUri
     if (incomingTorrent != null) {
-        LaunchedEffect(incomingTorrent) { tab = "downloads"; settingsOpen = false; detail = null }
+        LaunchedEffect(incomingTorrent) { tab = "downloads"; settingsOpen = false; closeGameDetail() }
         DisposableEffect(activity, incomingTorrent) {
             val magnet = incomingTorrent.scheme.equals("magnet", ignoreCase = true)
             val dialog = android.app.AlertDialog.Builder(activity)
@@ -1790,20 +1801,29 @@ class MainActivity : ComponentActivity() {
     val sectionOptions = rememberHomeSections()
     val favoriteRefs = remember(sectionOptions.favorites) { sectionOptions.favorites.toSet() }
     val favorites = remember(favoriteRefs) { favoriteRefs.filter { it.startsWith("game:") }.map { it.removePrefix("game:") }.toSet() }
-    var variant by remember { mutableIntStateOf(0) }
-    var versionPickerOpen by remember { mutableStateOf(false) }
     val firstFocus = remember { FocusRequester() }
     val feedState = remember { HomeFeedState() }
     var tileMenu by remember { mutableStateOf<TileMenuTarget?>(null) }
     var membershipItem by remember { mutableStateOf<String?>(null) }
     var favoriteOrderItem by remember { mutableStateOf<String?>(null) }
     var tileReturnFocus by remember { mutableStateOf<FocusRequester?>(null) }
-    var tileReturnAnchor by remember { mutableStateOf<HomeFeedAnchor?>(null) }
+    var tileReturnAnchor by rememberSaveable(stateSaver = listSaver<HomeFeedAnchor?, Any>(
+        save = { anchor -> anchor?.let { listOf(it.shelf.orEmpty(), it.index, it.key.orEmpty()) }.orEmpty() },
+        restore = { HomeFeedAnchor((it[0] as String).ifEmpty { null }, it[1] as Int, (it[2] as String).ifEmpty { null }) }
+    )) { mutableStateOf<HomeFeedAnchor?>(null) }
     var tileRestore by remember { mutableIntStateOf(0) }
     fun dismissTileMenu() { tileMenu = null; tileRestore++ }
+    fun showGameDetail(game: Game) {
+        detailId = game.id
+        chosenId = game.id
+        versionGameId = null
+        versionFile = null
+        versionPickerOpen = false
+    }
     fun openGame(game: Game, focus: FocusRequester) {
         tileReturnAnchor = feedState.anchor()
-        tileReturnFocus = focus; detail = game; variant = 0
+        tileReturnFocus = focus
+        showGameDetail(game)
     }
     fun gameMenu(game: Game, focus: FocusRequester) {
         tileReturnAnchor = feedState.anchor()
@@ -1897,7 +1917,9 @@ class MainActivity : ComponentActivity() {
     }
     LaunchedEffect(games) {
         if (games.none { it.id == chosenId }) chosenId = homeGames.firstOrNull()?.id
-        if (detail != null && games.none { it.id == detail?.id }) detail = null
+    }
+    LaunchedEffect(detailId, detail) {
+        if (detailId != null && detail == null) closeGameDetail()
     }
     fun selectGame(game: Game) {
         chosenId = game.id
@@ -1917,13 +1939,12 @@ class MainActivity : ComponentActivity() {
         mediaOpen = false
         searchOpen = false
         searchReturnTarget = ""
-        detail = null
+        closeGameDetail()
         tileMenu = null
         membershipItem = null
         favoriteOrderItem = null
         tab = destination
         platform = "all"
-        variant = 0
     }
     LaunchedEffect(activity.homeVersion) {
         if (activity.homeVersion != 0) showRootTab("home")
@@ -1932,7 +1953,7 @@ class MainActivity : ComponentActivity() {
         if (activity.openDownloadsRequested) showRootTab("downloads")
     }
     BackHandler {
-        if (detail != null) { detail = null; tileRestore++ } else { tab = "home"; platform = "all" }
+        if (detail != null) { closeGameDetail(); tileRestore++ } else { tab = "home"; platform = "all" }
     }
 
     Box(Modifier.fillMaxSize().background(Ink).safeDrawingPadding().onPreviewKeyEvent { event ->
@@ -1942,9 +1963,10 @@ class MainActivity : ComponentActivity() {
         } else false
     }) {
         if (detail != null) {
-            val g = detail!!
+            val g = detail
             val versions = remember(g, groups, libraryOptions.groupVersions) { gameVersions(g, groups, libraryOptions.groupVersions) }
-            val selectedVersion = versions.getOrNull(variant) ?: versions.firstOrNull()
+            val variant = versions.indexOfFirst { it.game.id == versionGameId && it.game.files[it.fileIndex] == versionFile }.coerceAtLeast(0)
+            val selectedVersion = versions.getOrNull(variant)
             val versionPaths = remember(versions) { versions.map { android.net.Uri.decode(it.game.files[it.fileIndex]) } }
             val fileNames = remember(versionPaths) { versionPaths.map { it.substringAfterLast('/') } }
             val labels = remember(versionPaths, fileNames) {
@@ -1954,13 +1976,16 @@ class MainActivity : ComponentActivity() {
                     if ((counts[name] ?: 0) > 1) "$name · ${path.substringBeforeLast('/', "")}" else name
                 }
             }
-            val versionLabel = labels.getOrNull(variant) ?: labels.firstOrNull().orEmpty()
-            if (versionPickerOpen) {
-                DisposableEffect(activity, g.id, labels) {
+            val versionLabel = labels.getOrNull(variant).orEmpty()
+            LaunchedEffect(versions.size) { if (versions.size < 2) versionPickerOpen = false }
+            if (versionPickerOpen && versions.size > 1) {
+                DisposableEffect(activity, g.id, versions, labels) {
                     val dialog = android.app.AlertDialog.Builder(activity)
                         .setTitle(R.string.other_version)
-                        .setSingleChoiceItems(labels.toTypedArray(), variant.coerceIn(labels.indices)) { _, index ->
-                            variant = index
+                        .setSingleChoiceItems(labels.toTypedArray(), variant) { _, index ->
+                            val version = versions[index]
+                            versionGameId = version.game.id
+                            versionFile = version.game.files[version.fileIndex]
                             versionPickerOpen = false
                         }
                         .setNegativeButton(R.string.cancel) { _, _ -> versionPickerOpen = false }
@@ -1968,39 +1993,45 @@ class MainActivity : ComponentActivity() {
                         .setOnDismissListener { versionPickerOpen = false }
                         .create()
                     dialog.show()
-                    onDispose { dialog.dismiss() }
+                    onDispose { dialog.setOnDismissListener(null); dialog.dismiss() }
                 }
             }
             Box(Modifier.align(Alignment.CenterEnd).padding(end = 36.dp).fillMaxWidth(.32f).fillMaxHeight(.78f).border(1.dp, Color(0xFF424244)).background(Panel)) {
                 CoverArtwork(g.cover.ifEmpty { g.scene }, Modifier.fillMaxSize(), g.id)
             }
-            Column(Modifier.fillMaxSize().padding(40.dp)) {
-                Action(tr(R.string.back_library), onClick = { detail = null; tileRestore++ })
-                Spacer(Modifier.height(26.dp))
-                Text("${platformTitle(g.platform).uppercase()}   /   ${if (g.demo) "HOMEBREW" else tr(R.string.your_collection).uppercase()}", color = Lime, fontSize = 12.sp, letterSpacing = 2.sp)
-                Spacer(Modifier.height(10.dp))
-                Text(g.title.uppercase(), fontSize = 38.sp, lineHeight = 42.sp, fontWeight = FontWeight.Black, color = White, maxLines = 2, modifier = Modifier.width(540.dp))
-                Spacer(Modifier.height(12.dp))
-                Text(listOf(g.year, genre(g.genre), if (g.players.isNotEmpty()) tr(R.string.players, g.players) else "").filter { it.isNotEmpty() }.joinToString("   ·   "), color = White, fontSize = 15.sp)
-                Spacer(Modifier.height(12.dp))
-                val selectedEmulator = PlatformRegistry.resolve(g.platform, libraryOptions.ndsEmulator)?.emulator ?: g.emulator
-                Text(g.developer.ifEmpty { PlatformRegistry.title(activity, g.platform) } + "\n" + tr(R.string.emulator, selectedEmulator), color = Muted, fontSize = 14.sp, lineHeight = 23.sp)
-                Spacer(Modifier.height(12.dp))
-                GameDescriptionPanel(g)
-                Spacer(Modifier.weight(1f))
-                if (versions.size > 1) {
-                    Text(tr(R.string.variant, variant.coerceIn(0, versions.lastIndex) + 1, versions.size), color = Muted, fontSize = 12.sp)
-                    Text(versionLabel, color = White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.width(540.dp))
-                    Spacer(Modifier.height(8.dp))
+            BoxWithConstraints(Modifier.fillMaxSize()) {
+                val short = maxHeight < 480.dp
+                val edge = if (short || maxWidth < 600.dp) 16.dp else 40.dp
+                Column(Modifier.fillMaxSize().padding(edge)) {
+                    val detailsScroll = rememberScrollState()
+                    Column(Modifier.weight(1f).fillMaxWidth().then(if (short) Modifier.verticalScroll(detailsScroll) else Modifier)) {
+                        Action(tr(R.string.back_library), onClick = { closeGameDetail(); tileRestore++ })
+                        Spacer(Modifier.height(26.dp))
+                        Text("${platformTitle(g.platform).uppercase()}   /   ${if (g.demo) "HOMEBREW" else tr(R.string.your_collection).uppercase()}", color = Lime, fontSize = 12.sp, letterSpacing = 2.sp)
+                        Spacer(Modifier.height(10.dp))
+                        Text(g.title.uppercase(), fontSize = 38.sp, lineHeight = 42.sp, fontWeight = FontWeight.Black, color = White, maxLines = 2, modifier = Modifier.width(540.dp))
+                        Spacer(Modifier.height(12.dp))
+                        Text(listOf(g.year, genre(g.genre), if (g.players.isNotEmpty()) tr(R.string.players, g.players) else "").filter { it.isNotEmpty() }.joinToString("   ·   "), color = White, fontSize = 15.sp)
+                        Spacer(Modifier.height(12.dp))
+                        val selectedEmulator = PlatformRegistry.resolve(g.platform, libraryOptions.ndsEmulator)?.emulator ?: g.emulator
+                        Text(g.developer.ifEmpty { PlatformRegistry.title(activity, g.platform) } + "\n" + tr(R.string.emulator, selectedEmulator), color = Muted, fontSize = 14.sp, lineHeight = 23.sp)
+                        Spacer(Modifier.height(12.dp))
+                        GameDescriptionPanel(g)
+                    }
+                    if (versions.size > 1) {
+                        Text(tr(R.string.variant, variant + 1, versions.size), color = Muted, fontSize = 12.sp)
+                        Text(versionLabel, color = White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.width(540.dp))
+                        Spacer(Modifier.height(8.dp))
+                    }
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Action(tr(R.string.play), primary = true, modifier = Modifier.focusRequester(firstFocus), onClick = { selectedVersion?.let { activity.launchGame(it.game, it.fileIndex) } })
+                        if (versions.size > 1) Action(tr(R.string.other_version), onClick = { versionPickerOpen = true })
+                        Action(tr(R.string.cover_manage), onClick = { activity.editGameCover(g.id) })
+                        Action(if (g.id in favorites) tr(R.string.favorite_on) else tr(R.string.favorite_off), onClick = { toggle(g) })
+                    }
+                    Spacer(Modifier.height(if (short) 8.dp else 22.dp))
+                    ControlHints(R.string.control_select, R.string.back)
                 }
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Action(tr(R.string.play), primary = true, modifier = Modifier.focusRequester(firstFocus), onClick = { selectedVersion?.let { activity.launchGame(it.game, it.fileIndex) } })
-                    if (versions.size > 1) Action(tr(R.string.other_version), onClick = { versionPickerOpen = true })
-                    Action(tr(R.string.cover_manage), onClick = { activity.editGameCover(g.id) })
-                    Action(if (g.id in favorites) tr(R.string.favorite_on) else tr(R.string.favorite_off), onClick = { toggle(g) })
-                }
-                Spacer(Modifier.height(22.dp))
-                ControlHints(R.string.control_select, R.string.back)
             }
             LaunchedEffect(g.id) { firstFocus.requestFocus() }
         } else {
@@ -2235,7 +2266,7 @@ class MainActivity : ComponentActivity() {
         TileContextMenu(target, isFavorite = itemKey in favoriteRefs,
             currentSectionTitle = currentSection?.let { sectionTitle(it) },
             onPlay = { dismissTileMenu(); menuGame?.let { activity.launchGame(it, 0) } },
-            onDetails = { tileMenu = null; detail = menuGame; variant = 0 },
+            onDetails = { tileMenu = null; menuGame?.let(::showGameDetail) },
             onCover = { dismissTileMenu(); menuGame?.let { activity.editGameCover(it.id) }; menuMovie?.let { activity.chooseCover(homeMovieKey(it.id)) } },
             onToggleFavorite = { SectionPreferences.toggleFavorite(activity, itemKey); dismissTileMenu() },
             onOpenApp = { dismissTileMenu(); menuApp?.let(activity::openApp); menuMovie?.let { openMediaLibrary(activity, it.id) } },

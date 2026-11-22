@@ -12,6 +12,7 @@ import android.net.http.SslError
 import android.os.Bundle
 import android.text.InputType
 import android.view.Gravity
+import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
@@ -82,6 +83,7 @@ internal class TvBrowserActivity : ComponentActivity() {
             setPadding(dp(12), 0, dp(12), 0)
             background = focusBackground(accentFill = false)
             imeOptions = EditorInfo.IME_ACTION_GO or EditorInfo.IME_FLAG_NO_EXTRACT_UI
+            setOnKeyListener { _, _, event -> handleAddressDown(event) }
             setOnEditorActionListener { _, action, event ->
                 if (action == EditorInfo.IME_ACTION_GO || (event?.keyCode == KeyEvent.KEYCODE_ENTER && event.action == KeyEvent.ACTION_UP)) {
                     submitAddress()
@@ -162,6 +164,25 @@ internal class TvBrowserActivity : ComponentActivity() {
         if (intent.getBooleanExtra(RESELECT_DOWNLOAD, false)) showStatus(R.string.http_download_session_pick_same)
         if (page == null) address.requestFocus()
         updateControls()
+    }
+
+    private fun handleAddressDown(event: KeyEvent): Boolean {
+        if (event.keyCode != KeyEvent.KEYCODE_DPAD_DOWN || !event.hasNoModifiers()) return false
+        if (!event.isFromSource(InputDevice.SOURCE_DPAD) && !event.isFromSource(InputDevice.SOURCE_GAMEPAD)) {
+            return false
+        }
+        val web = page ?: return false
+        // Move on key-up so a held Down stays in the address field until the transfer.
+        return when (event.action) {
+            KeyEvent.ACTION_DOWN -> true
+            KeyEvent.ACTION_UP -> {
+                if (!event.isCanceled && web.requestFocus()) {
+                    getSystemService(InputMethodManager::class.java)?.hideSoftInputFromWindow(address.windowToken, 0)
+                }
+                true
+            }
+            else -> false
+        }
     }
 
     private fun submitAddress() {

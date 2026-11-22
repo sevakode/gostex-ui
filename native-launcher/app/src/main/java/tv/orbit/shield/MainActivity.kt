@@ -1768,16 +1768,7 @@ class MainActivity : ComponentActivity() {
     var settingsInitialSection by rememberSaveable { mutableStateOf("root") }
     val settingsFocus = remember { FocusRequester() }
     val updateFocus = remember { FocusRequester() }
-    var settingsReturnFocus by remember { mutableStateOf<FocusRequester?>(null) }
     var drawerWasOpen by remember { mutableStateOf(false) }
-    LaunchedEffect(settingsOpen) {
-        if (settingsOpen) drawerWasOpen = true
-        else if (drawerWasOpen) {
-            withFrameNanos { }
-            val restored = settingsReturnFocus?.let { runCatching { it.requestFocus() }.getOrDefault(false) } ?: false
-            if (!restored) runCatching { settingsFocus.requestFocus() }
-        }
-    }
     var platform by rememberSaveable { mutableStateOf("all") }
     var chosenId by rememberSaveable { mutableStateOf(HomePreferences.selectedId(activity)) }
     var detailId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -1898,7 +1889,40 @@ class MainActivity : ComponentActivity() {
     val movies = movieResult?.getOrDefault(emptyList()).orEmpty()
     val homeOptions = rememberHomeOptions()
     val clockOptions = rememberClockOptions()
+    val currentClockOptions by rememberUpdatedState(clockOptions)
     val clockInstant = rememberClockInstant(clockOptions.visible && clockOptions.zones.isNotEmpty() && detail == null)
+    val clockReturnZone = settingsInitialSection.takeIf { it.startsWith("clock/manage/") }?.removePrefix("clock/manage/")
+    val clockStripState = rememberLazyListState()
+    val clockReturnFocus = remember { FocusRequester() }
+    LaunchedEffect(settingsOpen) {
+        if (settingsOpen) {
+            drawerWasOpen = true
+            return@LaunchedEffect
+        }
+        if (!drawerWasOpen) return@LaunchedEffect
+        drawerWasOpen = false
+        withFrameNanos { }
+        val options = currentClockOptions
+        val clockIndex = if (clockReturnZone != null && options.visible && options.zones.size >= 2 && detail == null) {
+            options.zones.indexOf(clockReturnZone)
+        } else -1
+        val target = when {
+            clockIndex >= 0 -> {
+                val layout = clockStripState.layoutInfo
+                val visible = layout.visibleItemsInfo.any { item ->
+                    item.key == clockReturnZone && item.offset >= layout.viewportStartOffset &&
+                        item.offset + item.size <= layout.viewportEndOffset
+                }
+                if (!visible && layout.totalItemsCount > 0) clockStripState.scrollToItem(clockIndex)
+                withFrameNanos { }
+                clockReturnFocus
+            }
+            settingsInitialSection == "updates" -> updateFocus
+            else -> settingsFocus
+        }
+        val restored = runCatching { target.requestFocus() }.getOrDefault(false)
+        if (!restored && target !== settingsFocus) runCatching { settingsFocus.requestFocus() }
+    }
     var moviePlayRevision by remember { mutableIntStateOf(0) }
     DisposableEffect(prefs) {
         val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
@@ -2096,7 +2120,7 @@ class MainActivity : ComponentActivity() {
                             }
                             if (rememberNetworkVisible()) NetworkStatusButton(activity)
                             CompactIconButton(CompactIcon.Settings, tr(R.string.settings), modifier = Modifier.focusRequester(settingsFocus),
-                                onClick = { settingsInitialSection = "root"; settingsReturnFocus = null; settingsOpen = true })
+                                onClick = { settingsInitialSection = "root"; settingsOpen = true })
                         }
                         if (batteryVisible || (clockOptions.visible && clockOptions.zones.size == 1)) {
                             FlowRow(
@@ -2143,18 +2167,16 @@ class MainActivity : ComponentActivity() {
                     }
                     val settingsLabel = tr(R.string.settings)
                     CompactIconButton(CompactIcon.Settings, settingsLabel, modifier = Modifier.focusRequester(settingsFocus),
-                        onClick = { settingsInitialSection = "root"; settingsReturnFocus = null; settingsOpen = true })
+                        onClick = { settingsInitialSection = "root"; settingsOpen = true })
                 }
                   }
                 }
                 UpdateAvailableAction(activity, Modifier.padding(horizontal = 42.dp, vertical = 4.dp).focusRequester(updateFocus)) {
                     settingsInitialSection = "updates"
-                    settingsReturnFocus = updateFocus
                     settingsOpen = true
                 }
-                WorldClockStrip(clockOptions, clockInstant) { zone, focus ->
+                WorldClockStrip(clockOptions, clockInstant, clockStripState, clockReturnZone, clockReturnFocus) { zone ->
                     settingsInitialSection = "clock/manage/$zone"
-                    settingsReturnFocus = focus
                     settingsOpen = true
                 }
                 if (tab == "home") {
@@ -2165,7 +2187,7 @@ class MainActivity : ComponentActivity() {
                         onAppOpen = activity::openApp, onAppMenu = ::appMenu,
                         onMovieOpen = { openMediaLibrary(activity, it.id, playIfSingle = true) }, onMovieMenu = ::movieMenu,
                         onMovieCover = activity::fetchMediaCover,
-                        onEmptySettings = { settingsInitialSection = "homeOptions"; settingsReturnFocus = null; settingsOpen = true })
+                        onEmptySettings = { settingsInitialSection = "homeOptions"; settingsOpen = true })
                 } else if (tab == "movies") {
                     MediaScreen(activity, movies, movieResult != null, movieResult?.isFailure == true,
                         inputEnabled = !settingsOpen && !mediaOpen && tileMenu == null && membershipItem == null && favoriteOrderItem == null,

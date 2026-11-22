@@ -7,6 +7,7 @@ import android.content.IntentFilter
 import android.os.Build
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -100,20 +101,22 @@ import java.time.format.FormatStyle
 }
 
 /** The multi-clock strip scrolls with D-pad focus instead of squeezing navigation off screen. */
-@Composable internal fun WorldClockStrip(options: ClockOptions, instant: Instant, onConfigure: (String, FocusRequester) -> Unit) {
+@Composable internal fun WorldClockStrip(
+    options: ClockOptions, instant: Instant, state: LazyListState, returnZone: String?,
+    returnFocus: FocusRequester, onConfigure: (String) -> Unit
+) {
     if (!options.visible || options.zones.size < 2) return
     val context = LocalContext.current
     val dateFormat = rememberClockDateFormatter(options.showDate)
-    LazyRow(contentPadding = PaddingValues(horizontal = 36.dp, vertical = 4.dp),
+    LazyRow(state = state, contentPadding = PaddingValues(horizontal = 36.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
         items(options.zones, key = { it }) { zone ->
-            val focus = remember { FocusRequester() }
+            val focus = if (zone == returnZone) Modifier.focusRequester(returnFocus) else Modifier
+            val configure = { onConfigure(zone) }
             val title = zoneTitle(context, zone)
             val time = formatClockTime(context, zone, options.format, instant)
             val date = dateFormat?.format(instant.atZone(clockZone(zone)))
-            Surface(onClick = {
-                onConfigure(zone, focus)
-            }, modifier = Modifier.width(160.dp).touchSurface { onConfigure(zone, focus) }.focusRequester(focus).semantics {
+            Surface(onClick = configure, modifier = Modifier.width(160.dp).touchSurface(onClick = configure).then(focus).semantics {
                 contentDescription = listOfNotNull(title, time, date).joinToString(", ")
             }, shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(0.dp)),
                 colors = ClickableSurfaceDefaults.colors(containerColor = Color(0xFF1F1F21), focusedContainerColor = Color(0xFF303033)),

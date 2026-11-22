@@ -10,6 +10,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -26,6 +27,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.tv.material3.Text
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -33,19 +37,30 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 
+private class MovieNavigation : ViewModel() {
+    var initialized = false
+    var page by mutableStateOf("saved")
+    var selected by mutableStateOf<MovieCatalogItem?>(null)
+    var results by mutableStateOf<List<MovieCatalogItem>>(emptyList())
+    var query by mutableStateOf("")
+    var searchCompleted by mutableStateOf(false)
+}
+
+private fun SavedMovie.catalogItem() =
+    MovieCatalogItem(id, title, year, poster, durationSeconds = durationSeconds, mediaType = mediaType)
+
 /** Film metadata and user-owned sources; streaming is delegated to an installed player. */
 class MovieLibraryActivity : ComponentActivity() {
     private val videoPlayer = VideoPlayerChooser(this) { emulatorInstall }
-    private var page by mutableStateOf("saved")
+    private val navigation by viewModels<MovieNavigation> { viewModelFactory { initializer { MovieNavigation() } } }
+    private val selected get() = navigation.selected
     private var saved by mutableStateOf<List<SavedMovie>>(emptyList())
-    private var results by mutableStateOf<List<MovieCatalogItem>>(emptyList())
-    private var selected by mutableStateOf<MovieCatalogItem?>(null)
+    private var discoverSavedSources by mutableStateOf(false)
     private var sources by mutableStateOf<List<MovieStreamOption>>(emptyList())
     private var addons by mutableStateOf<List<ConfiguredMovieAddon>>(emptyList())
     private var error by mutableStateOf("")
     private var busy by mutableStateOf(false)
     private var progressMessage by mutableStateOf("")
-    private var searched by mutableStateOf(false)
     private var searchedSources by mutableStateOf(false)
     private var sourceEpisode by mutableStateOf<MovieEpisode?>(null)
     private var missingTorrentHash by mutableStateOf<String?>(null)
@@ -98,14 +113,18 @@ class MovieLibraryActivity : ComponentActivity() {
         pendingRestoreHash = savedInstanceState?.getString(STATE_PENDING_RESTORE_HASH)?.takeIf { it.matches(Regex("(?i)[0-9a-f]{40}")) }
         lastPreparedMovie = savedInstanceState?.getString("buffer.movie")
         lastPreparedHash = savedInstanceState?.getString("buffer.hash")?.takeIf { it.matches(Regex("(?i)[0-9a-f]{40}")) }
-        pendingTorrentHash = (savedInstanceState?.getString(EXTRA_TORRENT_HASH) ?: intent.getStringExtra(EXTRA_TORRENT_HASH))
+        val hash = if (savedInstanceState == null) intent.getStringExtra(EXTRA_TORRENT_HASH) else savedInstanceState.getString(EXTRA_TORRENT_HASH)
+        pendingTorrentHash = hash
             ?.takeIf { it.matches(Regex("(?i)[0-9a-f]{40}")) }?.lowercase(java.util.Locale.ROOT)
-        pendingTorrentTitle = (savedInstanceState?.getString(EXTRA_TORRENT_TITLE) ?: intent.getStringExtra(EXTRA_TORRENT_TITLE)).orEmpty().take(256)
-        intent.getStringExtra(EXTRA_MOVIE_ID)?.let { id ->
-            saved.firstOrNull { it.id == id }?.let { movie ->
-                openMovie(MovieCatalogItem(movie.id, movie.title, movie.year, movie.poster, durationSeconds = movie.durationSeconds, mediaType = movie.mediaType))
-            }
+        val title = if (savedInstanceState == null) intent.getStringExtra(EXTRA_TORRENT_TITLE) else savedInstanceState.getString(EXTRA_TORRENT_TITLE)
+        pendingTorrentTitle = title.orEmpty().take(256)
+        if (savedInstanceState == null) {
+            val id = intent.getStringExtra(EXTRA_MOVIE_ID)
+            saved.firstOrNull { it.id == id }?.let { openMovie(it.catalogItem()) }
+        } else {
+            restoreNavigation(savedInstanceState)
         }
+        navigation.initialized = true
         setContent { MovieScreen(); videoPlayer.Render() }
         if (savedInstanceState == null && intent.getBooleanExtra(EXTRA_PLAY_SINGLE, false)) {
             selected?.id?.let { id ->
@@ -127,6 +146,11 @@ class MovieLibraryActivity : ComponentActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         emulatorInstall.save(outState)
+        outState.putString(STATE_PAGE, navigation.page)
+        outState.putString(STATE_QUERY, navigation.query)
+        if (navigation.page == "detail") {
+            outState.putString(STATE_SAVED_MOVIE_ID, selected?.id?.takeIf { id -> saved.any { it.id == id } })
+        }
         outState.putString(STATE_PENDING_FILE_ID, pendingFileId)
         outState.putString(STATE_PENDING_RESTORE_HASH, pendingRestoreHash)
         outState.putString("buffer.movie", lastPreparedMovie)
@@ -136,9 +160,39 @@ class MovieLibraryActivity : ComponentActivity() {
         super.onSaveInstanceState(outState)
     }
 
+    private fun restoreNavigation(state: Bundle) {
+        val savedId = state.getString(STATE_SAVED_MOVIE_ID)?.takeIf { it.isNotBlank() && it.length <= 256 }
+        val movie = savedId?.let { id -> saved.firstOrNull { it.id == id } }
+        // The ViewModel retains catalog metadata across size changes. A new process restores only
+        // the saved collection entry or a search that the user can explicitly submit again.
+        if (navigation.initialized) {
+            if (navigation.page == "detail" && savedId != null) {
+                val previous = selected
+                navigation.selected = movie?.catalogItem()?.let { current ->
+                    val description = previous?.takeIf { it.id == current.id && it.mediaType == current.mediaType }
+                        ?.description.orEmpty()
+                    current.copy(description = description)
+                }
+                if (movie == null) navigation.page = "saved"
+            }
+            return
+        }
+        navigation.query = state.getString(STATE_QUERY).orEmpty().trim().take(150)
+        navigation.page = when (state.getString(STATE_PAGE)) {
+            "addons" -> "addons"
+            "results" -> if (navigation.query.isNotEmpty()) "results" else "saved"
+            "detail" -> if (movie != null) "detail" else "saved"
+            else -> "saved"
+        }
+        if (navigation.page == "detail") navigation.selected = movie?.catalogItem()
+    }
+
     companion object {
         private const val STATE_PENDING_FILE_ID = "pending_file_id"
         private const val STATE_PENDING_RESTORE_HASH = "pending_restore_hash"
+        private const val STATE_PAGE = "media.page"
+        private const val STATE_QUERY = "media.query"
+        private const val STATE_SAVED_MOVIE_ID = "media.saved_movie_id"
         internal const val EXTRA_MOVIE_ID = "movie_id"
         internal const val EXTRA_PLAY_SINGLE = "play_single"
         internal const val EXTRA_TORRENT_HASH = "torrent_hash"
@@ -155,20 +209,32 @@ class MovieLibraryActivity : ComponentActivity() {
         if (readFailed) error = getString(R.string.movies_corrupt)
     }
 
-    private fun input(title: Int, hint: Int, onSubmit: (String) -> Unit) {
-        val field = EditText(this).apply { setSingleLine(true); setHint(hint) }
+    private fun input(title: Int, hint: Int, initialValue: String = "", onSubmit: (String) -> Unit) {
+        val field = EditText(this).apply {
+            setSingleLine(true)
+            setHint(hint)
+            if (initialValue.isNotEmpty()) {
+                setText(initialValue)
+                setSelection(length())
+            }
+        }
         AlertDialog.Builder(this).setTitle(title).setView(field)
             .setNegativeButton(R.string.movies_cancel, null)
             .setPositiveButton(R.string.movies_add) { _, _ -> onSubmit(field.text.toString()) }.show()
     }
 
-    private fun search() = input(R.string.movies_search, R.string.movies_search, ::searchFor)
+    private fun search() = input(R.string.movies_search, R.string.movies_search, navigation.query, ::searchFor)
 
-    private fun searchFor(query: String) {
-        if (query.isBlank()) return
+    private fun searchFor(input: String) {
+        val query = input.trim().take(150)
+        if (query.isEmpty()) return
         stopSourceLookup()
         val generation = ++requestGeneration
-        busy = true; progressMessage = ""; error = ""; searched = true; page = "results"
+        navigation.query = query
+        navigation.results = emptyList()
+        navigation.searchCompleted = false
+        navigation.page = "results"
+        busy = true; progressMessage = ""; error = ""
         lifecycleScope.launch {
             val fetched = withContext(Dispatchers.IO) { runCatching {
                 val films = runCatching { MovieCatalogClient.search(query, type = "movie") }
@@ -183,19 +249,24 @@ class MovieLibraryActivity : ComponentActivity() {
             } }
             if (generation != requestGeneration || isFinishing) return@launch
             busy = false
-            if (fetched.isSuccess) results = fetched.getOrThrow()
-            else { results = emptyList(); error = getString(R.string.movies_source_failed) }
+            if (fetched.isSuccess) {
+                navigation.results = fetched.getOrThrow()
+                navigation.searchCompleted = true
+            } else error = getString(R.string.movies_source_failed)
         }
     }
 
     private fun openMovie(item: MovieCatalogItem) {
         stopSourceLookup()
         val generation = ++requestGeneration
-        page = "detail"; selected = item; sources = emptyList(); error = ""; searchedSources = false; sourceEpisode = null; missingTorrentHash = null
+        navigation.page = "detail"
+        navigation.selected = item
+        discoverSavedSources = true
+        sources = emptyList(); error = ""; searchedSources = false; sourceEpisode = null; missingTorrentHash = null
         if (!item.id.matches(Regex("tt[0-9]{1,16}"))) return
         lifecycleScope.launch {
             val details = withContext(Dispatchers.IO) { runCatching { MovieCatalogClient.details(item.id, type = item.mediaType) } }
-            if (generation == requestGeneration && selected?.id == item.id && details.isSuccess) selected = details.getOrThrow()
+            if (generation == requestGeneration && selected?.id == item.id && details.isSuccess) navigation.selected = details.getOrThrow()
         }
     }
 
@@ -279,7 +350,7 @@ class MovieLibraryActivity : ComponentActivity() {
         if (readFailed || !movie.id.startsWith("local:")) return
         localMediaEditor(movie.title, movie.mediaType, editing = true) { name, mediaType ->
             val saved = runCatching { MovieLibraryStore.editLocal(this, movie.id, name, mediaType) }.getOrDefault(false)
-            if (saved) { selected = movie.copy(title = name, mediaType = mediaType); refresh() }
+            if (saved) { navigation.selected = movie.copy(title = name, mediaType = mediaType); refresh() }
             saved
         }
     }
@@ -754,12 +825,13 @@ class MovieLibraryActivity : ComponentActivity() {
 
     @OptIn(ExperimentalLayoutApi::class)
     @Composable private fun MovieScreen() {
+        val page = navigation.page
         val downloads by TorrDownloadStore.jobs.collectAsState()
         val journalState by TorrDownloadStartup.state.collectAsStateWithLifecycle()
         val liveDownloadProgress by TorrDownloadLiveProgress.current.collectAsStateWithLifecycle()
         val savedFocus = remember { FocusRequester() }
         val lastEpisode = rememberLastEpisode(selected?.takeIf { it.mediaType == "series" }?.id)
-        val recoveryMovie = selected?.takeIf { page == "detail" }
+        val recoveryMovie = selected?.takeIf { page == "detail" && discoverSavedSources }
         val recoverySources = saved.firstOrNull { it.id == recoveryMovie?.id }?.sources
         // Keep this outside LazyColumn: scrolling the title out of view must not restart discovery.
         LaunchedEffect(recoveryMovie?.id, recoverySources) {
@@ -788,10 +860,10 @@ class MovieLibraryActivity : ComponentActivity() {
             Text(tr(R.string.media_tab_title), color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(12.dp))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                MovieButton(tr(R.string.movies_saved), Modifier.focusRequester(savedFocus)) { stopSourceLookup(); requestGeneration++; page = "saved"; busy = false; error = "" }
+                MovieButton(tr(R.string.movies_saved), Modifier.focusRequester(savedFocus)) { stopSourceLookup(); requestGeneration++; navigation.page = "saved"; busy = false; error = "" }
                 MovieButton(tr(R.string.movies_search)) { search() }
-                MovieButton(tr(R.string.movies_addons)) { stopSourceLookup(); requestGeneration++; page = "addons"; busy = false; error = "" }
-                MovieButton(tr(R.string.back)) { stopSourceLookup(); if (page == "saved") finish() else { requestGeneration++; page = "saved"; busy = false; error = "" } }
+                MovieButton(tr(R.string.movies_addons)) { stopSourceLookup(); requestGeneration++; navigation.page = "addons"; busy = false; error = "" }
+                MovieButton(tr(R.string.back)) { stopSourceLookup(); if (page == "saved") finish() else { requestGeneration++; navigation.page = "saved"; busy = false; error = "" } }
             }
             if (pendingTorrentHash != null && page in setOf("saved", "results")) {
                 Text(tr(R.string.movies_attach_help), color = Color.LightGray, fontSize = 14.sp, modifier = Modifier.padding(top = 8.dp))
@@ -807,14 +879,15 @@ class MovieLibraryActivity : ComponentActivity() {
                     "saved" -> {
                         if (saved.isEmpty()) item { Text(tr(R.string.movies_empty), color = Color.LightGray) }
                         items(saved, key = { it.id }) { movie ->
-                            SettingRow(movie.title, movie.year, onClick = {
-                                openMovie(MovieCatalogItem(movie.id, movie.title, movie.year, movie.poster, durationSeconds = movie.durationSeconds, mediaType = movie.mediaType))
-                            })
+                            SettingRow(movie.title, movie.year, onClick = { openMovie(movie.catalogItem()) })
                         }
                     }
                     "results" -> {
-                        if (!busy && searched && results.isEmpty()) item { Text(tr(R.string.movies_no_results), color = Color.LightGray) }
-                        items(results, key = { "${it.mediaType}:${it.id}" }) { movie -> SettingRow(movie.title,
+                        if (!busy && navigation.results.isEmpty()) item {
+                            if (navigation.searchCompleted) Text(tr(R.string.movies_no_results), color = Color.LightGray)
+                            else SettingRow(tr(R.string.movies_search), navigation.query, onClick = { search() })
+                        }
+                        items(navigation.results, key = { "${it.mediaType}:${it.id}" }) { movie -> SettingRow(movie.title,
                             listOf(movie.year, tr(if (movie.mediaType == "series") R.string.movies_type_series else R.string.movies_type_movie)).filter { it.isNotBlank() }.joinToString(" · "), onClick = { openMovie(movie) }) }
                     }
                     "addons" -> {

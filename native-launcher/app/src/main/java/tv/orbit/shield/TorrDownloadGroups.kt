@@ -11,15 +11,13 @@ import java.util.UUID
 /** Each torrent gets a private-named directory inside the user's chosen tree. */
 internal object TorrDownloadGroups {
     private const val KEY = "downloads.torrserver.groups"
-    private data class Child(val id: String, val name: String, val mime: String)
+    internal data class Child(val id: String, val name: String, val mime: String, val size: Long? = null)
 
-    private fun children(context: Context, tree: Uri, parent: String, checkActive: () -> Unit = {}): List<Child> {
-        checkActive()
+    private fun children(context: Context, tree: Uri, parent: String): List<Child> {
         val columns = arrayOf(Docs.Document.COLUMN_DOCUMENT_ID, Docs.Document.COLUMN_DISPLAY_NAME, Docs.Document.COLUMN_MIME_TYPE)
         return context.contentResolver.query(Docs.buildChildDocumentsUriUsingTree(tree, parent), columns, null, null, null)?.use { c ->
             buildList {
                 while (c.moveToNext()) {
-                    checkActive()
                     if (size >= 10000) throw IOException("Too many documents")
                     add(Child(c.getString(0) ?: throw IOException("Missing document ID"), c.getString(1) ?: "", c.getString(2) ?: ""))
                 }
@@ -64,13 +62,12 @@ internal object TorrDownloadGroups {
             Docs.isChildDocument(context.contentResolver, Docs.buildDocumentUriUsingTree(tree, parent), uri))
     }
 
-    /** Resolve each existing parent once per recovery pass, without creating any directories. */
+    /** Resolve existing parents using the recovery pass's directory listings. */
     @Synchronized fun existingParents(context: Context, tree: Uri, entry: TorrCatalogEntry,
-                                     paths: List<List<String>>, checkActive: () -> Unit = {}): Map<List<String>, String> {
+                                     paths: List<List<String>>, checkActive: () -> Unit,
+                                     list: (String) -> List<Child>): Map<List<String>, String> {
         checkActive()
         val record = records(context, tree, entry.hash).singleOrNull() ?: return emptyMap()
-        val cachedChildren = mutableMapOf<String, List<Child>>()
-        fun list(parent: String) = cachedChildren.getOrPut(parent) { children(context, tree, parent, checkActive) }
         val root = Docs.getTreeDocumentId(tree)
         val group = list(root).singleOrNull {
             it.id == record.optString("id") && it.name == record.optString("name") && it.mime == Docs.Document.MIME_TYPE_DIR

@@ -238,26 +238,39 @@ internal object TorrDownloadDocuments {
             runCatching { file to TorrDownloadPaths.components(file.path) }.getOrNull()
         }.toMap()
         if (paths.isEmpty()) return emptyList()
-        val parents = TorrDownloadGroups.existingParents(context, tree, entry, paths.values.toList(), checkActive)
-        data class Child(val id: String, val name: String, val size: Long?, val mime: String)
         val columns = arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME,
             DocumentsContract.Document.COLUMN_SIZE, DocumentsContract.Document.COLUMN_MIME_TYPE)
-        val children = mutableMapOf<String, Result<List<Child>>>()
-        fun list(parentId: String): List<Child> = children.getOrPut(parentId) {
+        val children = mutableMapOf<String, Result<List<TorrDownloadGroups.Child>>>()
+        fun list(parentId: String): List<TorrDownloadGroups.Child> = children.getOrPut(parentId) {
             runCatching {
+                checkActive()
                 val uri = DocumentsContract.buildChildDocumentsUriUsingTree(tree, parentId)
                 context.contentResolver.query(uri, columns, null, null, null)?.use { cursor ->
+                    fun requireCompleteListing() {
+                        checkActive()
+                        val extras = cursor.extras
+                        if (extras.getBoolean(DocumentsContract.EXTRA_LOADING) ||
+                            extras.getString(DocumentsContract.EXTRA_ERROR) != null) throw IOException("Incomplete directory listing")
+                    }
+                    requireCompleteListing()
+                    val ids = HashSet<String>()
                     buildList {
                         while (cursor.moveToNext()) {
                             checkActive()
                             if (size >= 10000) throw IOException("Too many destination documents")
-                            add(Child(cursor.getString(0) ?: throw IOException("Missing document ID"), cursor.getString(1) ?: "",
-                                if (cursor.isNull(2)) null else cursor.getLong(2), cursor.getString(3) ?: ""))
+                            val id = cursor.getString(0) ?: throw IOException("Missing document ID")
+                            if (!ids.add(id)) throw IOException("Ambiguous document IDs")
+                            add(TorrDownloadGroups.Child(id, cursor.getString(1) ?: "", cursor.getString(3) ?: "",
+                                if (cursor.isNull(2)) null else cursor.getLong(2)))
                         }
-                    }.also { list -> if (list.map { it.id }.distinct().size != list.size) throw IOException("Ambiguous document IDs") }
+                        requireCompleteListing()
+                    }
                 } ?: throw IOException("Cannot inspect completed files")
             }
         }.getOrThrow()
+        val parents = TorrDownloadGroups.existingParents(context, tree, entry, paths.values.toList(), checkActive, ::list)
+        // These listings were only needed to resolve a path, so let them go before verifying files.
+        children.keys.retainAll(paths.values.mapNotNull { parents[it.dropLast(1)] }.toSet())
         val recovered = mutableListOf<TorrDownloadJob>()
         for ((file, parts) in paths) {
             checkActive()

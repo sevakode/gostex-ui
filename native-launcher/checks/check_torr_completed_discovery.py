@@ -24,8 +24,14 @@ import java.io.ByteArrayInputStream
 import java.io.IOException
 import java.io.InputStream
 data class FakeDocument(val id:String, val parent:String, val name:String, val size:Long?, val mime:String)
-class FakeCursor(private val rows:List<List<Any?>>):Closeable {
+class FakeExtras(private val values:Map<String,Any>) {
+ fun getBoolean(key:String,default:Boolean=false)=values[key] as? Boolean ?: default
+ fun getString(key:String)=values[key] as? String
+ fun containsKey(key:String)=values.containsKey(key)
+}
+class FakeCursor(private val rows:List<List<Any?>>,private val cursorExtras:((Boolean)->Map<String,Any>)? = null):Closeable {
  private var index=-1
+ val extras get()=FakeExtras(cursorExtras?.invoke(index>=rows.size) ?: emptyMap())
  fun moveToNext():Boolean { index++;return index<rows.size }
  fun moveToFirst():Boolean { index=0;return rows.isNotEmpty() }
  fun getString(i:Int)=rows[index][i]?.toString()
@@ -48,6 +54,7 @@ class ContentResolver {
  var headerBytesRead=0;var chunkSize=4096
  val deniedDocuments=mutableSetOf<String>()
  val deniedChildren=mutableSetOf<String>()
+ val childExtras=mutableMapOf<String,(Boolean)->Map<String,Any>>()
  val bodies=mutableMapOf<String,ByteArray>()
  val failedReads=mutableSetOf<String>()
  val unavailableBodies=mutableSetOf<String>()
@@ -77,7 +84,8 @@ class ContentResolver {
  }
  fun query(uri:Uri,columns:Array<String>,selection:String?,args:Array<String>?,sort:String?):FakeCursor? {
   val id=uri.raw.substringAfterLast('/')
-  val docs=if ("/children/" in uri.raw) {
+  val isChildQuery="/children/" in uri.raw
+  val docs=if (isChildQuery) {
    lists[id]=(lists[id] ?: 0)+1;documents.values.filter { it.parent==id }
   } else {
    documentQueries+=uri
@@ -86,7 +94,7 @@ class ContentResolver {
   }
   val rows=docs.map { d -> columns.map { when(it) { "id"->d.id;"name"->d.name;"size"->d.size;"mime"->d.mime;else->error(it) } } }
   afterQuery?.invoke(id)
-  return FakeCursor(rows)
+  return FakeCursor(rows,if (isChildQuery) childExtras[id] else null)
  }
 }
 open class Context {
@@ -114,6 +122,7 @@ import android.content.ContentResolver
 import android.content.FakeDocument
 import android.net.Uri
 object DocumentsContract {
+ const val EXTRA_LOADING="loading";const val EXTRA_ERROR="error"
  object Document {
   const val COLUMN_DOCUMENT_ID="id";const val COLUMN_DISPLAY_NAME="name"
   const val COLUMN_SIZE="size";const val COLUMN_MIME_TYPE="mime";const val MIME_TYPE_DIR="dir"
@@ -230,6 +239,43 @@ fun main()=runBlocking {
  val before=ctx.contentResolver.lists.toMap()
  TorrPrefetch.recoverEntry(ctx,"movie",TorrServerCatalog.entry)
  check(ctx.contentResolver.lists==before) // All known files: no SAF scan at all.
+
+ fun mixedFixture()=fixture().also {
+  it.contentResolver.documents["direct"]=FakeDocument("direct","season","direct.mkv",100,"video")
+  it.contentResolver.documents["nested"]=FakeDocument("nested","disc","nested.mkv",100,"video")
+ }
+ ctx=mixedFixture()
+ val mixedDepth=ctx.contentResolver
+ val mixedEntry=TorrCatalogEntry(hash,"Mixed-depth season",listOf(
+  TorrCatalogFile(1,"Season/direct.mkv",100),
+  TorrCatalogFile(2,"Season/Disc/nested.mkv",100),
+ ))
+ TorrPrefetch.recoverEntry(ctx,"movie",mixedEntry)
+ check(TorrDownloadStore.jobs.value.associate { it.index to it.document }==mapOf(
+  1 to Docs.buildDocumentUriUsingTree(tree,"direct").toString(),
+  2 to Docs.buildDocumentUriUsingTree(tree,"nested").toString(),
+ ))
+ val mixedLists=mapOf("root" to 1,"group" to 1,"season" to 1,"disc" to 1)
+ check(mixedDepth.lists==mixedLists) { "Mixed-depth recovery enumerations: ${mixedDepth.lists}" }
+ check(mixedDepth.opens==2 && mixedDepth.creates==0 && mixedDepth.deletes==0)
+ TorrPrefetch.recoverEntry(ctx,"movie",mixedEntry)
+ check(mixedDepth.lists==mixedLists && mixedDepth.opens==2)
+ println("PASS: mixed-depth recovery enumerates the shared Season folder once")
+
+ for (extras in listOf<(Boolean)->Map<String,Any>>(
+  { exhausted -> if (!exhausted) mapOf(Docs.EXTRA_LOADING to true) else emptyMap() },
+  { exhausted -> if (exhausted) mapOf(Docs.EXTRA_ERROR to "Fixture cursor failed") else emptyMap() },
+ )) {
+  ctx=mixedFixture()
+  val partial=ctx.contentResolver
+  partial.childExtras["season"]=extras
+  TorrPrefetch.recoverEntry(ctx,"movie",mixedEntry)
+  check(TorrDownloadStore.jobs.value.isEmpty() && partial.opens==0)
+  partial.childExtras.clear()
+  TorrPrefetch.recoverEntry(ctx,"movie",mixedEntry)
+  check(TorrDownloadStore.jobs.value.size==2 && partial.opens==2)
+ }
+ println("PASS: incomplete cursor extras block recovery until a fresh complete enumeration")
 
  ctx=fixture();val provider=ctx.contentResolver
  provider.documents["file1"]=provider.documents.getValue("file1").copy(size=99)

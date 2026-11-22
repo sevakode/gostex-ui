@@ -72,9 +72,11 @@ import kotlinx.coroutines.withContext
     var httpRebindId by remember { mutableStateOf<String?>(null) }
     var browserRebindId by rememberSaveable { mutableStateOf<String?>(null) }
     var httpRebindReturnId by remember { mutableStateOf<String?>(null) }
-    var returnToHttpLink by remember { mutableStateOf(false) }
+    var httpEntryFocus by remember { mutableStateOf<FocusRequester?>(null) }
+    var httpReturnFocus by remember { mutableStateOf<FocusRequester?>(null) }
     var openingHttp by remember { mutableStateOf(false) }
     val httpLinkFocus = remember { FocusRequester() }
+    val browserFocus = remember { FocusRequester() }
     var folderAccessRequest by rememberSaveable { mutableStateOf<ArrayList<String>?>(null) }
     var folderAccessReturnFocus by rememberSaveable { mutableStateOf<String?>(null) }
     var folderAccessBusy by remember { mutableStateOf(false) }
@@ -175,6 +177,7 @@ import kotlinx.coroutines.withContext
                 session != null -> {
                     httpSession = session
                     httpRebindId = rebindId
+                    httpEntryFocus = if (rebindId == null) browserFocus else null
                     showHttpDownload = true
                 }
                 sessionId != null || rebindId != null -> {
@@ -188,6 +191,7 @@ import kotlinx.coroutines.withContext
                 }
                 webLink != null -> {
                     httpInitialAddress = webLink.substringBefore('#')
+                    httpEntryFocus = browserFocus
                     showHttpDownload = true
                 }
             }
@@ -459,11 +463,12 @@ import kotlinx.coroutines.withContext
         return
     }
 
-    LaunchedEffect(showHttpDownload, returnToHttpLink, activity.resumeVersion) {
-        if (!showHttpDownload && returnToHttpLink &&
+    LaunchedEffect(showHttpDownload, httpReturnFocus, activity.resumeVersion) {
+        val focus = httpReturnFocus
+        if (!showHttpDownload && focus != null &&
             activity.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) {
             withFrameNanos { }
-            if (runCatching { httpLinkFocus.requestFocus() }.getOrDefault(false)) returnToHttpLink = false
+            if (runCatching { focus.requestFocus() }.getOrDefault(false)) httpReturnFocus = null
         }
     }
     if (showHttpDownload) {
@@ -474,13 +479,15 @@ import kotlinx.coroutines.withContext
         HttpDownloadUi(activity, folderLabel, httpInitialAddress, onSubmit = {
             showFinished = false
             if (httpRebindId == null) jobPage = 0
-        }, onDismiss = {
+        }, onDismiss = dismiss@{
+            if (!showHttpDownload) return@dismiss
             showHttpDownload = false
             httpInitialAddress = ""
             httpSession = null
             val rebindId = httpRebindId
             httpRebindId = null
-            if (rebindId == null) returnToHttpLink = true else httpRebindReturnId = rebindId
+            if (rebindId == null) httpReturnFocus = httpEntryFocus else httpRebindReturnId = rebindId
+            httpEntryFocus = null
         }, session = httpSession, onRebind = httpRebindId?.let { id ->
             { admission ->
                 runCatching {
@@ -492,20 +499,21 @@ import kotlinx.coroutines.withContext
     }
     fun addHttpLink() {
         if (PortableMaintenance.running) return
+        httpEntryFocus = httpLinkFocus
         showHttpDownload = true
     }
     if (wide) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             SettingRow(tr(R.string.torr_download_add_file), modifier = Modifier.weight(1f).focusRequester(initialFocus), onClick = activity::chooseTorrFile)
             SettingRow(tr(R.string.http_download_add_link), modifier = Modifier.weight(1f).focusRequester(httpLinkFocus), onClick = ::addHttpLink)
-            SettingRow(tr(R.string.browser_download_entry), modifier = Modifier.weight(1f), onClick = { openBrowser() })
+            SettingRow(tr(R.string.browser_download_entry), modifier = Modifier.weight(1f).focusRequester(browserFocus), onClick = { openBrowser() })
             SettingRow(tr(if (showMagnet) R.string.downloads_magnet_hide else R.string.downloads_magnet_show), modifier = Modifier.weight(1f), onClick = { showMagnet = !showMagnet })
             SettingRow(tr(if (showOptions) R.string.downloads_options_hide else R.string.downloads_options_show), modifier = Modifier.weight(1f), onClick = { showOptions = !showOptions })
         }
     } else {
         SettingRow(tr(R.string.torr_download_add_file), modifier = Modifier.focusRequester(initialFocus), onClick = activity::chooseTorrFile)
         SettingRow(tr(R.string.http_download_add_link), modifier = Modifier.focusRequester(httpLinkFocus), onClick = ::addHttpLink)
-        SettingRow(tr(R.string.browser_download_entry), onClick = { openBrowser() })
+        SettingRow(tr(R.string.browser_download_entry), modifier = Modifier.focusRequester(browserFocus), onClick = { openBrowser() })
         SettingRow(tr(if (showMagnet) R.string.downloads_magnet_hide else R.string.downloads_magnet_show), onClick = { showMagnet = !showMagnet })
         SettingRow(tr(if (showOptions) R.string.downloads_options_hide else R.string.downloads_options_show), onClick = { showOptions = !showOptions })
     }

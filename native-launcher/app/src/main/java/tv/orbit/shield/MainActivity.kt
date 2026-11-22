@@ -1621,7 +1621,7 @@ class MainActivity : ComponentActivity() {
             if (!restored) runCatching { settingsFocus.requestFocus() }
         }
     }
-    var platform by remember { mutableStateOf("all") }
+    var platform by rememberSaveable { mutableStateOf("all") }
     var chosenId by rememberSaveable { mutableStateOf(HomePreferences.selectedId(activity)) }
     var detail by remember { mutableStateOf<Game?>(null) }
     val incomingTorrent = activity.incomingTorrentUri
@@ -1760,9 +1760,11 @@ class MainActivity : ComponentActivity() {
         val query = searchQuery.trim()
         scopedAndroidGames.filter { query.isEmpty() || it.name.contains(query, ignoreCase = true) }
     }
+    val waitingForAndroidGames = platform == "android-apps" && libraryOptions.androidGamesVisible && loadedApps == null
+    val showAndroidGamesFilter = androidGameApps.isNotEmpty() || waitingForAndroidGames
     val libraryIsEmpty = filtered.isEmpty() && filteredAndroidGames.isEmpty()
-    LaunchedEffect(platform, androidGameApps) {
-        if (platform == "android-apps" && androidGameApps.isEmpty()) platform = "all"
+    LaunchedEffect(platform, waitingForAndroidGames, androidGameApps) {
+        if (platform == "android-apps" && !waitingForAndroidGames && androidGameApps.isEmpty()) platform = "all"
     }
     LaunchedEffect(tab, visibleTabs) {
         if (tab != "downloads" && tab !in visibleTabs) {
@@ -2012,11 +2014,11 @@ class MainActivity : ComponentActivity() {
                             title(); Spacer(Modifier.weight(1f)); actions()
                         }
                     }
-                    if (games.isNotEmpty() || androidGameApps.isNotEmpty() || searchQuery.isNotBlank()) {
+                    if (games.isNotEmpty() || showAndroidGamesFilter || searchQuery.isNotBlank()) {
                         Row(Modifier.fillMaxWidth().padding(horizontal = 36.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                             LazyRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(3.dp)) {
                                 item(key = "all") { Action(tr(R.string.all), compact = true, active = platform == "all", onClick = { platform = "all" }) }
-                                if (androidGameApps.isNotEmpty()) item(key = "android-apps") {
+                                if (showAndroidGamesFilter) item(key = "android-apps") {
                                     Action(tr(R.string.android_games_platform), compact = true, active = platform == "android-apps", onClick = { platform = "android-apps" })
                                 }
                                 items(PlatformRegistry.all, key = { it.id }) { p ->
@@ -2035,7 +2037,8 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     if (libraryIsEmpty) Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        if (searchQuery.isNotBlank()) Text(tr(R.string.search_empty), Modifier.padding(horizontal = 36.dp), color = Muted, fontSize = 18.sp)
+                        if (waitingForAndroidGames) Text(tr(R.string.apps_loading), Modifier.padding(horizontal = 36.dp), color = Muted, fontSize = 18.sp)
+                        else if (searchQuery.isNotBlank()) Text(tr(R.string.search_empty), Modifier.padding(horizontal = 36.dp), color = Muted, fontSize = 18.sp)
                         else Column(Modifier.widthIn(max = 660.dp).padding(horizontal = 36.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             Text(tr(R.string.library_empty_title), color = White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                             Text(tr(R.string.library_import_steps, tr(R.string.add_games)), color = Muted, fontSize = 14.sp, lineHeight = 22.sp)
@@ -2073,8 +2076,8 @@ class MainActivity : ComponentActivity() {
                     Spacer(Modifier.width(8.dp)); Text("GOSTEX", color = Lime, fontSize = 10.sp, fontFamily = FontFamily.Monospace, letterSpacing = 1.sp, maxLines = 1)
                 }
             }
-            LaunchedEffect(tab, platform, homeOptions.order, searchQuery, searchOpen, libraryIsEmpty) {
-                if (!settingsOpen && !mediaOpen && !searchOpen && tileMenu == null && membershipItem == null && favoriteOrderItem == null && tab == "library") {
+            LaunchedEffect(tab, platform, homeOptions.order, searchQuery, searchOpen, libraryIsEmpty, waitingForAndroidGames) {
+                if (!waitingForAndroidGames && !settingsOpen && !mediaOpen && !searchOpen && tileMenu == null && membershipItem == null && favoriteOrderItem == null && tab == "library") {
                     if (searchReturnTarget == "button" || libraryIsEmpty) {
                         withFrameNanos { }
                         runCatching { if (libraryIsEmpty && searchQuery.isBlank()) addGamesFocus.requestFocus() else searchFocus.requestFocus() }

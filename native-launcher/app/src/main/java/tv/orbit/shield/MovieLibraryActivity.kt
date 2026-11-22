@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -751,6 +752,7 @@ class MovieLibraryActivity : ComponentActivity() {
         else toast(R.string.movies_source_failed)
     }
 
+    @OptIn(ExperimentalLayoutApi::class)
     @Composable private fun MovieScreen() {
         val downloads by TorrDownloadStore.jobs.collectAsState()
         val journalState by TorrDownloadStartup.state.collectAsStateWithLifecycle()
@@ -781,10 +783,11 @@ class MovieLibraryActivity : ComponentActivity() {
                 runCatching { savedFocus.requestFocus() }
             }
         }
-        Column(Modifier.fillMaxSize().background(Color(0xFF0A0A0A)).padding(horizontal = 36.dp, vertical = 22.dp)) {
+        val horizontalPadding = if (LocalConfiguration.current.screenWidthDp < 600) 16.dp else 36.dp
+        Column(Modifier.fillMaxSize().background(Color(0xFF0A0A0A)).padding(horizontal = horizontalPadding, vertical = 22.dp)) {
             Text(tr(R.string.media_tab_title), color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 MovieButton(tr(R.string.movies_saved), Modifier.focusRequester(savedFocus)) { stopSourceLookup(); requestGeneration++; page = "saved"; busy = false; error = "" }
                 MovieButton(tr(R.string.movies_search)) { search() }
                 MovieButton(tr(R.string.movies_addons)) { stopSourceLookup(); requestGeneration++; page = "addons"; busy = false; error = "" }
@@ -1037,5 +1040,5 @@ class MovieLibraryActivity : ComponentActivity() {
 }
 
 @Composable private fun MovieButton(label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    androidx.tv.material3.Button(onClick = onClick, modifier = modifier) { Text(label) }
+    androidx.tv.material3.Button(onClick = onClick, modifier = modifier.touchSurface(onClick = onClick)) { Text(label) }
 }

@@ -11,6 +11,9 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 
 internal object LibraryImport {
+    private const val MAX_SCANNED_ENTRIES = 65_536
+    private const val MAX_DIRECTORY_CHILDREN = 10_000
+    private const val MAX_GAME_ENTRIES = 10_000
     private val archiveFailures = ArchiveFailureCache<Triple<String, String, String>>()
     private val archiveSuccesses = ArchiveSuccessCache<Triple<String, String, String>>()
     data class Root(val platform: String, val uri: String, val source: LibrarySource = LibrarySource.FILES)
@@ -112,6 +115,8 @@ internal object LibraryImport {
         val platform = PlatformRegistry.find(root.platform) ?: error(context.getString(R.string.platform_unknown))
         if (root.source == LibrarySource.SINGLE_FILE) return scanSingle(context, root, bundled, previous)
         val tree = Uri.parse(root.uri)
+        val rootId = Docs.getTreeDocumentId(tree)
+        val columns = arrayOf(Docs.Document.COLUMN_DOCUMENT_ID, Docs.Document.COLUMN_DISPLAY_NAME, Docs.Document.COLUMN_MIME_TYPE)
         val indexed = mutableListOf<DiscImport.File>()
         var visited = 0
         val threeDs = root.platform == "Nintendo 3DS"
@@ -124,43 +129,55 @@ internal object LibraryImport {
         val previousFiles = previous.filter { it.platform == root.platform }
             .flatMap { it.files }.map(::libraryFileKey).toSet()
         var unverifiedArchives = 0
+        fun requireComplete(loading: Boolean, error: String?) {
+            check(!loading && error == null) { context.getString(R.string.import_folder_incomplete) }
+        }
         fun walk(id: String, parent: String, depth: Int) {
             scanContext.ensureActive()
             check(depth <= 16) { context.getString(R.string.too_deep) }
             check(directories.add(id)) { context.getString(R.string.folder_unavailable) }
             val children = Docs.buildChildDocumentsUriUsingTree(tree, id)
-            val rows = context.contentResolver.query(children, arrayOf(Docs.Document.COLUMN_DOCUMENT_ID, Docs.Document.COLUMN_DISPLAY_NAME, Docs.Document.COLUMN_MIME_TYPE), null, null, null)
+            val rows = context.contentResolver.query(children, columns, null, null, null)
                 ?: error(context.getString(R.string.folder_unavailable))
             rows.use { c ->
-                fun requireComplete() {
-                    val extras = c.extras
-                    check(!extras.getBoolean(Docs.EXTRA_LOADING) && extras.getString(Docs.EXTRA_ERROR) == null) {
-                        context.getString(R.string.import_folder_incomplete)
-                    }
-                }
-                requireComplete()
+                c.extras.let { requireComplete(it.getBoolean(Docs.EXTRA_LOADING), it.getString(Docs.EXTRA_ERROR)) }
+                var childCount = 0
                 while (c.moveToNext()) {
-                scanContext.ensureActive()
-                check(++visited <= 10000) { context.getString(R.string.too_many_files) }
-                val child = c.getString(0); val name = c.getString(1); val mime = c.getString(2)
-                // Display names define relative references. Reject ambiguous provider names;
-                // document IDs remain opaque and are only used with DocumentsContract.
-                check(!name.isNullOrEmpty() && name !in setOf(".", "..") && '/' !in name && '\\' !in name) { context.getString(R.string.folder_unavailable) }
-                val path = if (parent.isEmpty()) name else "$parent/$name"
-                if (mime == Docs.Document.MIME_TYPE_DIR) {
-                    if (name.startsWith(".gostex-extract-") && name.endsWith(".partial")) continue
-                    if (path == "sdmc") hasSdmc = true
-                    if (!installed || ThreeDsInstalledLayout.directory(path)) walk(child, path, depth + 1)
-                    continue
+                    scanContext.ensureActive()
+                    check(++childCount <= MAX_DIRECTORY_CHILDREN) { context.getString(R.string.too_many_files) }
+                    check(++visited <= MAX_SCANNED_ENTRIES) {
+                        context.getString(R.string.library_scan_entry_limit, MAX_SCANNED_ENTRIES)
+                    }
+                    val child = c.getString(0); val name = c.getString(1); val mime = c.getString(2)
+                    // Display names define relative references. Document IDs remain opaque.
+                    check(!name.isNullOrEmpty() && name != "." && name != ".." && '/' !in name && '\\' !in name) {
+                        context.getString(R.string.folder_unavailable)
+                    }
+                    val path = if (parent.isEmpty()) name else "$parent/$name"
+                    if (mime == Docs.Document.MIME_TYPE_DIR) {
+                        if (name.startsWith(".gostex-extract-") && name.endsWith(".partial")) continue
+                        if (path == "sdmc") hasSdmc = true
+                        if (!installed || ThreeDsInstalledLayout.directory(path)) walk(child, path, depth + 1)
+                        continue
+                    }
+                    if (installed && !ThreeDsInstalledLayout.application(path)) continue
+                    if (threeDs && name.endsWith(".cia", ignoreCase = true)) ciaPackages++
+                    if (platform.launchKind == LaunchKind.DUCKSTATION || platform.accepts(name)) indexed += DiscImport.File(path, child)
                 }
-                if (installed && !ThreeDsInstalledLayout.application(path)) continue
-                if (threeDs && name.endsWith(".cia", ignoreCase = true)) ciaPackages++
-                if (platform.launchKind == LaunchKind.DUCKSTATION || platform.accepts(name)) indexed += DiscImport.File(path, child)
-                }
-                requireComplete()
+                c.extras.let { requireComplete(it.getBoolean(Docs.EXTRA_LOADING), it.getString(Docs.EXTRA_ERROR)) }
             }
         }
-        walk(Docs.getTreeDocumentId(tree), "", 0)
+        walk(rootId, "", 0)
+        scanContext.ensureActive()
+        // A missing drive can look like an empty child cursor. Confirm that the root itself exists.
+        val rootDocument = Docs.buildDocumentUriUsingTree(tree, rootId)
+        context.contentResolver.query(rootDocument, columns, null, null, null)?.use { c ->
+            c.extras.let { requireComplete(it.getBoolean(Docs.EXTRA_LOADING), it.getString(Docs.EXTRA_ERROR)) }
+            check(c.moveToFirst() && c.getString(0) == rootId && c.getString(2) == Docs.Document.MIME_TYPE_DIR &&
+                !c.moveToNext()) { context.getString(R.string.folder_unavailable) }
+            c.extras.let { requireComplete(it.getBoolean(Docs.EXTRA_LOADING), it.getString(Docs.EXTRA_ERROR)) }
+        } ?: error(context.getString(R.string.folder_unavailable))
+        scanContext.ensureActive()
         check(!installed || hasSdmc) { context.getString(R.string.three_ds_wrong_data_folder) }
         if (showHints && ciaPackages > 0) onWarning(context.getString(R.string.three_ds_cia_found, ciaPackages))
         val entries = if (platform.launchKind == LaunchKind.DUCKSTATION) {
@@ -203,6 +220,7 @@ internal object LibraryImport {
             }
             descriptors.entries
         } else indexed
+        var imported = 0
         val result = entries.mapNotNull { file ->
             scanContext.ensureActive()
             val child = file.id
@@ -222,7 +240,9 @@ internal object LibraryImport {
                 }
                 archiveFailures.remove(key)
             }
-            gameForFile(context, root, bundled, known, previousByFile, child, name, documentUri, raw, installed)
+            gameForFile(context, root, bundled, known, previousByFile, child, name, documentUri, raw, installed)?.also {
+                check(++imported <= MAX_GAME_ENTRIES) { context.getString(R.string.library_scan_game_limit, MAX_GAME_ENTRIES) }
+            }
         }
         if (showHints && unverifiedArchives > 0) onWarning(context.getString(R.string.import_archive_extract_hint))
         scanContext.ensureActive()

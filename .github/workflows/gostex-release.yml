@@ -83,6 +83,8 @@ jobs:
             native-launcher/checks/check_translations.py \
             native-launcher/checks/check_archive_admission.py \
             native-launcher/checks/check_library_snapshot.py \
+            native-launcher/checks/check_library_source_reconnect.py \
+            native-launcher/checks/check_three_ds_library.py \
             native-launcher/checks/check_import_warnings.py \
             native-launcher/checks/check_game_import_summary.py \
             native-launcher/checks/check_game_archive_lifecycle.py \

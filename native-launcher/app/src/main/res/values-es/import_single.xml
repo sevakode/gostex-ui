@@ -19,7 +19,14 @@
     <string name="import_sources_title">Fuentes de la biblioteca</string>
     <string name="import_remove_file">¿Quitar esta fuente de juego?</string>
     <string name="import_file_unavailable">El archivo del juego no está disponible. Selecciónalo de nuevo.</string>
-    <string name="import_folder_permission">No se puede acceder a la carpeta. Vuelve a seleccionarla en los ajustes de la biblioteca.</string>
+    <string name="import_folder_permission">No se puede acceder a la carpeta. Abre Carpetas en la biblioteca y restaura el acceso.</string>
+    <string name="import_reconnect_folder">Restaurar acceso a la carpeta</string>
+    <string name="import_reconnect_wrong">Elige la misma carpeta en la misma unidad.</string>
+    <string name="import_reconnect_stale">Esta fuente ha cambiado. Abre las fuentes de la biblioteca e inténtalo de nuevo.</string>
+    <string name="import_reconnect_done">Se ha restaurado el acceso. Comprobando la biblioteca de nuevo.</string>
+    <string name="import_reconnect_failed">No se pudo restaurar el acceso a la carpeta. Comprueba que la unidad está disponible e inténtalo de nuevo.</string>
+    <string name="library_scan_entry_limit">Esta fuente contiene más de %1$d elementos. Elige una carpeta más pequeña.</string>
+    <string name="library_scan_game_limit">Esta fuente contiene más de %1$d juegos. Elige una carpeta más pequeña.</string>
     <string name="import_file_cia_hint">CIA es un paquete de instalación. Instálalo en Azahar con Instalar contenido de juego y vuelve a GOSTEX. Añade una vez la carpeta de datos de Azahar para ver los juegos instalados.</string>
     <string name="import_file_companions_hint">Este formato necesita archivos adicionales. Elige la carpeta del juego para que el emulador pueda leer sus pistas o discos.</string>
     <string name="import_file_wrong_type">%1$s no es un archivo de juego compatible con %2$s.</string>

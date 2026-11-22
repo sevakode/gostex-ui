@@ -19,7 +19,14 @@
     <string name="import_sources_title">Library sources</string>
     <string name="import_remove_file">Remove this game source?</string>
     <string name="import_file_unavailable">The game file is unavailable. Select it again.</string>
-    <string name="import_folder_permission">Folder access is unavailable. Select the folder again in library settings.</string>
+    <string name="import_folder_permission">Folder access is unavailable. Open Folders in the library and restore access.</string>
+    <string name="import_reconnect_folder">Restore folder access</string>
+    <string name="import_reconnect_wrong">Select the same folder on the same storage device.</string>
+    <string name="import_reconnect_stale">This source has changed. Open the library sources and try again.</string>
+    <string name="import_reconnect_done">Folder access restored. Checking the library again.</string>
+    <string name="import_reconnect_failed">Could not restore folder access. Check that the storage device is available and try again.</string>
+    <string name="library_scan_entry_limit">This source contains more than %1$d entries. Choose a smaller folder.</string>
+    <string name="library_scan_game_limit">This source contains more than %1$d games. Choose a smaller folder.</string>
     <string name="import_file_cia_hint">CIA is an installation package. Install it in Azahar using Install game content, then return to GOSTEX. Add the Azahar data folder once to see installed games.</string>
     <string name="import_file_companions_hint">This format needs companion files. Choose the game folder so the emulator can also read its tracks or discs.</string>
     <string name="import_file_wrong_type">%1$s is not a supported %2$s game file.</string>

@@ -1,6 +1,6 @@
-"""Compile production 3DS import against a deterministic host document provider.
+"""Compile production library import against a deterministic host document provider.
 
-Exercises folder/single-file persistence, installed-layout pruning, metadata and cancellation.
+Exercises large folder limits, disconnected roots, single files, installed 3DS pruning and cancellation.
 Android URI grant enforcement and activity lifecycle are device checks, not simulated here.
 """
 from pathlib import Path
@@ -68,6 +68,7 @@ class Cursor(val rows:List<Row>,val extras:Extras=Extras()):java.io.Closeable {v
 class Resolver {
  val persistedUriPermissions=mutableListOf<Permission>()
  val children=mutableMapOf<String,List<Row>>();val files=mutableMapOf<String,java.io.File>()
+ val documents=mutableMapOf<String,List<Row>>()
  val extras=mutableMapOf<String,Extras>()
  val queried=mutableListOf<String>();val opened=mutableListOf<String>()
  var fail:Exception?=null;var queryFail:Exception?=null;var beforeQuery:(()->Unit)?=null
@@ -75,7 +76,9 @@ class Resolver {
   beforeQuery?.invoke();queryFail?.let{throw it}
   if("/children/" !in uri.raw) {
    val id=Docs.getDocumentId(uri);queried+=id
-   return Cursor(children.values.flatten().filter{it.id==id}.distinctBy{it.id})
+   val rows=documents[id] ?: if(id=="primary:chosen" && id in children)
+    listOf(Row(id,"chosen",Docs.Document.MIME_TYPE_DIR)) else children.values.flatten().filter{it.id==id}.distinctBy{it.id}
+   return Cursor(rows,extras["document:$id"]?:Extras())
   }
   val id=Docs.decode(uri.raw.substringAfter("/children/"));queried+=id
   return children[id]?.let{Cursor(it,extras[id]?:Extras())}
@@ -202,6 +205,67 @@ fun main(args:Array<String>)=runBlocking {
  }
  incomplete.contentResolver.extras.clear()
  pass("Complete empty folder can still remove deleted games",LibraryImport.scan(incomplete,dsRoot,emptyList()).isEmpty())
+ val rootId = "primary:chosen"
+ val rootRow=Row(rootId,"chosen",Docs.Document.MIME_TYPE_DIR)
+ for ((label, rows) in listOf("missing" to emptyList(), "wrong ID" to listOf(rootRow.copy(id="other")),
+  "file in place of directory" to listOf(rootRow.copy(mime="file")), "duplicate" to listOf(rootRow,rootRow))) {
+  incomplete.contentResolver.documents[rootId]=rows
+  val failed=runCatching { LibraryImport.scan(incomplete,dsRoot,emptyList(),previousSnapshot=listOf(oldDs)) }
+  pass("Empty children but $label root metadata preserves cached games",
+   failed.exceptionOrNull()?.message?.startsWith("res:${R.string.folder_unavailable}:")==true &&
+    libraryRootSnapshot(dsRoot.uri,failed.getOrNull(),listOf(oldDs),dsRoot.platform)==listOf(oldDs))
+ }
+ incomplete.contentResolver.documents[rootId]=listOf(rootRow)
+ incomplete.contentResolver.extras["document:$rootId"]=Extras(loading=true)
+ pass("An incomplete root metadata cursor cannot clear games",runCatching {
+  LibraryImport.scan(incomplete,dsRoot,emptyList(),previousSnapshot=listOf(oldDs))
+ }.isFailure)
+ incomplete.contentResolver.extras.clear()
+ val large=ctx("large-scan")
+ val dirs=List(1916){index -> Row("$rootId/part-$index","part-$index",Docs.Document.MIME_TYPE_DIR)}
+ large.contentResolver.children[rootId]=dirs
+ fun otherFiles(parent:String,start:Int,count:Int)=List(count){index ->
+  val name="file-${start+index}.dat"
+  Row("$parent/$name",name)
+ }
+ dirs.forEachIndexed { index, row ->
+  val count=if(index==0)7203 else 50135/1915+if(index<=50135%1915)1 else 0
+  large.contentResolver.children[row.id]=otherFiles(row.id,0,count).toMutableList().apply {
+   if(index==0)this[0]=Row("${row.id}/Game.nds","Game.nds")
+  }
+ }
+ val largeScan=LibraryImport.scan(large,dsRoot,emptyList(),previousSnapshot=emptyList())
+ pass("Production scan imports one ROM in a 59,254-node hierarchy",
+  large.contentResolver.children.values.sumOf{it.size}==59254 && largeScan.single().files.single().endsWith("/Game.nds"))
+ pass("The large scan queries each directory once and checks root identity",large.contentResolver.queried.size==1918)
+ val second=dirs[1].id
+ large.contentResolver.children[second]=large.contentResolver.children.getValue(second)+otherFiles(second,10000,65536-59254)
+ pass("Exactly 65,536 total rows are accepted",
+  LibraryImport.scan(large,dsRoot,emptyList(),previousSnapshot=largeScan)==largeScan)
+ large.contentResolver.children[second]=large.contentResolver.children.getValue(second)+otherFiles(second,20000,1)
+ val overTotal=runCatching { LibraryImport.scan(large,dsRoot,emptyList(),previousSnapshot=largeScan) }
+ pass("Total row overflow preserves the previous source snapshot",
+  overTotal.exceptionOrNull()?.message=="res:${R.string.library_scan_entry_limit}:65536" &&
+   libraryRootSnapshot(dsRoot.uri,overTotal.getOrNull(),largeScan,dsRoot.platform)==largeScan)
+ val wide=ctx("wide-scan")
+ wide.contentResolver.children[rootId]=otherFiles(rootId,0,10000)
+ pass("Exactly 10,000 children are accepted in one directory",
+  LibraryImport.scan(wide,dsRoot,emptyList(),previousSnapshot=emptyList()).isEmpty())
+ wide.contentResolver.children[rootId]=otherFiles(rootId,0,10001)
+ pass("Immediate child overflow has its own diagnostic",runCatching {
+  LibraryImport.scan(wide,dsRoot,emptyList(),previousSnapshot=emptyList())
+ }.exceptionOrNull()?.message=="res:${R.string.too_many_files}:")
+ val manyGames=ctx("many-games")
+ val buckets=dirs.take(2)
+ manyGames.contentResolver.children[rootId]=buckets
+ buckets.forEachIndexed { index,bucket ->
+  manyGames.contentResolver.children[bucket.id]=List(5000+index){number ->
+   Row("${bucket.id}/Game-$number.nds","Game-$number.nds")
+  }
+ }
+ pass("Wider traversal still caps qualifying launch entries at 10,000",runCatching {
+  LibraryImport.scan(manyGames,dsRoot,emptyList(),previousSnapshot=emptyList())
+ }.exceptionOrNull()?.message=="res:${R.string.library_scan_game_limit}:10000")
  val sharedSnapshot=ctx("shared-snapshot")
  sharedSnapshot.contentResolver.children["primary:chosen"]=emptyList()
  File(sharedSnapshot.filesDir,"imported-games.json").writeText("invalid")

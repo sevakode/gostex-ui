@@ -1217,6 +1217,90 @@ class MainActivity : ComponentActivity() {
                 }.setNegativeButton(R.string.cancel, null).show()
         }
     }
+    private var pendingLibraryReconnect: LibraryImport.Root? = null
+    private fun canReconnectLibraryFolder(root: LibraryImport.Root): Boolean =
+        (root.source == LibrarySource.FILES || root.source == LibrarySource.AZAHAR_INSTALLED) &&
+            TorrDownloadFolderAccess.identity(root.uri) != null
+
+    private val libraryReconnectPicker = activityResultRegistry.register(
+        "library-folder-reconnect", this, ActivityResultContracts.OpenDocumentTree(),
+    ) { selected ->
+        val root = pendingLibraryReconnect
+        pendingLibraryReconnect = null
+        if (root == null || selected == null || PortableMaintenance.running || !PortableRestoreStartup.ready) return@register
+        val roots = rootsOrNotify() ?: return@register
+        if (root !in roots) {
+            showLibraryReconnectFailure(R.string.import_reconnect_stale)
+            return@register
+        }
+        val expected = TorrDownloadFolderAccess.identity(root.uri)
+        if (expected == null || TorrDownloadFolderAccess.identity(selected.toString()) != expected) {
+            showLibraryReconnectFailure(R.string.import_reconnect_wrong)
+            return@register
+        }
+        try {
+            contentResolver.takePersistableUriPermission(selected, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            check(contentResolver.persistedUriPermissions.any {
+                it.isReadPermission && TorrDownloadFolderAccess.identity(it.uri.toString()) == expected
+            })
+            notice = getString(R.string.import_reconnect_done)
+            refreshLibrary()
+        } catch (_: Exception) { showLibraryReconnectFailure(R.string.import_reconnect_failed) }
+    }
+
+    private fun reconnectLibraryFolder(root: LibraryImport.Root) {
+        if (pendingLibraryReconnect != null || PortableMaintenance.running || !canReconnectLibraryFolder(root)) return
+        val roots = rootsOrNotify() ?: return
+        if (root !in roots) { notice = getString(R.string.import_reconnect_stale); return }
+        val tree = Uri.parse(root.uri)
+        val initial = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
+        pendingLibraryReconnect = root
+        if (!launchDocumentPicker(Intent.ACTION_OPEN_DOCUMENT_TREE) { libraryReconnectPicker.launch(initial) }) {
+            pendingLibraryReconnect = null
+        }
+    }
+
+    private fun restoreLibraryReconnect(state: Bundle?) {
+        val request = state?.getBundle("pendingLibraryReconnect") ?: return
+        val platform = request.getString("platform") ?: return
+        val uri = request.getString("uri") ?: return
+        val sourceValue = request.getString("source") ?: return
+        val source = LibrarySource.read(sourceValue, platform)
+        val root = LibraryImport.Root(platform, uri, source)
+        if (source.value == sourceValue && PlatformRegistry.find(platform) != null && canReconnectLibraryFolder(root)) {
+            pendingLibraryReconnect = root
+        }
+    }
+
+    private fun saveLibraryReconnect(state: Bundle) {
+        pendingLibraryReconnect?.let { root ->
+            state.putBundle("pendingLibraryReconnect", Bundle().apply {
+                putString("platform", root.platform)
+                putString("uri", root.uri)
+                putString("source", root.source.value)
+            })
+        }
+    }
+
+    private fun confirmRemoveLibrarySource(root: LibraryImport.Root) {
+        android.app.AlertDialog.Builder(this)
+            .setTitle(if (root.source == LibrarySource.SINGLE_FILE) R.string.import_remove_file else R.string.remove_folder)
+            .setMessage(R.string.files_preserved)
+            .setPositiveButton(R.string.remove) { _, _ ->
+                try { LibraryImport.removeRoot(this, root); refreshLibrary() }
+                catch (e: Exception) { notice = e.localizedMessage.orEmpty() }
+            }.setNegativeButton(R.string.cancel, null).show()
+    }
+
+    private fun showLibraryReconnectFailure(message: Int) {
+        // The on-resume scan can report other unavailable roots through the shared notice.
+        android.app.AlertDialog.Builder(this)
+            .setTitle(R.string.import_reconnect_folder)
+            .setMessage(message)
+            .setPositiveButton(R.string.close, null)
+            .show()
+    }
+
     fun manageFolders() {
         val roots = rootsOrNotify() ?: return
         if (roots.isEmpty()) { notice = getString(R.string.add_folder_hint); return }
@@ -1226,13 +1310,15 @@ class MainActivity : ComponentActivity() {
             val path = runCatching { if (it.source == LibrarySource.SINGLE_FILE) DocumentsContract.getDocumentId(uri) else DocumentsContract.getTreeDocumentId(uri) }.getOrDefault(it.uri)
             "$label · ${path.substringAfter(':')}"
         }.toTypedArray()
-        android.app.AlertDialog.Builder(this).setTitle(getString(R.string.import_sources_title)).setItems(names) { _, index ->
-            android.app.AlertDialog.Builder(this).setTitle(getString(if (roots[index].source == LibrarySource.SINGLE_FILE) R.string.import_remove_file else R.string.remove_folder)).setMessage(getString(R.string.files_preserved))
-                .setPositiveButton(getString(R.string.remove)) { _, _ ->
-                    try { LibraryImport.removeRoot(this, roots[index]); refreshLibrary() }
-                    catch (e: Exception) { notice = e.localizedMessage.orEmpty() }
-                }.setNegativeButton(getString(R.string.cancel), null).show()
-        }.setNegativeButton(getString(R.string.close), null).show()
+        android.app.AlertDialog.Builder(this).setTitle(R.string.import_sources_title).setItems(names) { _, index ->
+            val root = roots[index]
+            if (canReconnectLibraryFolder(root)) {
+                val actions = arrayOf(getString(R.string.import_reconnect_folder), getString(R.string.remove))
+                android.app.AlertDialog.Builder(this).setTitle(names[index]).setItems(actions) { _, action ->
+                    if (action == 0) reconnectLibraryFolder(root) else confirmRemoveLibrarySource(root)
+                }.setNegativeButton(R.string.cancel, null).show()
+            } else confirmRemoveLibrarySource(root)
+        }.setNegativeButton(R.string.close, null).show()
     }
     fun refreshLibrary(manual: Boolean = false) {
         if (PortableMaintenance.running) { if (manual) manualLibraryScanStatus = R.string.library_rescan_failed; return }
@@ -1372,6 +1458,7 @@ class MainActivity : ComponentActivity() {
         }
         emulatorInstall.restore(savedInstanceState)
         gameArchive.restore(savedInstanceState)
+        restoreLibraryReconnect(savedInstanceState)
         if (PortableRestoreStartup.ready && !PortableMaintenance.running) {
             torrDownloadFolder = getSharedPreferences("orbit", MODE_PRIVATE).getString("downloads.folder", "").orEmpty()
         }
@@ -1458,6 +1545,7 @@ class MainActivity : ComponentActivity() {
     override fun onSaveInstanceState(outState: Bundle) {
         emulatorInstall.save(outState)
         gameArchive.save(outState)
+        saveLibraryReconnect(outState)
         // Only remember that a stale picker result belongs to an expired request.
         // Never put the URL, validator, filename or the request itself in a Bundle.
         outState.putBoolean("httpDownloadPickerPending", pendingDownloadFolderRequest is DownloadFolderRequest.Http ||

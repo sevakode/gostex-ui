@@ -135,6 +135,7 @@ internal class TorrDownloadService : Service() {
                         if (job.offset < job.total) {
                             var end: TorrDownloadCheckpoint? = null
                             var retries = 0
+                            val playbackRetry = TorrDownloadEngine.PlaybackRetry()
                             while (end == null && !cancelled()) {
                                 try {
                                     phase = "storage"
@@ -172,6 +173,7 @@ internal class TorrDownloadService : Service() {
                                                 TorrDownloadSource(job.hash, job.index, job.total), target, checkpoint,
                                                 cancelled = cancelled, saveCheckpoint = save, spaceAllowance = space,
                                                 beforeWrite = beforeWrite, reportProgress = progress, readable = readable,
+                                                playbackRetry = playbackRetry,
                                             ) else TorrDownloadEngine.transfer(
                                                 http, job.total, target, checkpoint, cancelled = cancelled,
                                                 saveCheckpoint = save, spaceAllowance = space, beforeWrite = beforeWrite,

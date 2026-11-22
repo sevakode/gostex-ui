@@ -14,14 +14,15 @@ PLAY_DATA = bytes((i ^ (i >> 9) ^ (i >> 16)) & 255 for i in range(len(DATA)))
 LARGE_SIZE = 40 * 1024 * 1024 + 12345
 BROKEN_SIZE = 18 * 1024 * 1024 + 123
 PLAY_TAIL = len(PLAY_DATA) - 64 * 1024
+RETRY_CUT = 256 * 1024
 play_requests = []
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args): pass
     def do_GET(self):
         query = parse_qs(urlparse(self.path).query)
         assert urlparse(self.path).path == '/stream'
-        mode = query['link'][0][-1]
-        if mode in 'cdef0':
+        mode = {'2': 'g', '3': 'h'}.get(query['index'][0], query['link'][0][-1])
+        if mode in 'cdefgh0':
             range_header = self.headers.get('Range')
             if mode != '0' or range_header and not range_header.endswith('-'):
                 self.growing_response(mode, range_header)
@@ -57,19 +58,28 @@ class Handler(BaseHTTPRequestHandler):
         size = len(PLAY_DATA)
         start, end = 0, size - 1
         status = 200
-        play_requests.append((mode, range_header, self.headers.get('If-Range')))
+        validator = self.headers.get('If-Range')
+        play_requests.append((mode, range_header, validator))
         if range_header and mode != 'c':
             lower, upper = range_header.removeprefix('bytes=').split('-')
             start, end = int(lower), int(upper) if upper else end
             status = 206
+        if mode in ('g', 'h') and start == PLAY_TAIL and validator is not None:
+            self.send_response(503)
+            self.send_header('Content-Length', '0')
+            self.end_headers()
+            return
         self.send_response(status)
-        self.send_header('ETag', '"changed"' if mode == 'd' and start < PLAY_TAIL else '"original"')
+        changed = mode == 'd' and start < PLAY_TAIL or mode == 'h' and 0 < start < PLAY_TAIL
+        self.send_header('ETag', '"changed"' if changed else '"original"')
         self.send_header('Content-Length', str(end - start + 1))
         if status == 206:
             self.send_header('Content-Range', f'bytes {start + (mode == "e")}-{end}/{size}')
         self.end_headers()
         if mode == 'f':
             end = min(end, start + 127)
+        if mode in ('g', 'h') and start == 0:
+            end = RETRY_CUT - 1
         try: self.wfile.write(PLAY_DATA[start:end + 1])
         except (BrokenPipeError, ConnectionResetError): pass
 
@@ -416,6 +426,47 @@ private fun checkGrowing(path: java.nio.file.Path, file: RandomAccessFile, port:
     }
     println("PASS: final staged and sequential writes are readable before sync; sync and checkpoint failures still fail the transfer")
     println("PASS: growing-file staging, coverage, resume identity, malformed ranges, normal fallback, reserve and failed sync")
+    for (mode in listOf('g', 'h')) {
+        file.setLength(0)
+        saved = empty
+        val retrySource = source.copy(index = if (mode == 'g') 2 else 3)
+        val retryTarget = ObservedTarget(file)
+        val retry = TorrDownloadEngine.PlaybackRetry()
+        val interrupted = runCatching {
+            TorrDownloadEngine.transfer(retrySource, retryTarget, saved, port, saveCheckpoint = { saved = it },
+                readable = { _, _ -> }, playbackRetry = retry)
+        }.exceptionOrNull()
+        check(interrupted is TorrSourceFailure && interrupted.reason in setOf("source_incomplete", "source_io"))
+        val durable = TorrDownloadCheckpoint(256 * 1024L, "\"original\"")
+        check(saved == durable && retryTarget.syncs == 2 && content(0, durable.offset.toInt()))
+        check(content(tail, (size - tail).toInt()))
+        val beforeRetry = Files.readAllBytes(path)
+        if (mode == 'g') {
+            // A new worker must prove the tail itself. Its unavailable tail does
+            // not mutate the original worker's durable checkpoint or bytes.
+            val noCache = runCatching {
+                TorrDownloadEngine.transfer(retrySource, retryTarget, durable, port,
+                    saveCheckpoint = { error("new worker unexpectedly committed") },
+                    readable = { _, _ -> error("new worker unexpectedly changed coverage") },
+                    playbackRetry = TorrDownloadEngine.PlaybackRetry())
+            }.exceptionOrNull()
+            check(noCache is TorrSourceFailure && noCache.reason == "source_response")
+            check(retryTarget.syncs == 2 && Files.readAllBytes(path).contentEquals(beforeRetry))
+        }
+        val resumed = runCatching {
+            TorrDownloadEngine.transfer(retrySource, retryTarget, durable, port, saveCheckpoint = { saved = it },
+                readable = { _, _ -> check(mode == 'g') { "changed response must not alter coverage" } },
+                playbackRetry = retry)
+        }
+        if (mode == 'h') {
+            val error = resumed.exceptionOrNull()
+            check(error is TorrSourceFailure && error.reason == "source_changed")
+            check(saved == durable && retryTarget.syncs == 2 && Files.readAllBytes(path).contentEquals(beforeRetry))
+        } else {
+            check(resumed.getOrThrow() == saved && saved.offset == size && content(0, size.toInt()))
+        }
+    }
+    println("PASS: transient disconnect reuses one validated tail; different worker and changed validator fail safely")
 }
 '''
 server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
@@ -441,5 +492,12 @@ try:
         assert 0 < int(start) < PLAY_TAIL and int(end) == PLAY_TAIL-1 and resumed_tag == '"original"'
         assert staged[4:] == [(tail, None), (prefix, '"original"')] * 4
         assert [(range_header, tag) for mode, range_header, tag in play_requests if mode == 'c'] == [(tail, None), (None, None)]
+        resumed_middle = f'bytes={RETRY_CUT}-{PLAY_TAIL - 1}'
+        assert [(header, tag) for mode, header, tag in play_requests if mode == 'g'] == [
+            (tail, None), (prefix, '"original"'), (tail, '"original"'), (resumed_middle, '"original"'),
+        ]
+        assert [(header, tag) for mode, header, tag in play_requests if mode == 'h'] == [
+            (tail, None), (prefix, '"original"'), (resumed_middle, '"original"'),
+        ]
 finally:
     server.shutdown(); server.server_close(); thread.join()

@@ -64,7 +64,12 @@ internal object TorrDownloadEngine {
     private const val PLAYBACK_TAIL_BYTES = 64 * 1024
 
     private class ClosedRangeUnavailable : IOException()
-    private data class PlaybackTail(val start: Long, val data: ByteArray, val etag: String)
+    internal data class PlaybackTail(val sourceUrl: String, val start: Long, val data: ByteArray, val etag: String)
+
+    /** Kept only for the lifetime of a single queue worker. */
+    internal class PlaybackRetry {
+        internal var tail: PlaybackTail? = null
+    }
 
     fun transfer(
         source: TorrDownloadSource,
@@ -79,6 +84,7 @@ internal object TorrDownloadEngine {
         nowNanos: () -> Long = System::nanoTime,
         reportProgress: (Long) -> Unit = {},
         readable: ((prefix: Long, tailStart: Long) -> Unit)? = null,
+        playbackRetry: PlaybackRetry? = null,
     ): TorrDownloadCheckpoint {
         require(port in 1..65535 && readTimeoutMs in 1..120000)
         val offset = checkpoint.offset
@@ -92,14 +98,18 @@ internal object TorrDownloadEngine {
         }
         if (offset > 0 && !isStrongEtag(checkpoint.etag)) throw IOException("Missing resume identity")
         if (cancelled()) { reportProgress(offset); return checkpoint }
-        val url = URL("http://127.0.0.1:$port/stream?link=${source.hash}&index=${source.index}&play=1")
+        val sourceUrl = "http://127.0.0.1:$port/stream?link=${source.hash}&index=${source.index}&play=1"
+        val url = URL(sourceUrl)
         val tailStart = source.size - PLAYBACK_TAIL_BYTES
         if (readable != null && tailStart >= PLAYBACK_TAIL_BYTES && offset < tailStart &&
             // A provider need not support sparse files. Reserve enough even if it allocates the gap.
             spaceAllowance()?.let { it >= source.size - offset } != false) {
             try {
-                val tail = fetchPlaybackTail(url, source.size, tailStart, checkpoint.etag, readTimeoutMs, cancelled)
+                val tail = playbackRetry?.tail?.takeIf {
+                    offset > 0 && it.sourceUrl == sourceUrl && it.start == tailStart && it.etag == checkpoint.etag
+                } ?: fetchPlaybackTail(url, source.size, tailStart, checkpoint.etag, readTimeoutMs, cancelled)
                 if (tail == null || cancelled()) { reportProgress(offset); return checkpoint }
+                playbackRetry?.tail = tail
                 return withTorrentResponse(url, readTimeoutMs, "bytes=$offset-${tail.start - 1}", tail.etag) { connection ->
                     val etag = requireClosedRange(connection, source.size, offset, tail.start, tail.etag)
                     copyValidated(source.size, target, checkpoint, etag, { connection.inputStream }, cancelled,
@@ -200,7 +210,7 @@ internal object TorrDownloadEngine {
                 if (count < 0) throw TorrSourceFailure("source_incomplete")
                 received += count
             }
-            if (received == data.size) PlaybackTail(start, data, etag) else null
+            if (received == data.size) PlaybackTail(url.toExternalForm(), start, data, etag) else null
         }
     }
 

@@ -89,7 +89,8 @@ internal object GameArchiveStorage {
                 if (!target.isEmpty(staging)) {
                     val plan = withSource(context, job.source, checkpoint) { input -> input.inspect(checkpoint) }
                     verifyPlan(job, plan)
-                    target.useFolder(staging, plan, recovered = true, complete = false, verifyContents = false)
+                    // A matching path alone is insufficient before recursively deleting the staging tree.
+                    target.useFolder(staging, plan, recovered = true, complete = false)
                 }
                 target.deleteStaging()
             }
@@ -369,7 +370,7 @@ internal object GameArchiveStorage {
         }
 
         fun useFolder(
-            folder: Document, plan: GameArchivePlan, recovered: Boolean, complete: Boolean, verifyContents: Boolean = true,
+            folder: Document, plan: GameArchivePlan, recovered: Boolean, complete: Boolean,
         ) {
             remaining = plan.totalBytes
             directories[""] = folder.id
@@ -389,7 +390,7 @@ internal object GameArchiveStorage {
                 expect(parent, Expected(member.scratchName, false, member, true))
             }
             if (recovered) {
-                val buffer = if (verifyContents) ByteArray(64 * 1024) else null
+                val buffer = ByteArray(64 * 1024)
                 validateExisting("", folder.id, complete, buffer)
                 if (complete) check(remaining == 0L && completed.size == plan.fileCount) { "Prepared files are missing" }
             }
@@ -400,7 +401,7 @@ internal object GameArchiveStorage {
             check(previous == null || (row.directory && previous == row)) { "Archive member conflicts with a temporary name" }
         }
 
-        private fun validateExisting(path: String, parent: String, complete: Boolean, buffer: ByteArray?) {
+        private fun validateExisting(path: String, parent: String, complete: Boolean, buffer: ByteArray) {
             val expectedChildren = expected[path].orEmpty()
             val existing = children(parent)
             for (row in existing.documents) {
@@ -416,7 +417,7 @@ internal object GameArchiveStorage {
                     val child = if (path.isEmpty()) row.name else "$path/${row.name}"
                     directories[child] = row.id
                     validateExisting(child, row.id, complete, buffer)
-                } else if (buffer != null) {
+                } else {
                     val entry = checkNotNull(wanted.member).entry
                     verifyFile(row, entry, buffer)
                     remaining -= entry.size

@@ -20,6 +20,22 @@ internal class TorrSafTarget private constructor(private val descriptor: ParcelF
     override fun truncate(size: Long) = storageIo { Os.ftruncate(fd, size) }
     override fun seek(offset: Long) { storageIo { Os.lseek(fd, offset, OsConstants.SEEK_SET) } }
     override fun write(buffer: ByteArray, count: Int) = storageIo { output.write(buffer, 0, count) }
+    override fun matchesAt(offset: Long, expected: ByteArray): Boolean {
+        val actual = ByteArray(expected.size)
+        var received = 0
+        val matches = try {
+            while (received < actual.size) {
+                val count = Os.pread(fd, actual, received, actual.size - received, offset + received)
+                if (count <= 0) break
+                received += count
+            }
+            received == actual.size && actual.contentEquals(expected)
+        } catch (_: Exception) {
+            false
+        }
+        storageIo { checkProviderError() }
+        return matches
+    }
     override fun sync() = storageIo {
         Os.fsync(fd)
         // A reliable provider can report an error separately from the raw fd.

@@ -56,6 +56,7 @@ class ParcelFileDescriptor(val file: RandomAccessFile) {
     'Os.kt': r'''package android.system
 import android.os.ParcelFileDescriptor
 import java.io.FileDescriptor
+import java.nio.ByteBuffer
 class StructStat(val st_size: Long)
 class StructStatVfs(val f_bavail: Long, val f_frsize: Long)
 object OsConstants { const val SEEK_SET = 0; const val SEEK_CUR = 1 }
@@ -65,6 +66,10 @@ object Os {
  fun ftruncate(fd: FileDescriptor, size: Long) { val d = target(fd); d.fail("truncate"); d.file.setLength(size) }
  fun lseek(fd: FileDescriptor, offset: Long, whence: Int): Long {
   val d = target(fd); d.fail("seek"); d.file.seek(if (whence == OsConstants.SEEK_CUR) d.file.filePointer + offset else offset); return d.file.filePointer
+ }
+ fun pread(fd: FileDescriptor, data: ByteArray, from: Int, count: Int, offset: Long): Int {
+  val d = target(fd); d.fail("pread")
+  return d.file.channel.read(ByteBuffer.wrap(data, from, minOf(count, 2)), offset)
  }
  fun fsync(fd: FileDescriptor) { val d = target(fd); d.syncCalls++; d.fail("sync"); d.file.fd.sync(); d.afterSync() }
  fun fstatvfs(fd: FileDescriptor): StructStatVfs {
@@ -121,6 +126,20 @@ fun main(args: Array<String>) {
  }
  storageFailure { TorrSafTarget.open(Resolver(null), uri) }
  storageFailure { TorrSafTarget.open(Resolver(null).apply { denied = true }, uri) }
+ withDescriptor { d ->
+  val target = TorrSafTarget.open(Resolver(d), uri)
+  target.write(byteArrayOf(1, 2, 3, 4, 5, 6), 6)
+  target.seek(1)
+  check(target.matchesAt(2, byteArrayOf(3, 4, 5, 6)) && d.file.filePointer == 1L)
+  check(!target.matchesAt(2, byteArrayOf(3, 4, 9, 6)))
+  check(!target.matchesAt(4, byteArrayOf(5, 6, 0)))
+  d.fault = "pread"
+  check(!target.matchesAt(2, byteArrayOf(3, 4, 5, 6)))
+  d.fault = ""
+  d.pendingError = true
+  storageFailure { target.matchesAt(2, byteArrayOf(3, 4, 5, 6)) }
+  storageFailure { target.close() }
+ }
  for (operation in listOf("stat", "truncate", "seek", "write", "sync", "close")) withDescriptor { d ->
   val target = TorrSafTarget.open(Resolver(d), uri)
   d.fault = operation
@@ -172,7 +191,7 @@ fun main(args: Array<String>) {
   storageFailure { target.close() }
   check(d.closeCalls == 1)
  }
- println("PASS: provider error before open/after fsync/on close, fd cleanup, permission and fd faults, ordinary-provider fast path, space bounds and Engine checkpoint protection")
+ println("PASS: provider errors, positional byte verification, fd cleanup, permission and fd faults, space bounds and Engine checkpoint protection")
 }
 ''',
 }

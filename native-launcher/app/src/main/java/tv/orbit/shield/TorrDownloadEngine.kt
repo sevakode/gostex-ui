@@ -27,6 +27,7 @@ internal interface TorrDownloadTarget {
     fun seek(offset: Long)
     fun write(buffer: ByteArray, count: Int)
     fun sync()
+    fun matchesAt(offset: Long, expected: ByteArray): Boolean = false
 }
 
 internal class TorrFileTarget(private val file: RandomAccessFile) : TorrDownloadTarget {
@@ -105,16 +106,17 @@ internal object TorrDownloadEngine {
             // A provider need not support sparse files. Reserve enough even if it allocates the gap.
             spaceAllowance()?.let { it >= source.size - offset } != false) {
             try {
-                val tail = playbackRetry?.tail?.takeIf {
+                val cachedTail = playbackRetry?.tail?.takeIf {
                     offset > 0 && it.sourceUrl == sourceUrl && it.start == tailStart && it.etag == checkpoint.etag
-                } ?: fetchPlaybackTail(url, source.size, tailStart, checkpoint.etag, readTimeoutMs, cancelled)
+                }
+                val tail = cachedTail ?: fetchPlaybackTail(url, source.size, tailStart, checkpoint.etag, readTimeoutMs, cancelled)
                 if (tail == null || cancelled()) { reportProgress(offset); return checkpoint }
                 playbackRetry?.tail = tail
                 return withTorrentResponse(url, readTimeoutMs, "bytes=$offset-${tail.start - 1}", tail.etag) { connection ->
                     val etag = requireClosedRange(connection, source.size, offset, tail.start, tail.etag)
                     copyValidated(source.size, target, checkpoint, etag, { connection.inputStream }, cancelled,
                         saveCheckpoint, spaceAllowance, beforeWrite, nowNanos, reportProgress, abortable = true,
-                        readable = readable, playbackTail = tail)
+                        readable = readable, playbackTail = tail, verifyStagedTail = cachedTail != null)
                 }
             } catch (_: ClosedRangeUnavailable) {
                 // Continue through the regular sequential path when the server ignores a closed range.
@@ -336,24 +338,29 @@ internal object TorrDownloadEngine {
         abortable: Boolean = false,
         readable: ((prefix: Long, tailStart: Long) -> Unit)? = null,
         playbackTail: PlaybackTail? = null,
+        verifyStagedTail: Boolean = false,
     ): TorrDownloadCheckpoint {
         val offset = checkpoint.offset
         if (abortable && cancelled()) { reportProgress(offset); return checkpoint }
-        if (playbackTail != null && (!beforeWrite(playbackTail.data.size) || cancelled())) {
+        val retainTail = playbackTail != null && verifyStagedTail && target.size() == size &&
+            target.matchesAt(playbackTail.start, playbackTail.data)
+        if (playbackTail != null && ((!retainTail && !beforeWrite(playbackTail.data.size)) || cancelled())) {
             reportProgress(offset)
             return checkpoint
         }
-        // Withdraw any staged bytes from a previous attempt before trimming the document.
-        readable?.invoke(offset, size)
-        // A crash can leave bytes after the last durable checkpoint; never trust them.
-        if (target.size() > offset) target.truncate(offset)
         val tailStart = playbackTail?.start ?: size
-        if (playbackTail != null) {
-            target.seek(tailStart)
-            target.write(playbackTail.data, playbackTail.data.size)
-            target.sync()
-            readable?.invoke(offset, tailStart)
+        if (!retainTail) {
+            // Withdraw coverage before trimming any bytes outside the durable checkpoint.
+            readable?.invoke(offset, size)
+            if (target.size() > offset) target.truncate(offset)
+            if (playbackTail != null) {
+                target.seek(tailStart)
+                target.write(playbackTail.data, playbackTail.data.size)
+                target.sync()
+            }
         }
+        // A retained tail is verified independently of the unwritten middle.
+        if (playbackTail != null) readable?.invoke(offset, tailStart)
         target.seek(offset)
         var written = offset
         var committed = offset

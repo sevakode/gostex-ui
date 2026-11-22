@@ -21,8 +21,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         query = parse_qs(urlparse(self.path).query)
         assert urlparse(self.path).path == '/stream'
-        mode = {'2': 'g', '3': 'h'}.get(query['index'][0], query['link'][0][-1])
-        if mode in 'cdefgh0':
+        mode = {'2': 'g', '3': 'h', '4': 'i'}.get(query['index'][0], query['link'][0][-1])
+        if mode in 'cdefghi0':
             range_header = self.headers.get('Range')
             if mode != '0' or range_header and not range_header.endswith('-'):
                 self.growing_response(mode, range_header)
@@ -64,7 +64,7 @@ class Handler(BaseHTTPRequestHandler):
             lower, upper = range_header.removeprefix('bytes=').split('-')
             start, end = int(lower), int(upper) if upper else end
             status = 206
-        if mode in ('g', 'h') and start == PLAY_TAIL and validator is not None:
+        if mode in ('g', 'h', 'i') and start == PLAY_TAIL and validator is not None:
             self.send_response(503)
             self.send_header('Content-Length', '0')
             self.end_headers()
@@ -78,7 +78,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         if mode == 'f':
             end = min(end, start + 127)
-        if mode in ('g', 'h') and start == 0:
+        if mode in ('g', 'h', 'i') and start == 0:
             end = RETRY_CUT - 1
         try: self.wfile.write(PLAY_DATA[start:end + 1])
         except (BrokenPipeError, ConnectionResetError): pass
@@ -86,17 +86,32 @@ class Handler(BaseHTTPRequestHandler):
 checks = r'''package tv.orbit.shield
 import java.io.RandomAccessFile
 import java.io.IOException
+import java.nio.ByteBuffer
 import java.nio.file.Files
 private class ObservedTarget(private val file: RandomAccessFile) : TorrDownloadTarget {
     var syncs = 0
     var failSyncAt = Int.MAX_VALUE
     var lastSynced = -1L
     var beforeSync: () -> Unit = {}
+    var beforeWrite: (Long) -> Unit = {}
+    var matchChecks = 0
     val syncOffsets = mutableListOf<Long>()
+    val truncates = mutableListOf<Long>()
     override fun size() = file.length()
-    override fun truncate(size: Long) = file.setLength(size)
+    override fun truncate(size: Long) { truncates += size; file.setLength(size) }
     override fun seek(offset: Long) = file.seek(offset)
-    override fun write(buffer: ByteArray, count: Int) = file.write(buffer, 0, count)
+    override fun write(buffer: ByteArray, count: Int) {
+        beforeWrite(file.filePointer)
+        file.write(buffer, 0, count)
+    }
+    override fun matchesAt(offset: Long, expected: ByteArray): Boolean {
+        matchChecks++
+        val buffer = ByteBuffer.allocate(expected.size)
+        while (buffer.hasRemaining()) {
+            if (file.channel.read(buffer, offset + buffer.position()) <= 0) return false
+        }
+        return buffer.array().contentEquals(expected)
+    }
     override fun sync() {
         syncs++
         beforeSync()
@@ -426,10 +441,10 @@ private fun checkGrowing(path: java.nio.file.Path, file: RandomAccessFile, port:
     }
     println("PASS: final staged and sequential writes are readable before sync; sync and checkpoint failures still fail the transfer")
     println("PASS: growing-file staging, coverage, resume identity, malformed ranges, normal fallback, reserve and failed sync")
-    for (mode in listOf('g', 'h')) {
+    for ((episode, mode) in listOf('g', 'h', 'i').withIndex()) {
         file.setLength(0)
         saved = empty
-        val retrySource = source.copy(index = if (mode == 'g') 2 else 3)
+        val retrySource = source.copy(index = episode + 2)
         val retryTarget = ObservedTarget(file)
         val retry = TorrDownloadEngine.PlaybackRetry()
         val interrupted = runCatching {
@@ -453,20 +468,49 @@ private fun checkGrowing(path: java.nio.file.Path, file: RandomAccessFile, port:
             check(noCache is TorrSourceFailure && noCache.reason == "source_response")
             check(retryTarget.syncs == 2 && Files.readAllBytes(path).contentEquals(beforeRetry))
         }
+        if (mode == 'i') {
+            file.seek(tail)
+            val originalByte = file.readUnsignedByte()
+            file.seek(tail)
+            file.write(originalByte xor 0xff)
+        }
+        val resumeCoverage = mutableListOf<Pair<Long, Long>>()
+        var beforeMiddle = false
+        retryTarget.beforeWrite = { offset ->
+            if (offset == durable.offset && !beforeMiddle) {
+                beforeMiddle = true
+                val retained = durable.offset to tail
+                if (mode == 'g') {
+                    check(retryTarget.truncates.isEmpty() && retryTarget.syncs == 2 && resumeCoverage == listOf(retained)) {
+                        "Matching retry unnecessarily restaged the readable tail"
+                    }
+                } else {
+                    check(mode == 'i' && retryTarget.truncates == listOf(durable.offset) && retryTarget.syncs == 3)
+                    check(resumeCoverage == listOf(durable.offset to size, retained))
+                }
+                check(content(tail, (size - tail).toInt()))
+            }
+        }
         val resumed = runCatching {
             TorrDownloadEngine.transfer(retrySource, retryTarget, durable, port, saveCheckpoint = { saved = it },
-                readable = { _, _ -> check(mode == 'g') { "changed response must not alter coverage" } },
+                readable = { prefix, tailStart ->
+                    check(mode != 'h') { "changed response must not alter coverage" }
+                    resumeCoverage += prefix to tailStart
+                },
                 playbackRetry = retry)
         }
         if (mode == 'h') {
             val error = resumed.exceptionOrNull()
             check(error is TorrSourceFailure && error.reason == "source_changed")
-            check(saved == durable && retryTarget.syncs == 2 && Files.readAllBytes(path).contentEquals(beforeRetry))
+            check(saved == durable && retryTarget.matchChecks == 0 && retryTarget.syncs == 2 &&
+                Files.readAllBytes(path).contentEquals(beforeRetry))
         } else {
             check(resumed.getOrThrow() == saved && saved.offset == size && content(0, size.toInt()))
+            check(beforeMiddle && retryTarget.matchChecks == 1)
         }
     }
     println("PASS: transient disconnect reuses one validated tail; different worker and changed validator fail safely")
+    println("PASS: matching on-disk tail stays readable; one changed byte uses protected restaging")
 }
 '''
 server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
@@ -496,8 +540,9 @@ try:
         assert [(header, tag) for mode, header, tag in play_requests if mode == 'g'] == [
             (tail, None), (prefix, '"original"'), (tail, '"original"'), (resumed_middle, '"original"'),
         ]
-        assert [(header, tag) for mode, header, tag in play_requests if mode == 'h'] == [
-            (tail, None), (prefix, '"original"'), (resumed_middle, '"original"'),
-        ]
+        for retry_mode in ('h', 'i'):
+            assert [(header, tag) for mode, header, tag in play_requests if mode == retry_mode] == [
+                (tail, None), (prefix, '"original"'), (resumed_middle, '"original"'),
+            ]
 finally:
     server.shutdown(); server.server_close(); thread.join()

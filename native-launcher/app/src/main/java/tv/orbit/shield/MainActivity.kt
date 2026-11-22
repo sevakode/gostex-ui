@@ -2236,8 +2236,9 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(tab, platform, homeOptions.order, searchQuery, searchOpen, libraryIsEmpty, waitingForAndroidGames) {
                 if (!waitingForAndroidGames && !settingsOpen && !mediaOpen && !searchOpen && tileMenu == null && membershipItem == null && favoriteOrderItem == null && tab == "library") {
                     if (searchReturnTarget == "button" || libraryIsEmpty) {
+                        val target = if (searchReturnTarget == "button" || searchQuery.isNotBlank()) searchFocus else addGamesFocus
                         withFrameNanos { }
-                        runCatching { if (libraryIsEmpty && searchQuery.isBlank()) addGamesFocus.requestFocus() else searchFocus.requestFocus() }
+                        runCatching { target.requestFocus() }
                     } else if (!libraryIsEmpty) {
                         val index = filtered.indexOfFirst { it.id == chosen?.id }.coerceAtLeast(0)
                         libraryScroll.scrollToItem(index)
@@ -2320,60 +2321,76 @@ class MainActivity : ComponentActivity() {
             index.filter(draft).size + androidGames.count { draft.isBlank() || it.name.contains(draft.trim(), ignoreCase = true) }
         }
         val keyboard = LocalSoftwareKeyboardController.current
-        val submit = { keyboard?.hide(); onApply(draft) }
+        val submit = { keyboard?.hide(); onApply(state.text.toString()) }
         val close = { keyboard?.hide(); onClose() }
+        val closeLabel = tr(R.string.close)
+        @Composable fun closeButton() {
+            Action("×", icon = true, compact = true, modifier = Modifier.semantics { contentDescription = closeLabel }, onClick = close)
+        }
+        @Composable fun searchContext() {
+            Text(tr(R.string.search_hint), color = Muted, fontSize = 13.sp, lineHeight = 18.sp)
+            Text(tr(R.string.search_result_count, resultCount), color = White, fontSize = 15.sp)
+        }
         val dialogView = LocalView.current
         val dialogWindow = (dialogView.parent as? DialogWindowProvider)?.window
         LaunchedEffect(dialogWindow) { dialogWindow?.setDimAmount(0f) }
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .55f)).safeDrawingPadding().imePadding()) {
+        BoxWithConstraints(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .55f)).safeDrawingPadding().imePadding()) {
+            val short = maxHeight < 300.dp
             Column(Modifier.align(Alignment.CenterEnd).widthIn(max = 440.dp).fillMaxWidth().fillMaxHeight().background(Ink)
-                .border(1.dp, Color(0xFF424244)).verticalScroll(rememberScrollState()).padding(22.dp),
-                verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(tr(R.string.search_games).uppercase(), Modifier.weight(1f), color = White, fontSize = 23.sp, fontWeight = FontWeight.Black)
-                    val closeLabel = tr(R.string.close)
-                    Action("×", icon = true, compact = true, modifier = Modifier.semantics { contentDescription = closeLabel }, onClick = close)
-                }
-                Text(scopeLabel, color = Lime, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                val inputLabel = tr(R.string.search_placeholder)
-                BasicTextField(
-                    state = state,
-                    modifier = Modifier.fillMaxWidth().focusRequester(inputFocus).onFocusChanged { inputFocused = it.isFocused }
-                        // SHIELD's TV IME can immediately reopen after Back while the field retains
-                        // focus. Leave editing on the first Back; the next Back dismisses the drawer.
-                        .onPreInterceptKeyBeforeSoftKeyboard { event ->
-                            if (event.key == Key.Back) {
-                                if (event.type == KeyEventType.KeyUp) {
-                                    resultsFocus.requestFocus()
-                                    // Target this dialog's window token directly: floating TV
-                                    // keyboards may not respond to an IME insets hide request.
-                                    val input = dialogView.context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)
-                                        as android.view.inputmethod.InputMethodManager
-                                    input.hideSoftInputFromWindow(dialogView.windowToken, 0)
-                                }
-                                true
-                            } else false
-                        }
-                        .semantics { contentDescription = inputLabel }
-                        .border(if (inputFocused) 2.dp else 1.dp, if (inputFocused) Lime else Muted).background(Panel).padding(14.dp),
-                    textStyle = TextStyle(color = White, fontSize = 20.sp),
-                    cursorBrush = SolidColor(Lime),
-                    lineLimits = TextFieldLineLimits.SingleLine,
-                    inputTransformation = InputTransformation.maxLength(120),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    onKeyboardAction = { submit() },
-                    decorator = { inner ->
-                        Box {
-                            if (draft.isEmpty()) Text(inputLabel, color = Muted, fontSize = 20.sp)
-                            inner()
-                        }
+                .border(1.dp, Color(0xFF424244)).verticalScroll(rememberScrollState()).padding(if (short) 8.dp else 22.dp),
+                verticalArrangement = Arrangement.spacedBy(if (short) 8.dp else 18.dp)) {
+                if (!short) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(tr(R.string.search_games).uppercase(), Modifier.weight(1f), color = White, fontSize = 23.sp, fontWeight = FontWeight.Black)
+                        closeButton()
                     }
-                )
-                Text(tr(R.string.search_hint), color = Muted, fontSize = 13.sp, lineHeight = 18.sp)
-                Text(tr(R.string.search_result_count, resultCount), color = White, fontSize = 15.sp)
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(scopeLabel, color = Lime, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                val inputLabel = tr(R.string.search_placeholder)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    BasicTextField(
+                        state = state,
+                        modifier = Modifier.weight(1f).focusRequester(inputFocus).onFocusChanged { inputFocused = it.isFocused }
+                            // SHIELD's TV IME can immediately reopen after Back while the field retains
+                            // focus. Leave editing on the first Back; the next Back dismisses the drawer.
+                            .onPreInterceptKeyBeforeSoftKeyboard { event ->
+                                if (event.key == Key.Back) {
+                                    if (event.type == KeyEventType.KeyUp) {
+                                        resultsFocus.requestFocus()
+                                        // Target this dialog's window token directly: floating TV
+                                        // keyboards may not respond to an IME insets hide request.
+                                        val input = dialogView.context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)
+                                            as android.view.inputmethod.InputMethodManager
+                                        input.hideSoftInputFromWindow(dialogView.windowToken, 0)
+                                    }
+                                    true
+                                } else false
+                            }
+                            .semantics { contentDescription = inputLabel }
+                            .border(if (inputFocused) 2.dp else 1.dp, if (inputFocused) Lime else Muted).background(Panel).padding(if (short) 8.dp else 14.dp),
+                        textStyle = TextStyle(color = White, fontSize = 20.sp),
+                        cursorBrush = SolidColor(Lime),
+                        lineLimits = TextFieldLineLimits.SingleLine,
+                        inputTransformation = InputTransformation.maxLength(120),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                        onKeyboardAction = { submit() },
+                        decorator = { inner ->
+                            Box {
+                                if (draft.isEmpty()) Text(inputLabel, color = Muted, fontSize = 20.sp)
+                                inner()
+                            }
+                        }
+                    )
+                    if (short) closeButton()
+                }
+                if (!short) searchContext()
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Action(tr(R.string.search_show_results), primary = true, modifier = Modifier.focusRequester(resultsFocus), onClick = submit)
                     Action(tr(R.string.clear_search), onClick = { keyboard?.hide(); onApply("") })
+                }
+                if (short) {
+                    Text(scopeLabel, color = Lime, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    searchContext()
                 }
             }
         }

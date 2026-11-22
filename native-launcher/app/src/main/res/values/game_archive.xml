@@ -24,4 +24,8 @@
     <string name="game_archive_dismiss_ready">Remove from list</string>
     <string name="game_archive_open_ready">Open extracted files</string>
     <string name="game_archive_keep_files">Keep files, remove from list</string>
+    <string name="game_archive_destination_access_missing">Access to the extraction folder is missing. Select the same folder to restore access.</string>
+    <string name="game_archive_reconnect_destination">Restore folder access</string>
+    <string name="game_archive_original_destination">Select the original extraction folder.</string>
+    <string name="game_archive_destination_access_failed">Could not restore access to the extraction folder.</string>
 </resources>

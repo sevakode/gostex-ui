@@ -213,6 +213,24 @@ internal object GameArchiveRecovery {
     fun hasDestinationAccess(context: Context, job: Job): Boolean =
         destinationGranted(context.contentResolver.persistedUriPermissions, job.tree)
 
+    fun matchesDestination(job: Job, selected: Uri): Boolean {
+        val authority = selected.authority ?: return false
+        if (selected != job.tree || selected.scheme != ContentResolver.SCHEME_CONTENT ||
+            !Docs.isTreeUri(selected)) return false
+        return runCatching {
+            Docs.buildTreeDocumentUri(authority, Docs.getTreeDocumentId(selected)) == selected
+        }.getOrDefault(false)
+    }
+
+    @Synchronized
+    fun reconnectDestination(context: Context, expected: Job, selected: Uri): Boolean {
+        if (!matchesDestination(expected, selected) || read(context) != expected) return false
+        val resolver = context.contentResolver
+        if (!hasDestinationAccess(context, expected) &&
+            !take(resolver, selected, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)) return false
+        return hasDestinationAccess(context, expected)
+    }
+
     private fun sourceGranted(grants: List<UriPermission>, source: Uri): Boolean = grants.any { grant ->
         grant.isReadPermission && (grant.uri == source || inGrantedTree(source, grant.uri))
     }

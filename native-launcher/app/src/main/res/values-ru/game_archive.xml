@@ -24,4 +24,8 @@
     <string name="game_archive_dismiss_ready">Убрать из списка</string>
     <string name="game_archive_open_ready">Открыть распакованные файлы</string>
     <string name="game_archive_keep_files">Оставить файлы и убрать из списка</string>
+    <string name="game_archive_destination_access_missing">Нет доступа к папке распаковки. Выберите ту же папку, чтобы восстановить доступ.</string>
+    <string name="game_archive_reconnect_destination">Восстановить доступ к папке</string>
+    <string name="game_archive_original_destination">Выберите исходную папку распаковки.</string>
+    <string name="game_archive_destination_access_failed">Не удалось восстановить доступ к папке распаковки.</string>
 </resources>

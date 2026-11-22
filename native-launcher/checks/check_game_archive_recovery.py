@@ -59,7 +59,12 @@ package android.provider
 
 import android.net.Uri
 
-object DocumentsContract { fun isTreeUri(uri: Uri) = uri.pathSegments.firstOrNull() == "tree" }
+object DocumentsContract {
+    fun isTreeUri(uri: Uri) = uri.pathSegments.firstOrNull() == "tree"
+    fun getTreeDocumentId(uri: Uri) = uri.pathSegments[1]
+    fun buildTreeDocumentUri(authority: String, id: String): Uri =
+        Uri.parse("content://$authority/tree/" + java.net.URLEncoder.encode(id, Charsets.UTF_8).replace("+", "%20"))
+}
 ''',
     "Os.kt": r'''
 package android.system

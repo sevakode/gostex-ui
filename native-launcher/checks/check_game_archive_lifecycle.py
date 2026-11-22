@@ -20,15 +20,23 @@ for unused in ("android.app.AlertDialog", "android.widget.ProgressBar"):
     controller = controller.replace(f"import {unused}\n", "")
 # The host boundaries are synchronous, keeping lifecycle ordering deterministic.
 controller = controller.replace("Dispatchers.IO", "Dispatchers.Unconfined")
+recovery = (production / "GameArchiveRecovery.kt").read_text()
+reconnect = recovery[recovery.index("    fun matchesDestination("):recovery.index("    private fun sourceGranted(")]
 
 sources = {
     "Controller.kt": controller,
     "AndroidContent.kt": r'''
 package android.content
-open class Context { val applicationContext: Context get() = this }
+open class Context {
+    val applicationContext: Context get() = this
+    val contentResolver = ContentResolver()
+}
+class ContentResolver { companion object { const val SCHEME_CONTENT = "content" } }
 class Intent { companion object {
     const val ACTION_OPEN_DOCUMENT = "open"
     const val ACTION_OPEN_DOCUMENT_TREE = "tree"
+    const val FLAG_GRANT_READ_URI_PERMISSION = 1
+    const val FLAG_GRANT_WRITE_URI_PERMISSION = 2
 } }
 ''',
     "Formatter.kt": r'''
@@ -54,6 +62,7 @@ object Looper {
     "Uri.kt": r'''
 package android.net
 data class Uri(val text: String) {
+    val scheme: String? get() = text.substringBefore("://", "").ifEmpty { null }
     val authority: String? get() = text.substringAfter("content://", "").substringBefore('/').ifEmpty { null }
     override fun toString(): String = text
     companion object { fun parse(text: String) = Uri(text) }
@@ -63,6 +72,8 @@ data class Uri(val text: String) {
 package android.provider
 import android.net.Uri
 object DocumentsContract {
+    fun isTreeUri(uri: Uri) = "/tree/" in uri.text
+    fun buildTreeDocumentUri(authority: String, id: String) = Uri.parse("content://$authority/tree/$id")
     fun getDocumentId(uri: Uri) = uri.text.substringAfter("/document/", "")
     fun getTreeDocumentId(uri: Uri) = uri.text.substringAfter("/tree/", "").substringBefore("/document/")
     fun buildDocumentUriUsingTree(tree: Uri, id: String) = Uri.parse(tree.text + "/document/" + id)
@@ -99,7 +110,10 @@ val MainActivity.lifecycleScope: CoroutineScope get() = scope
     "Boundaries.kt": r'''
 package tv.orbit.shield
 import android.content.Context
+import android.content.ContentResolver
+import android.content.Intent
 import android.net.Uri
+import android.provider.DocumentsContract as Docs
 import androidx.activity.result.contract.*
 import kotlinx.coroutines.*
 
@@ -141,6 +155,8 @@ object R { object string {
     const val game_archive_format_seven_z = 9
     const val game_archive_confirm = 10
     const val game_archive_format_rar = 11
+    const val game_archive_original_destination = 12
+    const val game_archive_destination_access_failed = 13
 } }
 object PlatformRegistry {
     fun find(id: String): String? = id.takeIf { it in setOf("SNES", "PSP") }
@@ -160,6 +176,18 @@ object GameArchiveRecovery {
     var reads = 0
     var clears = 0
     var failRead = false
+    var destinationAvailable = true
+    var denyDestination = false
+    val grantRequests = mutableListOf<Uri>()
+    fun hasDestinationAccess(context: Context, job: Job) = destinationAvailable
+    private fun take(resolver: ContentResolver, uri: Uri, flags: Int): Boolean {
+        check(flags == 3)
+        grantRequests += uri
+        if (denyDestination) return false
+        destinationAvailable = true
+        return true
+    }
+    PRODUCTION_RECONNECT
     fun read(context: Context): Job? {
         reads++
         if (failRead) error("Unreadable recovery record")
@@ -170,7 +198,10 @@ object GameArchiveRecovery {
         clears++
         saved = null
     }
-    fun reset() { saved = null; reads = 0; clears = 0; failRead = false }
+    fun reset() {
+        saved = null; reads = 0; clears = 0; failRead = false
+        destinationAvailable = true; denyDestination = false; grantRequests.clear()
+    }
 }
 class TorrDownloadLowSpace : java.io.IOException()
 enum class GameArchiveFormat { ZIP, SEVEN_Z, RAR }
@@ -395,7 +426,66 @@ fun main() = runBlocking {
         retry.close()
 
         GameArchiveStorage.reset()
-        val savedJob = GameArchiveRecovery.Job("attempt", "PSP", "game.zip", 42L, destination)
+        val savedJob = GameArchiveRecovery.Job("attempt", "PSP", "game.zip", 42L,
+            Uri.parse("content://fixture/tree/output"))
+        GameArchiveRecovery.saved = savedJob
+        GameArchiveRecovery.destinationAvailable = false
+        val reconnecting = Fixture()
+        reconnecting.controller.restore(null)
+        check(reconnecting.controller.openRecovery())
+        verify("Missing destination access exposes a recoverable saved job",
+            reconnecting.controller.destinationAccessMissing && reconnecting.controller.recovery == savedJob)
+        reconnecting.controller.chooseRecoveryDestination()
+        reconnecting.activity.deliver(1, null)
+        verify("Cancelling destination recovery reopens the unchanged dialog",
+            reconnecting.controller.recoveryOpen && !reconnecting.controller.picking &&
+            reconnecting.controller.destinationAccessMissing && GameArchiveRecovery.grantRequests.isEmpty())
+        for (wrong in listOf("content://fixture/tree/other", "content://other/tree/output",
+                "content://fixture/tree/output/document/output")) {
+            reconnecting.controller.chooseRecoveryDestination()
+            reconnecting.activity.deliver(1, Uri.parse(wrong))
+        }
+        verify("Other SAF trees, authorities and document paths are rejected before requesting grants",
+            reconnecting.controller.recoveryAccessMessage == R.string.game_archive_original_destination &&
+                GameArchiveRecovery.grantRequests.isEmpty() && GameArchiveRecovery.saved == savedJob)
+        reconnecting.controller.chooseRecoveryDestination()
+        val replacementJob = savedJob.copy(id = "new-attempt")
+        GameArchiveRecovery.saved = replacementJob
+        reconnecting.activity.deliver(1, savedJob.tree)
+        verify("A delayed destination result cannot grant access to a replaced journal",
+            GameArchiveRecovery.grantRequests.isEmpty() && reconnecting.controller.recovery == replacementJob)
+        reconnecting.controller.chooseRecoveryDestination()
+        val pendingRestore = Bundle().also(reconnecting.controller::save)
+        reconnecting.close()
+        val recreateReconnect = Fixture()
+        recreateReconnect.controller.restore(pendingRestore)
+        recreateReconnect.activity.deliver(1, replacementJob.tree)
+        verify("A recreated picker expires the previous request and returns to the recovery dialog",
+            recreateReconnect.controller.recoveryOpen && !recreateReconnect.controller.picking &&
+                GameArchiveRecovery.grantRequests.isEmpty() && GameArchiveRecovery.saved == replacementJob)
+        recreateReconnect.controller.chooseRecoveryDestination()
+        PortableMaintenance.runExclusive(recreateReconnect.activity, {}) {
+            recreateReconnect.activity.deliver(1, replacementJob.tree)
+        }
+        verify("Maintenance ignores a destination picker result before granting access",
+            GameArchiveRecovery.grantRequests.isEmpty() && GameArchiveRecovery.saved == replacementJob)
+        GameArchiveRecovery.denyDestination = true
+        recreateReconnect.controller.chooseRecoveryDestination()
+        recreateReconnect.activity.deliver(1, replacementJob.tree)
+        verify("Denied exact grant keeps the job and allows retry",
+            recreateReconnect.controller.destinationAccessMissing &&
+            recreateReconnect.controller.recoveryAccessMessage == R.string.game_archive_destination_access_failed)
+        GameArchiveRecovery.denyDestination = false
+        recreateReconnect.controller.chooseRecoveryDestination()
+        recreateReconnect.activity.deliver(1, replacementJob.tree)
+        recreateReconnect.activity.deliver(1, replacementJob.tree)
+        verify("Exact grant restores the same job once without auto-resume or deletion",
+            !recreateReconnect.controller.destinationAccessMissing && recreateReconnect.controller.recoveryOpen &&
+                recreateReconnect.controller.recovery == replacementJob &&
+                GameArchiveRecovery.grantRequests == listOf(replacementJob.tree, replacementJob.tree) &&
+                GameArchiveStorage.resumes == 0 && GameArchiveStorage.discards == 0 && GameArchiveRecovery.clears == 0)
+        recreateReconnect.close()
+        GameArchiveStorage.reset()
         GameArchiveRecovery.saved = savedJob
         val cold = Fixture()
         cold.controller.restore(null)
@@ -509,6 +599,8 @@ report = {
     "sourceSha256": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in [controller_path, maintenance_path]},
     "passed": False,
 }
+sources["Boundaries.kt"] = sources["Boundaries.kt"].replace("PRODUCTION_RECONNECT", reconnect)
+
 with tempfile.TemporaryDirectory(prefix="gostex-archive-lifecycle-") as directory:
     folder = Path(directory)
     for name, source_text in sources.items():

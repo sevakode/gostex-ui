@@ -25,7 +25,7 @@ internal class GameArchiveController(
     private val launchPicker: (String, String?, () -> Unit) -> Boolean,
     private val addFolder: (String, Uri) -> Boolean,
 ) {
-    private enum class Picker { SOURCE, DESTINATION, EXPIRED_SOURCE, EXPIRED_DESTINATION }
+    private enum class Picker { SOURCE, DESTINATION, EXPIRED_SOURCE, EXPIRED_DESTINATION, RECONNECT_DESTINATION, EXPIRED_RECONNECT }
     var plan by mutableStateOf<GameArchiveStorage.Plan?>(null)
         private set
     var busy by mutableStateOf(false)
@@ -40,6 +40,11 @@ internal class GameArchiveController(
         private set
     var discardFailed by mutableStateOf(false)
         private set
+    var destinationAccessMissing by mutableStateOf(false)
+        private set
+    var recoveryAccessMessage by mutableStateOf<Int?>(null)
+        private set
+    private var reconnectJob: GameArchiveRecovery.Job? = null
     private var activeRecovery by mutableStateOf<GameArchiveRecovery.Job?>(null)
     val extracting: Boolean get() = plan != null || activeRecovery != null
     val totalBytes: Long? get() = plan?.totalBytes ?: activeRecovery?.totalBytes
@@ -61,7 +66,12 @@ internal class GameArchiveController(
     }
     private val destinationPicker = activity.registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         val request = pendingPicker
-        if (request == Picker.DESTINATION || request == Picker.EXPIRED_DESTINATION) {
+        if (request == Picker.RECONNECT_DESTINATION || request == Picker.EXPIRED_RECONNECT) {
+            pendingPicker = null
+            val expected = reconnectJob.also { reconnectJob = null }
+            if (request == Picker.RECONNECT_DESTINATION && expected != null && expected == recovery &&
+                !PortableMaintenance.running && uri != null) restoreDestinationAccess(expected, uri)
+        } else if (request == Picker.DESTINATION || request == Picker.EXPIRED_DESTINATION) {
             pendingPicker = null
             val preview = plan
             if (request == Picker.EXPIRED_DESTINATION || PortableMaintenance.running || preview == null) expiredNotice()
@@ -130,9 +140,48 @@ internal class GameArchiveController(
         if (busy || picking || PortableMaintenance.running || recovery == null) return false
         clear()
         discardFailed = false
+        recoveryAccessMessage = null
         recoveryOpen = true
         dialogRevision++
         return true
+    }
+
+    fun chooseRecoveryDestination() {
+        val job = recovery ?: return
+        if (!recoveryOpen || !destinationAccessMissing || busy || picking || PortableMaintenance.running) return
+        recoveryAccessMessage = null
+        reconnectJob = job
+        pendingPicker = Picker.RECONNECT_DESTINATION
+        if (!launchPicker(Intent.ACTION_OPEN_DOCUMENT_TREE, null) { destinationPicker.launch(job.tree) }) {
+            reconnectJob = null
+            pendingPicker = null
+            dialogRevision++
+        }
+    }
+
+    private fun restoreDestinationAccess(expected: GameArchiveRecovery.Job, selected: Uri) {
+        if (!GameArchiveRecovery.matchesDestination(expected, selected)) {
+            recoveryAccessMessage = R.string.game_archive_original_destination
+            return
+        }
+        startOperation {
+            try {
+                val restored = withContext(Dispatchers.IO) {
+                    currentCoroutineContext().ensureActive()
+                    if (PortableMaintenance.running) return@withContext false
+                    GameArchiveRecovery.reconnectDestination(activity, expected, selected)
+                }
+                readRecovery()
+                if (recovery == expected) {
+                    if (restored) discardFailed = false
+                    else recoveryAccessMessage = R.string.game_archive_destination_access_failed
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                recoveryAccessMessage = R.string.game_archive_destination_access_failed
+            }
+        }
     }
 
     fun resumeRecovery() {
@@ -164,7 +213,7 @@ internal class GameArchiveController(
 
     fun forgetRecovery() {
         val job = recovery ?: return
-        if (busy || picking || PortableMaintenance.running || !discardFailed) return
+        if (busy || picking || PortableMaintenance.running || (!discardFailed && !destinationAccessMissing)) return
         recoveryOpen = false
         startOperation {
             try {
@@ -204,7 +253,12 @@ internal class GameArchiveController(
 
     private suspend fun readRecovery() {
         try {
-            recovery = withContext(Dispatchers.IO) { GameArchiveRecovery.read(activity) }
+            val (job, missing) = withContext(Dispatchers.IO) {
+                val job = GameArchiveRecovery.read(activity)
+                job to (job != null && !GameArchiveRecovery.hasDestinationAccess(activity, job))
+            }
+            recovery = job
+            destinationAccessMissing = missing
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
@@ -247,11 +301,14 @@ internal class GameArchiveController(
             Picker.SOURCE.name -> if (platform.isNotEmpty()) Picker.SOURCE else Picker.EXPIRED_SOURCE
             Picker.EXPIRED_SOURCE.name -> Picker.EXPIRED_SOURCE
             Picker.DESTINATION.name, Picker.EXPIRED_DESTINATION.name -> Picker.EXPIRED_DESTINATION
+            Picker.RECONNECT_DESTINATION.name, Picker.EXPIRED_RECONNECT.name -> Picker.EXPIRED_RECONNECT
             else -> null
         }
         // A preview is process-local. Never start extraction from a stale folder result.
+        val reopenRecovery = pendingPicker == Picker.EXPIRED_RECONNECT
         activity.lifecycleScope.launch {
             readRecovery()
+            if (reopenRecovery && recovery != null) recoveryOpen = true
             if (recovery == null && state?.getBoolean("gameArchiveHadWork") == true &&
                 !busy && !picking && plan == null && result == null) expiredNotice()
         }
@@ -264,8 +321,10 @@ internal class GameArchiveController(
         pendingPicker = when (pendingPicker) {
             Picker.SOURCE -> Picker.EXPIRED_SOURCE
             Picker.DESTINATION -> Picker.EXPIRED_DESTINATION
+            Picker.RECONNECT_DESTINATION -> Picker.EXPIRED_RECONNECT
             else -> pendingPicker
         }
+        reconnectJob = null
         clear()
     }
 
@@ -354,7 +413,7 @@ internal fun GameArchiveHost(activity: MainActivity) {
         if (total != null && total > 0) progressBar.progress =
             (progress.toDouble() / total * 1000).toInt().coerceIn(0, 1000)
     }
-    DisposableEffect(activity, plan, busy, finished, recovery, confirmDiscard, archive.discardFailed, archive.dialogRevision) {
+    DisposableEffect(activity, plan, busy, finished, recovery, confirmDiscard, archive.discardFailed, archive.destinationAccessMissing, archive.recoveryAccessMessage, archive.dialogRevision) {
         val title = plan?.title ?: archive.recovery?.title ?: activity.getString(R.string.game_archive_title)
         val builder = AlertDialog.Builder(activity).setTitle(title)
         when {
@@ -363,6 +422,11 @@ internal fun GameArchiveHost(activity: MainActivity) {
             finished != null -> builder.setMessage(R.string.game_archive_ready)
                 .setPositiveButton(R.string.import_game_folder) { _, _ -> archive.addResult() }
                 .setNegativeButton(R.string.close) { _, _ -> archive.cancel() }
+            recovery != null && archive.destinationAccessMissing ->
+                builder.setMessage(archive.recoveryAccessMessage ?: R.string.game_archive_destination_access_missing)
+                    .setPositiveButton(R.string.game_archive_reconnect_destination) { _, _ -> archive.chooseRecoveryDestination() }
+                    .setNeutralButton(R.string.game_archive_keep_files) { _, _ -> archive.forgetRecovery() }
+                    .setNegativeButton(R.string.close) { _, _ -> archive.cancel() }
             recovery != null && archive.discardFailed -> builder.setMessage(R.string.game_archive_discard_failed)
                 .setPositiveButton(R.string.game_archive_keep_files) { _, _ -> archive.forgetRecovery() }
                 .setNegativeButton(R.string.close) { _, _ -> archive.cancel() }

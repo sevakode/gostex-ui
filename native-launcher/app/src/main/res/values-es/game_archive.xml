@@ -24,4 +24,8 @@
     <string name="game_archive_dismiss_ready">Quitar de la lista</string>
     <string name="game_archive_open_ready">Abrir archivos extraídos</string>
     <string name="game_archive_keep_files">Conservar archivos y quitar de la lista</string>
+    <string name="game_archive_destination_access_missing">Falta acceso a la carpeta de extracción. Selecciona la misma carpeta para recuperar el acceso.</string>
+    <string name="game_archive_reconnect_destination">Restablecer acceso a la carpeta</string>
+    <string name="game_archive_original_destination">Selecciona la carpeta de extracción original.</string>
+    <string name="game_archive_destination_access_failed">No se pudo recuperar el acceso a la carpeta de extracción.</string>
 </resources>

@@ -30,7 +30,7 @@ internal object TorrFinalizeProof {
 
     fun record(context: Context, job: TorrDownloadJob, document: Uri, checkActive: () -> Unit) {
         require(isFinalizing(job) && supports(job) && document.toString() == job.document)
-        val bytes = key(job) + digest(context.contentResolver, document, job.total, checkActive)
+        val bytes = key(job) + digest(context.contentResolver, document, job, checkActive)
         checkActive()
         val proof = AtomicFile(file(context, job.id))
         val output = proof.startWrite()
@@ -59,9 +59,11 @@ internal object TorrFinalizeProof {
             val proof = read(AtomicFile(file(context, job.id)))
             MessageDigest.isEqual(key(job), proof.copyOfRange(0, SHA_BYTES)) &&
                 MessageDigest.isEqual(proof.copyOfRange(SHA_BYTES, RECORD_BYTES),
-                    digest(context.contentResolver, candidate, job.total, checkActive))
+                    digest(context.contentResolver, candidate, job, checkActive))
         } catch (cancelled: CancellationException) {
             throw cancelled
+        } catch (invalid: SavedVideoIntegrity.InvalidHeader) {
+            throw invalid
         } catch (_: Exception) {
             checkActive()
             false
@@ -156,8 +158,9 @@ internal object TorrFinalizeProof {
         return MessageDigest.getInstance("SHA-256").digest(bytes.toByteArray())
     }
 
-    private fun digest(resolver: ContentResolver, document: Uri, total: Long, checkActive: () -> Unit): ByteArray {
+    private fun digest(resolver: ContentResolver, document: Uri, job: TorrDownloadJob, checkActive: () -> Unit): ByteArray {
         checkActive()
+        val total = job.total
         val descriptor = resolver.openFileDescriptor(document, "r") ?: throw TorrStorageFailure()
         return descriptor.use {
             val fd = it.fileDescriptor
@@ -168,6 +171,19 @@ internal object TorrFinalizeProof {
             val digest = MessageDigest.getInstance("SHA-256")
             val buffer = ByteArray(READ_BYTES)
             var offset = 0L
+            if (TorrPlayback.isVideo(job.finalName)) {
+                val headerSize = minOf(total, SavedVideoIntegrity.HEADER_BYTES.toLong()).toInt()
+                var received = 0
+                while (received < headerSize) {
+                    checkActive()
+                    val count = Os.pread(fd, buffer, received, headerSize - received, received.toLong())
+                    if (count <= 0) throw TorrStorageFailure()
+                    received += count
+                }
+                if (!SavedVideoIntegrity.matchesHeader(job.finalName, buffer, received)) throw SavedVideoIntegrity.InvalidHeader()
+                digest.update(buffer, 0, received)
+                offset = received.toLong()
+            }
             while (offset < total) {
                 checkActive()
                 val count = Os.pread(fd, buffer, 0, minOf(buffer.size.toLong(), total - offset).toInt(), offset)

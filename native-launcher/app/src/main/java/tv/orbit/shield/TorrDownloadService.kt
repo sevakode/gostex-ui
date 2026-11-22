@@ -252,7 +252,7 @@ internal class TorrDownloadService : Service() {
                         val reason = when (error) {
                             is TorrDownloadLowSpace -> "space"
                             is TorrDownloadSpaceUnavailable -> "space_unavailable"
-                            is TorrVideoIntegrityFailure -> "video_invalid"
+                            is SavedVideoIntegrity.InvalidHeader -> "video_invalid"
                             is TorrSourceFailure -> error.reason
                             is TorrStorageFailure -> "storage"
                             else -> phase
@@ -317,20 +317,22 @@ internal class TorrDownloadService : Service() {
         // A durable offset is not proof that the underlying USB document still
         // has those bytes. It may have been truncated or replaced while the app
         // was stopped. Never expose it as a completed ROM until checked again.
-        if (job.offset != job.total) throw IOException("Incomplete checkpoint")
         val document = completed ?: Uri.parse(job.document)
-        TorrSafTarget.open(contentResolver, document).use { target ->
-            TorrDownloadEngine.verifyCompleted(job.total, target, TorrDownloadCheckpoint(job.offset, job.etag),
-                requireStrongEtag = job.http?.let { it.expectedEtag != null } ?: true)
-        }
-        requireVideoHeader(job, document, checkActive)
-        if (completed != null) {
-            if (changedId && !TorrFinalizeProof.matches(this, job, completed, checkActive)) {
+        val checkpoint = TorrDownloadCheckpoint(job.offset, job.etag)
+        val requireStrongEtag = job.http?.let { it.expectedEtag != null } ?: true
+        if (changedId || (completed == null && TorrFinalizeProof.supports(job))) {
+            TorrDownloadEngine.verifyCompletedCheckpoint(job.total, checkpoint, requireStrongEtag)
+            if (completed == null) TorrFinalizeProof.record(this, job, document, checkActive)
+            else if (!TorrFinalizeProof.matches(this, job, completed, checkActive)) {
                 throw IOException("Renamed download content does not match")
             }
-            return completed
+        } else {
+            TorrSafTarget.open(contentResolver, document).use { target ->
+                TorrDownloadEngine.verifyCompleted(job.total, target, checkpoint, requireStrongEtag)
+            }
+            requireVideoHeader(job, document, checkActive)
         }
-        if (TorrFinalizeProof.supports(job)) TorrFinalizeProof.record(this, job, document, checkActive)
+        if (completed != null) return completed
         checkActive()
         val renamed = DocumentsContract.renameDocument(contentResolver, document, job.finalName)
             ?: throw IOException("Cannot finish download")
@@ -357,12 +359,10 @@ internal class TorrDownloadService : Service() {
         return result
     }
 
-    private class TorrVideoIntegrityFailure : IOException("Invalid video header")
-
     private fun requireVideoHeader(job: TorrDownloadJob, document: Uri, checkActive: () -> Unit = {}) {
         when (SavedVideoIntegrity.check(contentResolver, document, job.finalName, job.total, checkActive)) {
             SavedVideoIntegrity.Result.VALID -> Unit
-            SavedVideoIntegrity.Result.INVALID -> throw TorrVideoIntegrityFailure()
+            SavedVideoIntegrity.Result.INVALID -> throw SavedVideoIntegrity.InvalidHeader()
             SavedVideoIntegrity.Result.UNAVAILABLE -> throw TorrStorageFailure()
         }
     }
@@ -387,11 +387,12 @@ internal class TorrDownloadService : Service() {
         synchronized(notificationLock) {
             if (activeTransfer !== transfer) return
             val canPause = job.state == "running" && !transfer.paused.get()
-            val status = if (canPause) when (job.error) {
-                "waiting_network" -> R.string.torr_download_waiting_network
-                "retrying" -> R.string.torr_download_retrying
+            val status = when {
+                job.state == "finalizing" -> R.string.torr_download_finalizing
+                canPause && job.error == "waiting_network" -> R.string.torr_download_waiting_network
+                canPause && job.error == "retrying" -> R.string.torr_download_retrying
                 else -> null
-            } else null
+            }
             val progress = NotificationProgress(transfer.pauseToken, percent, canPause, status)
             if (notifiedProgress == progress) return
             // Notification permission/system availability can change during a transfer.

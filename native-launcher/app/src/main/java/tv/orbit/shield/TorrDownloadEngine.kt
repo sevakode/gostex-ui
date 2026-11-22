@@ -317,8 +317,13 @@ internal object TorrDownloadEngine {
     /** Verify a durable, completed document without constructing or contacting a source. */
     fun verifyCompleted(size: Long, target: TorrDownloadTarget, checkpoint: TorrDownloadCheckpoint,
                         requireStrongEtag: Boolean = true) {
+        verifyCompletedCheckpoint(size, checkpoint, requireStrongEtag)
+        if (target.size() != size) throw IOException("Invalid completed size")
+    }
+
+    fun verifyCompletedCheckpoint(size: Long, checkpoint: TorrDownloadCheckpoint, requireStrongEtag: Boolean) {
         val invalidValidator = if (requireStrongEtag) size > 0 && !isStrongEtag(checkpoint.etag) else checkpoint.etag != null
-        if (size < 0 || checkpoint.offset != size || target.size() != size || invalidValidator) {
+        if (size < 0 || checkpoint.offset != size || invalidValidator) {
             throw IOException("Invalid completed checkpoint")
         }
     }

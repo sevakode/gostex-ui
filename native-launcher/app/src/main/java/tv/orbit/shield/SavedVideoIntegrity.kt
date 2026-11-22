@@ -2,24 +2,33 @@ package tv.orbit.shield
 
 import android.content.ContentResolver
 import android.net.Uri
+import java.io.IOException
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
 
 /** Reject obvious corruption without decoding the video or reading beyond its first 4 KiB. */
 internal object SavedVideoIntegrity {
     enum class Result { VALID, INVALID, UNAVAILABLE }
+    class InvalidHeader : IOException("Invalid video header")
 
     const val HEADER_BYTES = 4096
     private val ebml = byteArrayOf(0x1A, 0x45, 0xDF.toByte(), 0xA3.toByte())
+
+    private fun requiresEbml(filename: String): Boolean =
+        filename.substringAfterLast('.').lowercase(Locale.ROOT) in setOf("mkv", "webm")
+
+    fun matchesHeader(filename: String, header: ByteArray, count: Int): Boolean {
+        if (count !in 1..header.size) return false
+        return if (requiresEbml(filename)) count >= ebml.size && ebml.indices.all { header[it] == ebml[it] }
+        else (0 until count).any { header[it] != 0.toByte() }
+    }
 
     fun check(resolver: ContentResolver, uri: Uri, filename: String, size: Long,
               checkActive: () -> Unit = {}): Result {
         if (!TorrPlayback.isVideo(filename)) return Result.VALID
         if (size <= 0) return Result.INVALID
-        val extension = filename.substringAfterLast('.').lowercase(Locale.ROOT)
-        val requireEbml = extension == "mkv" || extension == "webm"
         val header = ByteArray(minOf(size, HEADER_BYTES.toLong()).toInt())
-        if (requireEbml && header.size < ebml.size) return Result.INVALID
+        if (header.size < ebml.size && requiresEbml(filename)) return Result.INVALID
 
         fun checkCancellation() {
             checkActive()
@@ -37,9 +46,7 @@ internal object SavedVideoIntegrity {
                     if (count == 0) return@use Result.UNAVAILABLE
                     offset += count
                 }
-                val valid = if (requireEbml) ebml.indices.all { header[it] == ebml[it] }
-                    else header.any { it != 0.toByte() }
-                if (valid) Result.VALID else Result.INVALID
+                if (matchesHeader(filename, header, offset)) Result.VALID else Result.INVALID
             } ?: Result.UNAVAILABLE
             checkCancellation()
             result

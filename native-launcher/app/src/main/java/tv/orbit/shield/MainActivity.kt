@@ -61,6 +61,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.onPreInterceptKeyBeforeSoftKeyboard
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
@@ -79,6 +80,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -1752,6 +1754,7 @@ class MainActivity : ComponentActivity() {
     var platform by rememberSaveable { mutableStateOf("all") }
     var chosenId by rememberSaveable { mutableStateOf(HomePreferences.selectedId(activity)) }
     var detailId by rememberSaveable { mutableStateOf<String?>(null) }
+    var libraryDetailReturnId by rememberSaveable { mutableStateOf<String?>(null) }
     val detail = remember(games, detailId) { detailId?.let { id -> games.firstOrNull { it.id == id } } }
     var versionGameId by rememberSaveable { mutableStateOf<String?>(null) }
     var versionFile by rememberSaveable { mutableStateOf<String?>(null) }
@@ -1818,7 +1821,12 @@ class MainActivity : ComponentActivity() {
     )) { mutableStateOf<HomeFeedAnchor?>(null) }
     var tileRestore by remember { mutableIntStateOf(0) }
     fun dismissTileMenu() { tileMenu = null; tileRestore++ }
+    fun returnFromGameDetail() {
+        if (tab == "library") libraryDetailReturnId = detailId else tileRestore++
+        closeGameDetail()
+    }
     fun showGameDetail(game: Game) {
+        libraryDetailReturnId = null
         detailId = game.id
         chosenId = game.id
         versionGameId = null
@@ -1910,6 +1918,12 @@ class MainActivity : ComponentActivity() {
     val waitingForAndroidGames = platform == "android-apps" && libraryOptions.androidGamesVisible && loadedApps == null
     val showAndroidGamesFilter = androidGameApps.isNotEmpty() || waitingForAndroidGames
     val libraryIsEmpty = filtered.isEmpty() && filteredAndroidGames.isEmpty()
+    val libraryFocusId = libraryDetailReturnId ?: chosen?.id
+    val libraryFocusIndex = remember(filtered, libraryFocusId) {
+        filtered.indexOfFirst { it.id == libraryFocusId }.coerceAtLeast(0)
+    }
+    val libraryFocusGame = filtered.getOrNull(libraryFocusIndex)
+    val currentLibraryPosition by rememberUpdatedState(libraryFocusIndex to libraryFocusGame?.id)
     LaunchedEffect(platform, waitingForAndroidGames, androidGameApps) {
         if (platform == "android-apps" && !waitingForAndroidGames && androidGameApps.isEmpty()) platform = "all"
     }
@@ -1919,6 +1933,7 @@ class MainActivity : ComponentActivity() {
             searchOpen = false
             platform = "all"
         }
+        if (tab != "library") libraryDetailReturnId = null
     }
     LaunchedEffect(games) {
         if (games.none { it.id == chosenId }) chosenId = homeGames.firstOrNull()?.id
@@ -1958,7 +1973,7 @@ class MainActivity : ComponentActivity() {
         if (activity.openDownloadsRequested) showRootTab("downloads")
     }
     BackHandler {
-        if (detail != null) { closeGameDetail(); tileRestore++ } else { tab = "home"; platform = "all" }
+        if (detail != null) returnFromGameDetail() else { tab = "home"; platform = "all" }
     }
 
     Box(Modifier.fillMaxSize().background(Ink).safeDrawingPadding().onPreviewKeyEvent { event ->
@@ -2010,7 +2025,7 @@ class MainActivity : ComponentActivity() {
                 Column(Modifier.fillMaxSize().padding(edge)) {
                     val detailsScroll = rememberScrollState()
                     Column(Modifier.weight(1f).fillMaxWidth().then(if (short) Modifier.verticalScroll(detailsScroll) else Modifier)) {
-                        Action(tr(R.string.back_library), onClick = { closeGameDetail(); tileRestore++ })
+                        Action(tr(R.string.back_library), onClick = ::returnFromGameDetail)
                         Spacer(Modifier.height(26.dp))
                         Text("${platformTitle(g.platform).uppercase()}   /   ${if (g.demo) "HOMEBREW" else tr(R.string.your_collection).uppercase()}", color = Lime, fontSize = 12.sp, letterSpacing = 2.sp)
                         Spacer(Modifier.height(10.dp))
@@ -2040,6 +2055,7 @@ class MainActivity : ComponentActivity() {
             }
             LaunchedEffect(g.id) { firstFocus.requestFocus() }
         } else {
+            var libraryGridPlaced by remember { mutableStateOf(false) }
             Column(Modifier.fillMaxSize()) {
                 BoxWithConstraints(Modifier.fillMaxWidth()) {
                   if (maxWidth < 600.dp) {
@@ -2213,13 +2229,14 @@ class MainActivity : ComponentActivity() {
                             Text(tr(R.string.library_optional_hint), color = Muted, fontSize = 12.sp, lineHeight = 17.sp)
                         }
                     } else BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-                      LazyVerticalGrid(columns = GridCells.Fixed(TileLayout.columns(maxWidth, LocalTileSize.current)), state = libraryScroll, modifier = Modifier.fillMaxSize(),
+                      LazyVerticalGrid(columns = GridCells.Fixed(TileLayout.columns(maxWidth, LocalTileSize.current)), state = libraryScroll,
+                        modifier = Modifier.fillMaxSize().onGloballyPositioned { libraryGridPlaced = true },
                         contentPadding = PaddingValues(start = TileLayout.screenInset + TileLayout.focusInset, end = TileLayout.screenInset + TileLayout.focusInset, top = 8.dp, bottom = 18.dp),
                         horizontalArrangement = Arrangement.spacedBy(TileLayout.gap), verticalArrangement = Arrangement.spacedBy(TileLayout.gap)) {
-                        items(filtered, key = { "game:${it.id}" }) { g ->
+                        items(filtered, key = { homeGameKey(it.id) }) { g ->
                             val cardFocus = remember(g.id) { FocusRequester() }
                             Poster(g, Modifier.fillMaxWidth()
-                                .then(if (g.id == chosen?.id || (chosen !in filtered && g == filtered.first())) Modifier.focusRequester(firstFocus) else Modifier)
+                                .then(if (g.id == libraryFocusGame?.id) Modifier.focusRequester(firstFocus) else Modifier)
                                 .focusRequester(cardFocus), g.id in favorites, onFocus = { selectGame(g) },
                                 onClick = { openGame(g, cardFocus) }, onLongClick = { gameMenu(g, cardFocus) })
                         }
@@ -2248,13 +2265,23 @@ class MainActivity : ComponentActivity() {
                         val target = if (searchReturnTarget == "button" || searchQuery.isNotBlank()) searchFocus else addGamesFocus
                         withFrameNanos { }
                         runCatching { target.requestFocus() }
-                    } else if (!libraryIsEmpty) {
-                        val index = filtered.indexOfFirst { it.id == chosen?.id }.coerceAtLeast(0)
-                        libraryScroll.scrollToItem(index)
+                    } else {
+                        val returningToGame = libraryDetailReturnId != null
+                        // LazyGridState can still describe the old viewport until the new grid is placed.
+                        if (returningToGame) snapshotFlow { libraryGridPlaced }.first { it }
+                        val (index, gameId) = currentLibraryPosition
+                        val layout = libraryScroll.layoutInfo
+                        val alreadyVisible = returningToGame && gameId != null && layout.visibleItemsInfo.any { item ->
+                            item.index == index && item.key == homeGameKey(gameId) &&
+                                item.offset.y >= layout.viewportStartOffset &&
+                                item.offset.y + item.size.height <= layout.viewportEndOffset
+                        }
+                        if (!alreadyVisible) libraryScroll.scrollToItem(index)
                         withFrameNanos { }
                         runCatching { firstFocus.requestFocus() }
                     }
                     searchReturnTarget = ""
+                    libraryDetailReturnId = null
                 }
             }
         }

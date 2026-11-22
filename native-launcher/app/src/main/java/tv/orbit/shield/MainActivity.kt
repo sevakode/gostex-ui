@@ -170,7 +170,7 @@ class MainActivity : ComponentActivity() {
     private var torrGameImporting = false
     internal fun addDownloadedGame(job: TorrDownloadJob) {
         if (PortableMaintenance.running || torrGameImporting || job.state != "done") return
-        if (job.finalName.endsWith(".zip", ignoreCase = true)) {
+        if (GameArchiveFormat.supportsName(job.finalName)) {
             val platforms = PlatformRegistry.all
             android.app.AlertDialog.Builder(this).setTitle(R.string.choose_system)
                 .setItems(platforms.map { getString(it.titleRes) }.toTypedArray()) { _, index ->

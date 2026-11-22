@@ -783,9 +783,13 @@ import kotlinx.coroutines.withContext
                 Box(Modifier.fillMaxWidth(percent / 100f).height(3.dp).background(Color(0xFFCCFF00)))
             }
         }
-        if (job.state == "done" && PlatformRegistry.all.any { it.accepts(job.finalName) })
-            SettingRow(tr(if (job.finalName.endsWith(".zip", ignoreCase = true)) R.string.game_archive_title else R.string.torr_game_add),
-                onClick = { activity.addDownloadedGame(job) })
+        if (job.state == "done") {
+            val isArchive = GameArchiveFormat.supportsName(job.finalName)
+            if (isArchive || PlatformRegistry.all.any { it.accepts(job.finalName) }) {
+                SettingRow(tr(if (isArchive) R.string.game_archive_title else R.string.torr_game_add),
+                    onClick = { activity.addDownloadedGame(job) })
+            }
+        }
         if (job.state == "paused" || job.state == "error") SettingRow(
             tr(R.string.torr_download_remove), tr(R.string.torr_download_keep_partial), onClick = {
                 android.app.AlertDialog.Builder(activity)

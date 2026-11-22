@@ -1,22 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="game_archive_title">Распаковать ZIP</string>
-    <string name="game_archive_invalid">Не удалось прочитать ZIP. Возможно, он недокачан или использует неподдерживаемый формат.</string>
+    <string name="game_archive_title">Распаковать ZIP или 7z</string>
+    <string name="game_archive_invalid">Не удалось прочитать архив. Выберите полностью загруженный ZIP или однотомный 7z без пароля.</string>
     <string name="game_archive_cancelled">Распаковка отменена.</string>
-    <string name="game_archive_expired">Подготовка архива прервана. Выберите ZIP заново, чтобы продолжить.</string>
+    <string name="game_archive_expired">Подготовка архива прервана. Выберите архив заново, чтобы продолжить.</string>
     <string name="game_archive_failed">Распаковка остановлена. Проверьте свободное место и доступ к папке, затем повторите.</string>
     <string name="game_archive_inspecting">Читаем содержимое архива…</string>
     <string name="game_archive_working">Распаковываем файлы…</string>
     <string name="game_archive_ready">Файлы готовы в новой папке. Подтвердите эту папку, чтобы добавить её в библиотеку.</string>
-    <string name="game_archive_confirm">Файлов: %1$d · после распаковки: %2$s. Выберите место для новой папки. Исходный архив сохранится.</string>
+    <string name="game_archive_format_zip">ZIP</string>
+    <string name="game_archive_format_seven_z">7z</string>
+    <string name="game_archive_confirm">%1$s · файлов: %2$d · после распаковки: %3$s. Выберите место для новой папки. Исходный архив сохранится.</string>
     <string name="game_archive_destination">Выбрать папку</string>
     <string name="game_archive_pause">Приостановить распаковку</string>
-    <string name="game_archive_resume">Продолжить распаковку ZIP</string>
-    <string name="game_archive_recover">Распаковка ZIP прервалась. Можно продолжить с уже подготовленных файлов.</string>
+    <string name="game_archive_resume">Продолжить распаковку</string>
+    <string name="game_archive_recover">Распаковка прервалась. Можно продолжить с уже подготовленных файлов.</string>
     <string name="game_archive_discard">Удалить незавершённую распаковку</string>
     <string name="game_archive_discard_confirm">Удалить частичные файлы этой распаковки?</string>
     <string name="game_archive_discard_failed">Не удалось удалить частичные файлы. Проверьте доступ к архиву и папке назначения.</string>
-    <string name="game_archive_recovery_unavailable">Не удалось прочитать сохранённую распаковку ZIP.</string>
+    <string name="game_archive_recovery_unavailable">Не удалось прочитать сохранённую распаковку.</string>
     <string name="game_archive_recover_ready">Файлы готовы к добавлению в библиотеку.</string>
     <string name="game_archive_dismiss_ready">Убрать из списка</string>
     <string name="game_archive_open_ready">Открыть распакованные файлы</string>

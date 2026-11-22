@@ -40,6 +40,8 @@ android {
 }
 dependencies {
     implementation(project(":release-runtime"))
+    implementation("org.apache.commons:commons-compress:1.28.0")
+    implementation("org.tukaani:xz:1.10")
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.compose.ui:ui:1.12.1")
     implementation("androidx.compose.foundation:foundation:1.12.1")

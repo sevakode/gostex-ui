@@ -80,7 +80,7 @@ internal class GameArchiveController(
         clear()
         pendingPicker = Picker.SOURCE
         val started = launchPicker(Intent.ACTION_OPEN_DOCUMENT, "*/*") {
-            sourcePicker.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
+            sourcePicker.launch(arrayOf("application/zip", "application/x-7z-compressed", "application/octet-stream", "*/*"))
         }
         if (!started) pendingPicker = null
     }
@@ -320,6 +320,15 @@ internal class GameArchiveController(
     }
 }
 
+internal fun GameArchiveStorage.Plan.previewMessage(activity: MainActivity): String {
+    val formatLabel = when (archive.format) {
+        GameArchiveFormat.ZIP -> R.string.game_archive_format_zip
+        GameArchiveFormat.SEVEN_Z -> R.string.game_archive_format_seven_z
+    }
+    return activity.getString(R.string.game_archive_confirm, activity.getString(formatLabel), files,
+        Formatter.formatFileSize(activity, totalBytes))
+}
+
 @Composable
 internal fun GameArchiveHost(activity: MainActivity) {
     val archive = activity.gameArchive
@@ -368,8 +377,7 @@ internal fun GameArchiveHost(activity: MainActivity) {
                 .setPositiveButton(R.string.game_archive_resume) { _, _ -> archive.resumeRecovery() }
                 .setNeutralButton(R.string.game_archive_discard) { _, _ -> confirmDiscard = true }
                 .setNegativeButton(R.string.close) { _, _ -> archive.cancel() }
-            plan != null -> builder.setMessage(activity.getString(R.string.game_archive_confirm, plan.files,
-                Formatter.formatFileSize(activity, plan.totalBytes)))
+            plan != null -> builder.setMessage(plan.previewMessage(activity))
                 .setPositiveButton(R.string.game_archive_destination) { _, _ -> archive.chooseDestination() }
                 .setNegativeButton(R.string.cancel) { _, _ -> archive.cancel() }
         }

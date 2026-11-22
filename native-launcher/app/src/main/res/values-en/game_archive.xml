@@ -1,24 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="game_archive_title">Extract a ZIP archive</string>
-    <string name="game_archive_invalid">Could not read this ZIP. It may be incomplete or use an unsupported format.</string>
+    <string name="game_archive_title">Extract ZIP or 7z</string>
+    <string name="game_archive_invalid">Could not read the archive. Choose a complete ZIP or single-volume 7z without a password.</string>
     <string name="game_archive_cancelled">Extraction cancelled.</string>
-    <string name="game_archive_expired">Archive preparation was interrupted. Select the ZIP again to continue.</string>
+    <string name="game_archive_expired">Archive preparation was interrupted. Select the archive again to continue.</string>
     <string name="game_archive_failed">Extraction stopped. Check available space and folder access, then try again.</string>
     <string name="game_archive_inspecting">Reading archive contents…</string>
     <string name="game_archive_working">Extracting files…</string>
     <string name="game_archive_ready">Files are ready in a new folder. Confirm that folder to add it to your library.</string>
-    <string name="game_archive_confirm">%1$d files · %2$s unpacked. Choose where to create their new folder. The source archive is kept.</string>
+    <string name="game_archive_format_zip">ZIP</string>
+    <string name="game_archive_format_seven_z">7z</string>
+    <string name="game_archive_confirm">%1$s · %2$d files · %3$s unpacked. Choose where to create their new folder. The source archive is kept.</string>
     <string name="game_archive_destination">Choose destination</string>
     <string name="game_archive_pause">Pause extraction</string>
-    <string name="game_archive_resume">Continue ZIP extraction</string>
-    <string name="game_archive_recover">This ZIP extraction was interrupted. Continue from the files already prepared.</string>
+    <string name="game_archive_resume">Continue extraction</string>
+    <string name="game_archive_recover">Extraction was interrupted. Continue from the files already prepared.</string>
     <string name="game_archive_discard">Delete partial extraction</string>
     <string name="game_archive_discard_confirm">Delete the partial files from this extraction?</string>
     <string name="game_archive_discard_failed">Could not delete the partial files. Check access to the archive and its destination.</string>
-    <string name="game_archive_recovery_unavailable">Could not read the saved ZIP extraction.</string>
+    <string name="game_archive_recovery_unavailable">Could not read the saved extraction.</string>
     <string name="game_archive_recover_ready">The files are ready to add to your library.</string>
     <string name="game_archive_dismiss_ready">Remove from list</string>
-    <string name="game_archive_open_ready">Open prepared ZIP files</string>
+    <string name="game_archive_open_ready">Open extracted files</string>
     <string name="game_archive_keep_files">Keep files, remove from list</string>
 </resources>

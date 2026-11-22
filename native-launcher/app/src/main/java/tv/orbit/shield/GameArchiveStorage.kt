@@ -13,6 +13,7 @@ import android.system.OsConstants
 import java.io.File
 import java.io.IOException
 import java.io.OutputStream
+import java.nio.channels.SeekableByteChannel
 import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.locks.ReentrantLock
@@ -22,12 +23,12 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.runInterruptible
 
-/** Extract ZIP members into an owned SAF directory and publish it after verification. */
+/** Extract archive members into an owned SAF directory and publish it after verification. */
 internal object GameArchiveStorage {
     class Plan internal constructor(
         val title: String,
         internal val source: Uri,
-        internal val archive: GameZipArchive.Plan,
+        internal val archive: GameArchivePlan,
     ) {
         val files: Int get() = archive.fileCount
         val totalBytes: Long get() = archive.totalBytes
@@ -41,9 +42,11 @@ internal object GameArchiveStorage {
             val resolver = context.contentResolver
             val title = resolver.query(source, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
                 if (it.moveToFirst()) it.getString(0)?.take(256) else null
-            }.orEmpty().map { if (it.isISOControl()) '_' else it }.joinToString("").ifBlank { "archive.zip" }
-            withSource(context, source, checkpoint) { file ->
-                Plan(title, source, GameZipArchive.inspect(file, checkpoint))
+            }.orEmpty().map { if (it.isISOControl()) '_' else it }.joinToString("")
+            withSource(context, source, checkpoint) { input ->
+                val archive = input.inspect(checkpoint)
+                val fallback = if (archive.format == GameArchiveFormat.ZIP) "archive.zip" else "archive.7z"
+                Plan(title.ifBlank { fallback }, source, archive)
             }
         }
 
@@ -58,7 +61,7 @@ internal object GameArchiveStorage {
             .joinToString("").trim(' ', '.').ifBlank { "game" }
         val job = GameArchiveRecovery.Job(
             id = id, platform = platform, source = plan.source, tree = destination, title = plan.title,
-            fingerprint = GameZipArchive.fingerprint(plan.archive), finalName = "$stem-${id.take(8)}",
+            fingerprint = gameArchiveFingerprint(plan.archive), finalName = "$stem-${id.take(8)}",
             totalBytes = plan.totalBytes,
         )
         val durable = GameArchiveRecovery.retainAccess(context, job)
@@ -84,9 +87,7 @@ internal object GameArchiveStorage {
             val staging = target.stagingForDiscard()
             if (staging != null) {
                 if (!target.isEmpty(staging)) {
-                val plan = withSource(context, job.source, checkpoint) { file ->
-                        GameZipArchive.inspect(file, checkpoint)
-                    }
+                    val plan = withSource(context, job.source, checkpoint) { input -> input.inspect(checkpoint) }
                     verifyPlan(job, plan)
                     target.useFolder(staging, plan, recovered = true, complete = false, verifyContents = false)
                 }
@@ -116,7 +117,7 @@ internal object GameArchiveStorage {
     private fun prepare(
         context: Context,
         initial: GameArchiveRecovery.Job,
-        preview: GameZipArchive.Plan?,
+        preview: GameArchivePlan?,
         durable: Boolean,
         checkpoint: () -> Unit,
         onProgress: (Long) -> Unit,
@@ -129,9 +130,10 @@ internal object GameArchiveStorage {
             job = replacement
         }
         try {
-            val alreadyRenamed = withSource(context, job.source, checkpoint) { file ->
-                val plan = preview ?: GameZipArchive.inspect(file, checkpoint)
+            val alreadyRenamed = withSource(context, job.source, checkpoint) { input ->
+                val plan = preview ?: input.inspect(checkpoint)
                 verifyPlan(job, plan)
+                check(input.format == plan.format) { "Source archive format changed" }
                 if (job.phase == GameArchiveRecovery.Phase.RENAMING) {
                     val final = target.recoverRenamed()
                     if (final != null) {
@@ -144,14 +146,7 @@ internal object GameArchiveStorage {
                 val staging = existing ?: target.createStaging()
                 if (job.stagingId == null) record(job.copy(stagingId = staging.id))
                 target.useFolder(staging, plan, recovered = existing != null, complete = false)
-                GameZipArchive.extract(file, plan,
-                    createDirectory = target::directory,
-                    openFile = target::open,
-                    checkpoint = checkpoint,
-                    onProgress = onProgress,
-                    completed = { it.path in target.completed },
-                    onFileCompleted = { target.promote(it.path) },
-                )
+                input.extract(plan, target, checkpoint, onProgress)
                 checkpoint()
                 null
             }
@@ -167,36 +162,82 @@ internal object GameArchiveStorage {
         }
     }
 
-    private fun <T> withSource(context: Context, source: Uri, checkpoint: () -> Unit, block: (File) -> T): T {
+    private class Source(
+        val format: GameArchiveFormat,
+        private val channel: SeekableByteChannel,
+        private val zipFile: File? = null,
+    ) {
+        fun inspect(checkpoint: () -> Unit): GameArchivePlan = when (format) {
+            GameArchiveFormat.ZIP -> GameZipArchive.inspect(checkNotNull(zipFile), checkpoint)
+            GameArchiveFormat.SEVEN_Z -> GameSevenZArchive.inspect(channel.position(0), checkpoint)
+        }
+
+        fun extract(plan: GameArchivePlan, target: Destination, checkpoint: () -> Unit, onProgress: (Long) -> Unit) {
+            val completed: (GameArchiveEntry) -> Boolean = { it.path in target.completed }
+            val promote: (GameArchiveEntry) -> Unit = { target.promote(it.path) }
+            when (format) {
+                GameArchiveFormat.ZIP -> GameZipArchive.extract(checkNotNull(zipFile), plan,
+                    target::directory, target::open, checkpoint, onProgress, completed, promote)
+                GameArchiveFormat.SEVEN_Z -> GameSevenZArchive.extract(channel.position(0), plan,
+                    target::directory, target::open, checkpoint, onProgress, completed, promote)
+            }
+        }
+    }
+
+    private fun <T> withSource(context: Context, source: Uri, checkpoint: () -> Unit, block: (Source) -> T): T {
         require(source.scheme == ContentResolver.SCHEME_CONTENT)
         val scratch = File(context.cacheDir, "archive-preparation-source.zip")
         // A force-stop may have interrupted the previous provider copy.
-        if (scratch.exists() && !scratch.delete()) throw IOException("Cannot reset ZIP cache")
-        return (context.contentResolver.openFileDescriptor(source, "r") ?: throw IOException("Cannot open ZIP")).use { descriptor ->
+        if (scratch.exists() && !scratch.delete()) throw IOException("Cannot reset archive cache")
+        return (context.contentResolver.openFileDescriptor(source, "r") ?: throw IOException("Cannot open archive")).use { descriptor ->
             checkError(descriptor)
-            val path = File("/proc/self/fd/${descriptor.fd}")
-            val canReopen = try {
-                Os.lseek(descriptor.fileDescriptor, 0, OsConstants.SEEK_CUR)
-                Os.close(Os.open(path.path, OsConstants.O_RDONLY, 0))
+            val seekable = try {
+                Os.lseek(descriptor.fileDescriptor, 0, OsConstants.SEEK_SET)
                 true
             } catch (_: ErrnoException) { false }
-            val result = if (canReopen) block(path) else try {
-                // Some document providers grant a readable descriptor but forbid reopening
-                // it as a path. ZipFile needs a seekable path for the central directory.
-                copySource(context, descriptor, scratch, checkpoint)
-                block(scratch)
-            } finally {
-                scratch.delete()
+            val result = if (seekable) {
+                val duplicate = ParcelFileDescriptor.dup(descriptor.fileDescriptor)
+                ParcelFileDescriptor.AutoCloseInputStream(duplicate).use { stream ->
+                    val channel = stream.channel
+                    val format = GameArchiveFormat.detect(channel)
+                    val path = File("/proc/self/fd/${descriptor.fd}")
+                    when {
+                        format == GameArchiveFormat.SEVEN_Z -> block(Source(format, channel))
+                        canReopen(path) -> block(Source(format, channel, path))
+                        else -> withSourceCopy(context, descriptor, scratch, checkpoint, block)
+                    }
+                }
+            } else {
+                withSourceCopy(context, descriptor, scratch, checkpoint, block)
             }
             checkError(descriptor)
             result
         }
     }
 
+    private fun canReopen(path: File): Boolean = try {
+        Os.close(Os.open(path.path, OsConstants.O_RDONLY, 0))
+        true
+    } catch (_: ErrnoException) { false }
+
+    private fun <T> withSourceCopy(
+        context: Context, descriptor: ParcelFileDescriptor, scratch: File,
+        checkpoint: () -> Unit, block: (Source) -> T,
+    ): T = try {
+        // ZipFile requires a seekable path. Some providers grant a readable descriptor
+        // without allowing it to be reopened; pipes require a copy for either format.
+        copySource(context, descriptor, scratch, checkpoint)
+        scratch.inputStream().use { stream ->
+            block(Source(GameArchiveFormat.detect(stream.channel), stream.channel, scratch))
+        }
+    } finally {
+        scratch.delete()
+    }
+
     private fun copySource(context: Context, descriptor: ParcelFileDescriptor, scratch: File, checkpoint: () -> Unit) {
         val reserve = TorrDownloadSpace.read(context).toLong() * 1024 * 1024
         val declared = descriptor.statSize
-        if (declared > MAX_SOURCE_BYTES) throw IOException("ZIP source is too large")
+        if (declared > MAX_SOURCE_BYTES) throw IOException("Archive source is too large")
         if (declared > context.cacheDir.usableSpace - reserve) throw TorrDownloadLowSpace()
         val duplicate = ParcelFileDescriptor.dup(descriptor.fileDescriptor)
         ParcelFileDescriptor.AutoCloseInputStream(duplicate).use { input ->
@@ -208,7 +249,7 @@ internal object GameArchiveStorage {
                     checkpoint()
                     val count = input.read(buffer)
                     if (count < 0) break
-                    if (count.toLong() > MAX_SOURCE_BYTES - total) throw IOException("ZIP source is too large")
+                    if (count.toLong() > MAX_SOURCE_BYTES - total) throw IOException("Archive source is too large")
                     if (remainingBudget < count) {
                         remainingBudget = minOf(context.cacheDir.usableSpace - reserve, 4L * 1024 * 1024)
                         if (remainingBudget < count) throw TorrDownloadLowSpace()
@@ -217,7 +258,7 @@ internal object GameArchiveStorage {
                     total += count
                     remainingBudget -= count
                 }
-                if (declared >= 0 && declared != total) throw IOException("ZIP source changed")
+                if (declared >= 0 && declared != total) throw IOException("Archive source changed")
                 checkError(descriptor)
             }
         }
@@ -227,14 +268,14 @@ internal object GameArchiveStorage {
         if (descriptor.canDetectErrors()) descriptor.checkError()
     }
 
-    private fun verifyPlan(job: GameArchiveRecovery.Job, plan: GameZipArchive.Plan) {
-        check(plan.totalBytes == job.totalBytes && GameZipArchive.fingerprint(plan) == job.fingerprint) {
+    private fun verifyPlan(job: GameArchiveRecovery.Job, plan: GameArchivePlan) {
+        check(plan.totalBytes == job.totalBytes && gameArchiveFingerprint(plan) == job.fingerprint) {
             "Source archive changed"
         }
     }
 
     private data class Document(val id: String, val name: String, val directory: Boolean)
-    private data class Member(val entry: GameZipArchive.Entry, val scratchName: String)
+    private data class Member(val entry: GameArchiveEntry, val scratchName: String)
     private data class Expected(val name: String, val directory: Boolean, val member: Member?, val scratch: Boolean = false)
 
     private class Destination(
@@ -325,7 +366,7 @@ internal object GameArchiveStorage {
         }
 
         fun useFolder(
-            folder: Document, plan: GameZipArchive.Plan, recovered: Boolean, complete: Boolean, verifyContents: Boolean = true,
+            folder: Document, plan: GameArchivePlan, recovered: Boolean, complete: Boolean, verifyContents: Boolean = true,
         ) {
             remaining = plan.totalBytes
             directories[""] = folder.id
@@ -384,7 +425,7 @@ internal object GameArchiveStorage {
             }
         }
 
-        private fun verifyFile(row: Document, entry: GameZipArchive.Entry, buffer: ByteArray) {
+        private fun verifyFile(row: Document, entry: GameArchiveEntry, buffer: ByteArray) {
             val descriptor = resolver.openFileDescriptor(uri(row.id), "r") ?: throw IOException("Cannot verify archive member")
             val stream = ParcelFileDescriptor.AutoCloseInputStream(descriptor)
             stream.use { input ->

@@ -1,4 +1,4 @@
-"""Execute the production ZIP controller and maintenance barrier with JVM boundaries.
+"""Execute the production archive controller and maintenance barrier with JVM boundaries.
 
 Uses real kotlinx.coroutines cancellation and delayed storage cleanup. Android picker
 delivery, Bundle, Compose state, and storage are stubs; this is not device/UI QA.
@@ -16,7 +16,7 @@ production = ROOT / "native-launcher/app/src/main/java/tv/orbit/shield"
 controller_path = production / "GameArchiveUi.kt"
 maintenance_path = production / "PortableMaintenance.kt"
 controller = controller_path.read_text().split("\n@Composable\n", 1)[0]
-for unused in ("android.app.AlertDialog", "android.text.format.Formatter", "android.widget.ProgressBar"):
+for unused in ("android.app.AlertDialog", "android.widget.ProgressBar"):
     controller = controller.replace(f"import {unused}\n", "")
 # The host boundaries are synchronous, keeping lifecycle ordering deterministic.
 controller = controller.replace("Dispatchers.IO", "Dispatchers.Unconfined")
@@ -30,6 +30,11 @@ class Intent { companion object {
     const val ACTION_OPEN_DOCUMENT = "open"
     const val ACTION_OPEN_DOCUMENT_TREE = "tree"
 } }
+''',
+    "Formatter.kt": r'''
+package android.text.format
+import android.content.Context
+object Formatter { fun formatFileSize(context: Context, bytes: Long) = "$bytes B" }
 ''',
     "AndroidOs.kt": r'''
 package android.os
@@ -102,13 +107,23 @@ class MainActivity : Context() {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
     var notice = ""
     val launches = mutableListOf<Int>()
+    var sourceMimeTypes: List<String> = emptyList()
+        private set
     private val callbacks = mutableListOf<(Any?) -> Unit>()
-    fun getString(id: Int): String = id.toString()
+    fun getString(id: Int, vararg args: Any): String = when (id) {
+        R.string.game_archive_format_zip -> "ZIP"
+        R.string.game_archive_format_seven_z -> "7z"
+        R.string.game_archive_confirm -> args.joinToString(" · ")
+        else -> id.toString()
+    }
     @Suppress("UNCHECKED_CAST")
     fun <I, O> registerForActivityResult(contract: ActivityResultContract<I, O>, callback: (O) -> Unit): ActivityResultLauncher<I> {
         val index = callbacks.size
         callbacks += { value -> callback(value as O) }
-        return ActivityResultLauncher { launches += index }
+        return ActivityResultLauncher { input ->
+            launches += index
+            if (contract is ActivityResultContracts.OpenDocument) sourceMimeTypes = (input as Array<String>).toList()
+        }
     }
     fun deliver(index: Int, value: Uri?) { callbacks[index](value) }
 }
@@ -121,6 +136,9 @@ object R { object string {
     const val game_archive_expired = 5
     const val game_archive_discard_failed = 6
     const val game_archive_recovery_unavailable = 7
+    const val game_archive_format_zip = 8
+    const val game_archive_format_seven_z = 9
+    const val game_archive_confirm = 10
 } }
 object PlatformRegistry {
     fun find(id: String): String? = id.takeIf { it in setOf("SNES", "PSP") }
@@ -153,8 +171,11 @@ object GameArchiveRecovery {
     fun reset() { saved = null; reads = 0; clears = 0; failRead = false }
 }
 class TorrDownloadLowSpace : java.io.IOException()
+enum class GameArchiveFormat { ZIP, SEVEN_Z }
+data class GameArchivePlan(val format: GameArchiveFormat)
 object GameArchiveStorage {
-    class Plan(val source: Uri) { val totalBytes = 1L }
+    class Plan(val source: Uri, val archive: GameArchivePlan) { val totalBytes = 1L; val files = 1 }
+    var detectedFormat = GameArchiveFormat.ZIP
     var inspections = 0
     var extractions = 0
     var resumes = 0
@@ -170,11 +191,12 @@ object GameArchiveStorage {
     var releaseCleanup = CompletableDeferred<Unit>()
     fun reset() {
         inspections = 0; extractions = 0; resumes = 0; discards = 0; lastPlatform = null; lastResumed = null
+        detectedFormat = GameArchiveFormat.ZIP
         failResume = false; failDiscard = false; holdCleanup = false; cleanupFinished = false
         GameArchiveRecovery.reset()
         extractionStarted = CompletableDeferred(); cleanupStarted = CompletableDeferred(); releaseCleanup = CompletableDeferred()
     }
-    suspend fun inspect(context: Context, source: Uri): Plan { inspections++; return Plan(source) }
+    suspend fun inspect(context: Context, source: Uri): Plan { inspections++; return Plan(source, GameArchivePlan(detectedFormat)) }
     suspend fun extract(context: Context, plan: Plan, destination: Uri, platform: String, progress: (Long) -> Unit): Uri {
         extractions++
         lastPlatform = platform
@@ -239,17 +261,38 @@ fun main() = runBlocking {
         GameArchiveStorage.reset()
         val oldSource = Fixture()
         oldSource.controller.chooseSource("PSP")
+        verify("The source picker requests ZIP, 7z and the provider fallback MIME types",
+            oldSource.activity.sourceMimeTypes == listOf("application/zip", "application/x-7z-compressed", "application/octet-stream", "*/*"))
         val sourceState = Bundle().also(oldSource.controller::save)
         oldSource.close()
         val sourceRestored = Fixture()
         sourceRestored.controller.restore(sourceState)
         sourceRestored.activity.deliver(0, source)
+        verify("ZIP preview displays the detected format alongside the count and size",
+            sourceRestored.controller.plan?.previewMessage(sourceRestored.activity) == "ZIP · 1 · 1 B")
         sourceRestored.controller.chooseDestination()
         sourceRestored.activity.deliver(1, destination)
         sourceRestored.controller.addResult()
         verify("Recreated source selection retains the chosen platform",
             sourceRestored.added?.first == "PSP" && GameArchiveStorage.lastPlatform == "PSP")
         sourceRestored.close()
+
+        GameArchiveStorage.reset()
+        GameArchiveStorage.detectedFormat = GameArchiveFormat.SEVEN_Z
+        val sevenZ = Fixture()
+        val sevenZSource = Uri.parse("content://fixture/opaque")
+        sevenZ.controller.chooseSource("SNES")
+        sevenZ.activity.deliver(0, sevenZSource)
+        verify("The archive picker passes a 7z URI to the shared preview",
+            sevenZ.controller.plan?.source == sevenZSource && GameArchiveStorage.inspections == 1)
+        verify("An opaque source displays 7z from the detected format",
+            sevenZ.controller.plan?.previewMessage(sevenZ.activity) == "7z · 1 · 1 B")
+        sevenZ.controller.chooseDestination()
+        sevenZ.activity.deliver(1, destination)
+        sevenZ.controller.addResult()
+        verify("The 7z preview uses the normal extraction and folder import flow",
+            sevenZ.added?.first == "SNES" && GameArchiveStorage.lastPlatform == "SNES" && GameArchiveStorage.extractions == 1)
+        sevenZ.close()
 
         GameArchiveStorage.reset()
         val oldDestination = Fixture()

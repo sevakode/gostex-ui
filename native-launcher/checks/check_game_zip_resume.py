@@ -155,9 +155,12 @@ fun main() {
         }
         expect(finished == 0)
 
-        val fingerprint = GameZipArchive.fingerprint(plan)
+        val fingerprint = gameArchiveFingerprint(plan)
         expect(fingerprint.matches(Regex("[0-9a-f]{64}")))
-        expect(fingerprint == GameZipArchive.fingerprint(GameZipArchive.inspect(good)))
+        expect(fingerprint == gameArchiveFingerprint(GameZipArchive.inspect(good)))
+        val oldJournalSource = archive("stored-identity.zip", payload, stored = true)
+        expect(gameArchiveFingerprint(GameZipArchive.inspect(oldJournalSource)) ==
+            "1909e8cd1897699709dd9312e8431a3fe110b6fc35d3cbd98dc9f15c7c73a8e2")
         val first = plan.entries.first()
         val changes = listOf(
             first.copy(path = "Other/Game.cue"), first.copy(directory = true),
@@ -165,11 +168,11 @@ fun main() {
             first.copy(crc = first.crc xor 1), first.copy(method = ZipEntry.STORED),
         )
         expect(changes.all { changedEntry ->
-            fingerprint != GameZipArchive.fingerprint(plan.copy(entries = listOf(changedEntry) + plan.entries.drop(1)))
+            fingerprint != gameArchiveFingerprint(plan.copy(entries = listOf(changedEntry) + plan.entries.drop(1)))
         })
-        expect(fingerprint != GameZipArchive.fingerprint(plan.copy(entries = plan.entries.reversed())))
-        expect(fingerprint != GameZipArchive.fingerprint(plan.copy(fileCount = plan.fileCount + 1)))
-        expect(fingerprint != GameZipArchive.fingerprint(plan.copy(totalBytes = plan.totalBytes + 1)))
+        expect(fingerprint != gameArchiveFingerprint(plan.copy(entries = plan.entries.reversed())))
+        expect(fingerprint != gameArchiveFingerprint(plan.copy(fileCount = plan.fileCount + 1)))
+        expect(fingerprint != gameArchiveFingerprint(plan.copy(totalBytes = plan.totalBytes + 1)))
         println("PASS ZIP recovery engine: $passed checks, resumed bytes, failed writes/closes, CRC, cancellation and ordered metadata identity")
     } finally {
         folder.deleteRecursively()
@@ -186,7 +189,7 @@ with tempfile.TemporaryDirectory(prefix="gostex-zip-resume-check-") as temporary
     subprocess.run([
         str(JAVA), "-cp", os.pathsep.join(map(str, COMPILER)), "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler",
         "-no-stdlib", "-no-reflect", "-classpath", str(COMPILER[1]), "-d", str(classes),
-        str(app / "TorrDownloadPaths.kt"), str(app / "GameZipArchive.kt"), str(source),
+        str(app / "TorrDownloadPaths.kt"), str(app / "GameArchivePlan.kt"), str(app / "GameZipArchive.kt"), str(source),
     ], check=True, timeout=45)
     subprocess.run([
         str(JAVA), "-cp", os.pathsep.join([str(classes), str(COMPILER[1])]), "tv.orbit.shield.CheckKt",

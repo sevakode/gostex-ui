@@ -1714,6 +1714,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable private fun OrbitContent(activity: MainActivity, games: List<Game>) {
     val prefs = remember { activity.getSharedPreferences("orbit", android.content.Context.MODE_PRIVATE) }
     var tab by rememberSaveable { mutableStateOf("home") }
@@ -2043,22 +2044,29 @@ class MainActivity : ComponentActivity() {
                 BoxWithConstraints(Modifier.fillMaxWidth()) {
                   if (maxWidth < 600.dp) {
                     Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 8.dp)) {
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Image(painterResource(R.drawable.gostex_logo), contentDescription = "GOSTEX", modifier = Modifier.width(76.dp).height(34.dp))
-                            Row(Modifier.weight(1f).padding(start = 8.dp, end = 8.dp), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                                HeaderClock(clockOptions, clockInstant)
-                                if (batteryVisible) { Spacer(Modifier.width(6.dp)); BatteryStatus(activity) { percent, charging -> activity.getString(if (charging) R.string.battery_charging else R.string.battery_level, percent) } }
-                                if (mediaVisible) headerMediaSession?.let { session ->
-                                    Spacer(Modifier.width(6.dp))
-                                    MediaPlayerButton(session, Modifier.focusRequester(mediaFocus)) { mediaOpen = true }
-                                }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.weight(1f)) {
+                                Image(painterResource(R.drawable.gostex_logo), contentDescription = "GOSTEX", modifier = Modifier.width(76.dp).height(34.dp))
                             }
-                            if (rememberNetworkVisible()) {
-                                NetworkStatusButton(activity)
-                                Spacer(Modifier.width(6.dp))
+                            if (mediaVisible) headerMediaSession?.let { session ->
+                                MediaPlayerButton(session, Modifier.focusRequester(mediaFocus)) { mediaOpen = true }
                             }
+                            if (rememberNetworkVisible()) NetworkStatusButton(activity)
                             CompactIconButton(CompactIcon.Settings, tr(R.string.settings), modifier = Modifier.focusRequester(settingsFocus),
                                 onClick = { settingsInitialSection = "root"; settingsReturnFocus = null; settingsOpen = true })
+                        }
+                        if (batteryVisible || (clockOptions.visible && clockOptions.zones.size == 1)) {
+                            FlowRow(
+                                Modifier.fillMaxWidth().padding(top = 6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                                itemVerticalAlignment = Alignment.CenterVertically
+                            ) {
+                                HeaderClock(clockOptions, clockInstant)
+                                if (batteryVisible) BatteryStatus(activity) { percent, charging ->
+                                    activity.getString(if (charging) R.string.battery_charging else R.string.battery_level, percent)
+                                }
+                            }
                         }
                         Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             LazyRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(6.dp)) {

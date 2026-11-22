@@ -1,4 +1,4 @@
-"""Run production completed-file discovery against a counting, read-only SAF provider."""
+"""Exercise production download discovery and creation against a counting SAF provider."""
 from pathlib import Path
 import subprocess
 import tempfile
@@ -38,11 +38,16 @@ data class Permission(val uri:Uri,val isReadPermission:Boolean=true,val isWriteP
 class ContentResolver {
  val documents=linkedMapOf<String,FakeDocument>()
  val lists=mutableMapOf<String,Int>()
+ val documentQueries=mutableListOf<Uri>()
  var opens=0;var creates=0;var deletes=0
+ var writeOpens=0
+ var onCreate:((FakeDocument)->Uri)?=null
+ var allowDelete=false
  var afterQuery:((String)->Unit)?=null
  var afterRead:(()->Unit)?=null
  var headerBytesRead=0;var chunkSize=4096
- var checkDirectChild=false
+ val deniedDocuments=mutableSetOf<String>()
+ val deniedChildren=mutableSetOf<String>()
  val bodies=mutableMapOf<String,ByteArray>()
  val failedReads=mutableSetOf<String>()
  val unavailableBodies=mutableSetOf<String>()
@@ -74,7 +79,11 @@ class ContentResolver {
   val id=uri.raw.substringAfterLast('/')
   val docs=if ("/children/" in uri.raw) {
    lists[id]=(lists[id] ?: 0)+1;documents.values.filter { it.parent==id }
-  } else listOfNotNull(documents[id])
+  } else {
+   documentQueries+=uri
+   if(id in deniedDocuments)return null
+   listOfNotNull(documents[id])
+  }
   val rows=docs.map { d -> columns.map { when(it) { "id"->d.id;"name"->d.name;"size"->d.size;"mime"->d.mime;else->error(it) } } }
   afterQuery?.invoke(id)
   return FakeCursor(rows)
@@ -102,6 +111,7 @@ class Intent { companion object { const val FLAG_GRANT_READ_URI_PERMISSION=1;con
 '''
 documents = r'''package android.provider
 import android.content.ContentResolver
+import android.content.FakeDocument
 import android.net.Uri
 object DocumentsContract {
  object Document {
@@ -112,10 +122,18 @@ object DocumentsContract {
  fun getDocumentId(uri:Uri)=uri.raw.substringAfterLast('/')
  fun buildChildDocumentsUriUsingTree(tree:Uri,id:String)=Uri("content://${tree.authority}/tree/${getTreeDocumentId(tree)}/children/$id")
  fun buildDocumentUriUsingTree(tree:Uri,id:String)=Uri("content://${tree.authority}/tree/${getTreeDocumentId(tree)}/document/$id")
- fun createDocument(resolver:ContentResolver,parent:Uri,mime:String,name:String):Uri? { resolver.creates++;error("Recovery must not create documents") }
- fun deleteDocument(resolver:ContentResolver,document:Uri):Boolean { resolver.deletes++;error("Recovery must not delete documents") }
+ fun createDocument(resolver:ContentResolver,parent:Uri,mime:String,name:String):Uri? {
+  resolver.creates++
+  return checkNotNull(resolver.onCreate) { "Recovery must not create documents" }(FakeDocument("partial",getDocumentId(parent),name,0,mime))
+ }
+ fun deleteDocument(resolver:ContentResolver,document:Uri):Boolean {
+  resolver.deletes++
+  check(resolver.allowDelete) { "Unexpected deletion" }
+  return resolver.documents.remove(getDocumentId(document))!=null
+ }
  fun isChildDocument(resolver:ContentResolver,parent:Uri,child:Uri):Boolean {
   val parentId=getDocumentId(parent);var id=getDocumentId(child)
+  if(id in resolver.deniedChildren)return false
   repeat(40) { id=resolver.documents[id]?.parent ?: return false;if(id==parentId)return true }
   return false
  }
@@ -142,9 +160,10 @@ internal data class TorrDownloadJob(val id:String,val hash:String,val index:Int,
 internal object TorrDownloadStore {
  val jobs=MutableStateFlow<List<TorrDownloadJob>>(emptyList())
  var broken=false
+ var allowHttpAdmission=false
  fun recover(context:Context) { if(broken) throw IOException("Damaged journal") }
  fun requireActiveCapacity(context:Context, additional:Int) { recover(context); require(jobs.value.count { it.state != "done" } + additional <= 100) }
- fun requireHttpAdmission(context:Context,tree:String,resourceKey:String) { error("Torrent discovery must not admit new HTTP jobs") }
+ fun requireHttpAdmission(context:Context,tree:String,resourceKey:String) { check(allowHttpAdmission) { "Unexpected HTTP admission" } }
  @Synchronized fun add(context:Context,job:TorrDownloadJob,admission:HttpDownloadAdmissionResult?=null) { check(jobs.value.none { it.document==job.document });jobs.value=jobs.value+job }
  fun beginDeletePrefetch(context:Context,id:String):TorrDownloadJob?=null
  fun finishDeletePrefetch(context:Context,id:String) {}
@@ -162,18 +181,20 @@ object TorrDownloadActions {
 data class PrefetchEpisode(val id:Int,val path:String,val bytes:Long)
 fun planEpisodePrefetch(files:List<PrefetchEpisode>,current:Int,count:Int,existing:Set<Int>,free:Long?,reserve:Long,quota:Long,used:Long,includeCurrent:Boolean=false)=emptyList<PrefetchEpisode>()
 fun orderedEpisodeFiles(files:List<String>)=true
-class TorrSafTarget:Closeable {
- fun size()=0L
+class TorrSafTarget(private val bytes:Long):Closeable {
+ fun size()=bytes
  fun availableBytes()=Long.MAX_VALUE
  override fun close() {}
- companion object { fun open(resolver:ContentResolver,uri:Uri)=TorrSafTarget() }
-}
-fun portableSafDirectChild(resolver:ContentResolver,tree:Uri,parent:String,child:String):Boolean {
- check(resolver.checkDirectChild) { "Recovery must reuse its verified parent listing" }
- return resolver.documents[child]?.parent==parent
+ companion object {
+  fun open(resolver:ContentResolver,uri:Uri):TorrSafTarget {
+   resolver.writeOpens++
+   return TorrSafTarget(resolver.documents[uri.raw.substringAfterLast('/')]?.size ?: throw IOException("Unseekable document"))
+  }
+ }
 }
 '''
 checks = r'''package tv.orbit.shield
+import android.content.ContentResolver
 import android.content.Context
 import android.content.FakeDocument
 import android.content.Permission
@@ -184,6 +205,7 @@ fun main()=runBlocking {
  val hash="a".repeat(40);val tree=Uri.parse("content://provider/tree/root")
  fun fixture():Context {
   TorrDownloadStore.jobs.value=emptyList();TorrDownloadStore.broken=false
+  TorrDownloadStore.allowHttpAdmission=false
   TorrServerCatalog.cachedRequests=0;TorrServerCatalog.peerRequests=0;PortableMaintenance.running=false
   val ctx=Context();ctx.contentResolver.persistedUriPermissions+=Permission(tree)
   ctx.prefs.values["downloads.folder"]=tree.toString()
@@ -253,7 +275,6 @@ fun main()=runBlocking {
  val httpDocument=Docs.buildDocumentUriUsingTree(tree,"attachment")
  val httpJob=validJob.copy(document=httpDocument.toString(),parentId="root",grouped=false,finalName="attachment.mkv",
   http=HttpDownloadOrigin(null,"fixture",null))
- files.checkDirectChild=true
  files.documents["attachment"]=FakeDocument("attachment","root","attachment.mkv",100,"video")
  check(TorrDownloadDocuments.verifyCompletedHttp(ctx,httpJob)==httpDocument)
  files.bodies["attachment"]=ByteArray(100)
@@ -261,6 +282,67 @@ fun main()=runBlocking {
  files.documents["attachment"]=FakeDocument("attachment","root","attachment.zip",100,"archive")
  val beforeZip=files.opens
  check(TorrDownloadDocuments.verifyCompletedHttp(ctx,httpJob.copy(finalName="attachment.zip"))==httpDocument && files.opens==beforeZip)
+
+ val url=HttpDownloadUrl.parse("https://example.invalid/movie.mkv")
+ val admission=HttpDownloadAdmissionResult(url,url.resourceKey(),100,null)
+ val partialUri=Docs.buildDocumentUriUsingTree(tree,"partial")
+ fun downloadFixture(afterCreate:(ContentResolver,FakeDocument)->Uri={ _,_ -> partialUri }):Context = fixture().also { download ->
+  TorrDownloadStore.allowHttpAdmission=true
+  val resolver=download.contentResolver
+  resolver.onCreate={ file ->
+   resolver.documents[file.id]=file
+   afterCreate(resolver,file)
+  }
+ }
+ fun enqueueHttp(download:Context)=TorrDownloadDocuments.enqueueHttp(download,tree,admission,"movie.mkv")
+ fun rejectBeforeOwnership(download:Context) {
+  check(runCatching { enqueueHttp(download) }.isFailure)
+  check(download.contentResolver.writeOpens==0 && download.contentResolver.deletes==0 && TorrDownloadStore.jobs.value.isEmpty())
+ }
+ ctx=downloadFixture()
+ val queued=enqueueHttp(ctx)
+ check(queued.document==partialUri.toString() && TorrDownloadStore.jobs.value==listOf(queued))
+ check(ctx.contentResolver.lists==mapOf("root" to 2)) { ctx.contentResolver.lists }
+ check(ctx.contentResolver.documentQueries==listOf(partialUri) && ctx.contentResolver.writeOpens==1 && ctx.contentResolver.deletes==0)
+
+ ctx=downloadFixture()
+ ctx.contentResolver.documents["existing"]=FakeDocument("existing","root","MOVIE.MKV",100,"video")
+ check(runCatching { enqueueHttp(ctx) }.exceptionOrNull() is TorrDownloadDestinationExists)
+ check(ctx.contentResolver.lists==mapOf("root" to 1) && ctx.contentResolver.creates==0 && ctx.contentResolver.documents.containsKey("existing"))
+
+ val otherUri=Docs.buildDocumentUriUsingTree(tree,"other")
+ ctx=downloadFixture { _,_ -> otherUri }
+ ctx.contentResolver.documents["other"]=FakeDocument("other","root","existing.mkv",100,"video")
+ rejectBeforeOwnership(ctx)
+ check(ctx.contentResolver.lists==mapOf("root" to 1) && ctx.contentResolver.documents.containsKey("other"))
+ ctx=downloadFixture { resolver,file ->
+  resolver.documents["other"]=file.copy(id="other",name="another.partial")
+  otherUri
+ }
+ rejectBeforeOwnership(ctx)
+ check(ctx.contentResolver.lists==mapOf("root" to 2) && ctx.contentResolver.documents.containsKey("other"))
+
+ for (duplicateId in listOf(false,true)) {
+  ctx=downloadFixture { resolver,file ->
+   resolver.documents["duplicate"]=if(duplicateId) file.copy(name="alias.partial") else file.copy(id="duplicate")
+   partialUri
+  }
+  rejectBeforeOwnership(ctx)
+ }
+ ctx=downloadFixture();ctx.contentResolver.deniedDocuments+="partial"
+ rejectBeforeOwnership(ctx)
+ check(ctx.contentResolver.documentQueries==listOf(partialUri))
+ ctx=downloadFixture();ctx.contentResolver.deniedChildren+="partial"
+ rejectBeforeOwnership(ctx)
+ ctx=downloadFixture { resolver,file ->
+  resolver.documents[file.id]=file.copy(size=1)
+  partialUri
+ }
+ ctx.contentResolver.allowDelete=true
+ check(runCatching { enqueueHttp(ctx) }.isFailure)
+ check(ctx.contentResolver.writeOpens==1 && ctx.contentResolver.deletes==1 && !ctx.contentResolver.documents.containsKey("partial"))
+ check(TorrDownloadStore.jobs.value.isEmpty())
+ println("PASS: two directory queries and one tree-rooted child identity query for creation, with ownership checks before write or cleanup")
 
  ctx=fixture()
  val cancelledOnRead=launch {
@@ -341,7 +423,7 @@ with tempfile.TemporaryDirectory(prefix="gostex-completed-discovery-") as td:
     cp = ":".join(map(str, [COMPILER[1], COMPILER[4], jsonjar]))
     command = [str(JAVA), "-cp", ":".join(map(str, COMPILER)), "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler",
                "-no-stdlib", "-no-reflect", "-classpath", cp, "-d", str(folder / "classes")]
-    command += [str(base / name) for name in ("TorrPrefetch.kt", "TorrDownloadGroups.kt", "TorrDownloadDocuments.kt", "TorrDownloadPaths.kt", "HttpDownloadAdmission.kt", "SavedVideoIntegrity.kt", "TorrPlayback.kt")]
+    command += [str(base / name) for name in ("TorrPrefetch.kt", "TorrDownloadGroups.kt", "TorrDownloadDocuments.kt", "PortableSafContainment.kt", "TorrDownloadPaths.kt", "HttpDownloadAdmission.kt", "SavedVideoIntegrity.kt", "TorrPlayback.kt")]
     command += [str(folder / name) for name in sources]
     result = subprocess.run(command, capture_output=True, text=True)
     if result.returncode:

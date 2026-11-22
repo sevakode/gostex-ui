@@ -173,9 +173,14 @@ internal object TorrDownloadDocuments {
             if (document.authority != tree.authority) throw IOException("Unexpected destination provider")
             val documentId = DocumentsContract.getDocumentId(document)
             if (before.any { it.first == documentId }) throw IOException("Provider returned an existing document")
-            if (!portableSafDirectChild(context.contentResolver, tree, parentId, documentId)) throw IOException("Destination is outside selected folder")
-            val matches = listChildren().filter { it.second == partialName }
-            if (matches.size != 1 || matches.single().first != documentId) throw IOException("Ambiguous temporary document")
+            // One listing proves both membership and the unique name of this child.
+            val after = listChildren()
+            if (after.singleOrNull { it.second == partialName }?.first != documentId || after.count { it.first == documentId } != 1) {
+                throw IOException("Ambiguous temporary document")
+            }
+            if (!portableSafListedChildAccessible(context.contentResolver, tree, parentId, documentId)) {
+                throw IOException("Destination is outside selected folder")
+            }
             safeToDelete = true
             // Check early that the provider can safely seek before committing a job.
             TorrSafTarget.open(context.contentResolver, document).use { if (it.size() != 0L) throw IOException("New document is not empty") }

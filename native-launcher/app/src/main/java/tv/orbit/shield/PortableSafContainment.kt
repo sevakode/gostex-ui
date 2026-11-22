@@ -24,9 +24,14 @@ internal fun portableSafDirectChild(resolver: ContentResolver, tree: Uri, parent
         }
         matches
     } ?: throw IOException("Cannot list parent directory")
-    if (count != 1) return false
+    return count == 1 && portableSafListedChildAccessible(resolver, tree, parentId, childId)
+}
+
+/** Check the identity through the tree grant after the caller proves direct membership. */
+internal fun portableSafListedChildAccessible(resolver: ContentResolver, tree: Uri, parentId: String, childId: String): Boolean {
+    if (parentId.isBlank() || childId.isBlank() || parentId == childId) return false
     val child = Docs.buildDocumentUriUsingTree(tree, childId)
-    val accessible = resolver.query(child, columns, null, null, null)?.use { cursor ->
+    val accessible = resolver.query(child, arrayOf(Docs.Document.COLUMN_DOCUMENT_ID), null, null, null)?.use { cursor ->
         cursor.moveToFirst() && cursor.getString(0) == childId && !cursor.moveToNext()
     } ?: throw IOException("Cannot inspect child document")
     if (!accessible) return false

@@ -22,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.*
 
 internal object MediaNavigation {
@@ -88,9 +89,8 @@ internal fun openMediaLibrary(context: Context, id: String? = null, playIfSingle
     onLongClick: (() -> Unit)? = null, onFocus: () -> Unit = {}, favorite: Boolean = false, portrait: Boolean = false
 ) {
     var focused by remember { mutableStateOf(false) }
-    val downloads by TorrDownloadStore.jobs.collectAsState()
-    val downloaded = remember(downloads, movie.id) { downloads.count { it.prefetchMovieId == movie.id && it.state == "done" } }
-    val activeDownload = remember(downloads, movie.id) { downloads.firstOrNull { it.prefetchMovieId == movie.id && it.state == "running" } }
+    val downloadBadge = remember(movie.id) { MediaDownloadBadges.observe(movie.id) }
+    val badge by downloadBadge.collectAsStateWithLifecycle(initialValue = null)
     val key = "movie:${movie.id}"
     Column(modifier) {
         Surface(onClick = onClick, onLongClick = onLongClick,
@@ -110,12 +110,12 @@ internal fun openMediaLibrary(context: Context, id: String? = null, playIfSingle
                 CoverArtwork(cover?.manual?.takeIf { it.isNotEmpty() } ?: cover?.original?.ifEmpty { torrentArtwork } ?: torrentArtwork,
                     Modifier.fillMaxSize(), key, movie.title)
                 if (favorite) FavoriteBadge(Modifier.align(Alignment.TopEnd).padding(7.dp))
-                val badge = if (activeDownload != null) {
-                    val job = activeDownload
-                    val percent = if (job.total > 0) (job.offset.toDouble() * 100 / job.total).toInt().coerceIn(0, 100) else 0
-                    tr(R.string.prefetch_progress_badge, percent)
-                } else if (downloaded > 0) tr(R.string.prefetch_badge, downloaded) else ""
-                if (badge.isNotEmpty()) Text(badge, modifier = Modifier.align(Alignment.BottomStart).padding(5.dp).background(Color(0xDD101010)).padding(horizontal = 6.dp, vertical = 3.dp), color = Color.White, fontSize = 11.sp, maxLines = 1)
+                val badgeText = when (val current = badge) {
+                    is MediaDownloadBadge.Running -> tr(R.string.prefetch_progress_badge, current.percent)
+                    is MediaDownloadBadge.Completed -> tr(R.string.prefetch_badge, current.count)
+                    null -> null
+                }
+                if (badgeText != null) Text(badgeText, modifier = Modifier.align(Alignment.BottomStart).padding(5.dp).background(Color(0xDD101010)).padding(horizontal = 6.dp, vertical = 3.dp), color = Color.White, fontSize = 11.sp, maxLines = 1)
             }
         }
         Spacer(Modifier.height(TileLayout.titleGap))

@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.widget.EditText
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
@@ -16,11 +17,14 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -32,6 +36,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.tv.material3.Text
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
@@ -473,6 +478,14 @@ class MovieLibraryActivity : ComponentActivity() {
         busy = false
     }
 
+    private fun leaveMoviePage(destination: String) {
+        stopSourceLookup()
+        navigation.selected = null
+        discoverSavedSources = false
+        error = ""
+        navigation.page = destination
+    }
+
     private fun findSources(episode: MovieEpisode? = null) {
         val movie = selected ?: return
         stopSourceLookup()
@@ -830,6 +843,42 @@ class MovieLibraryActivity : ComponentActivity() {
         val journalState by TorrDownloadStartup.state.collectAsStateWithLifecycle()
         val liveDownloadProgress by TorrDownloadLiveProgress.current.collectAsStateWithLifecycle()
         val savedFocus = remember { FocusRequester() }
+        val savedCardFocus = remember { FocusRequester() }
+        val savedScroll = rememberLazyListState()
+        val pageScroll = if (page == "saved") savedScroll else key(page) { rememberLazyListState() }
+        var savedListPlaced by remember(page) { mutableStateOf(false) }
+        // A nonempty value identifies a saved card; an empty value returns to the toolbar.
+        var savedReturnTarget by rememberSaveable { mutableStateOf<String?>(null) }
+        val currentSaved by rememberUpdatedState(saved)
+        fun goBack() {
+            if (navigation.page == "saved") {
+                stopSourceLookup()
+                finish()
+            } else {
+                savedReturnTarget = if (navigation.page == "detail") selected?.id.orEmpty() else ""
+                leaveMoviePage("saved")
+            }
+        }
+        BackHandler(enabled = page != "saved" && !videoPlayer.isOpen, onBack = ::goBack)
+        LaunchedEffect(page, savedReturnTarget) {
+            if (page != "saved") return@LaunchedEffect
+            val id = savedReturnTarget ?: return@LaunchedEffect
+            if (id.isNotEmpty()) snapshotFlow { savedListPlaced }.first { it }
+            val index = if (id.isEmpty()) -1 else currentSaved.indexOfFirst { it.id == id }
+            val focus = if (index < 0) savedFocus else {
+                val layout = savedScroll.layoutInfo
+                val visible = layout.visibleItemsInfo.any { item ->
+                    item.key == id && item.offset >= layout.viewportStartOffset &&
+                        item.offset + item.size <= layout.viewportEndOffset
+                }
+                if (!visible) savedScroll.scrollToItem(index + if (pendingTorrentHash != null) 1 else 0)
+                savedCardFocus
+            }
+            withFrameNanos { }
+            val restored = runCatching { focus.requestFocus() }.getOrDefault(false)
+            if (!restored && focus !== savedFocus) runCatching { savedFocus.requestFocus() }
+            savedReturnTarget = null
+        }
         val lastEpisode = rememberLastEpisode(selected?.takeIf { it.mediaType == "series" }?.id)
         val recoveryMovie = selected?.takeIf { page == "detail" && discoverSavedSources }
         val recoverySources = saved.firstOrNull { it.id == recoveryMovie?.id }?.sources
@@ -860,10 +909,19 @@ class MovieLibraryActivity : ComponentActivity() {
             Text(tr(R.string.media_tab_title), color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(12.dp))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                MovieButton(tr(R.string.movies_saved), Modifier.focusRequester(savedFocus)) { stopSourceLookup(); requestGeneration++; navigation.page = "saved"; busy = false; error = "" }
-                MovieButton(tr(R.string.movies_search)) { search() }
-                MovieButton(tr(R.string.movies_addons)) { stopSourceLookup(); requestGeneration++; navigation.page = "addons"; busy = false; error = "" }
-                MovieButton(tr(R.string.back)) { stopSourceLookup(); if (page == "saved") finish() else { requestGeneration++; navigation.page = "saved"; busy = false; error = "" } }
+                MovieButton(tr(R.string.movies_saved), Modifier.focusRequester(savedFocus)) {
+                    savedReturnTarget = null
+                    leaveMoviePage("saved")
+                }
+                MovieButton(tr(R.string.movies_search)) {
+                    savedReturnTarget = null
+                    search()
+                }
+                MovieButton(tr(R.string.movies_addons)) {
+                    savedReturnTarget = null
+                    leaveMoviePage("addons")
+                }
+                MovieButton(tr(R.string.back), onClick = ::goBack)
             }
             if (pendingTorrentHash != null && page in setOf("saved", "results")) {
                 Text(tr(R.string.movies_attach_help), color = Color.LightGray, fontSize = 14.sp, modifier = Modifier.padding(top = 8.dp))
@@ -871,7 +929,10 @@ class MovieLibraryActivity : ComponentActivity() {
             if (busy) Text(progressMessage.ifBlank { tr(R.string.movies_searching) }, color = Color(0xFFCCFF00), modifier = Modifier.padding(vertical = 8.dp))
             if (error.isNotBlank()) Text(error, color = Color(0xFFFFA69A), modifier = Modifier.padding(vertical = 8.dp))
             Spacer(Modifier.height(10.dp))
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.weight(1f)) {
+            LazyColumn(state = pageScroll, verticalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.weight(1f).then(
+                    if (page == "saved") Modifier.onGloballyPositioned { savedListPlaced = true } else Modifier
+                )) {
                 if (pendingTorrentHash != null && page in setOf("saved", "results")) item(key = "create-local-torrent-card") {
                     SettingRow(tr(R.string.movies_local_create), tr(R.string.movies_local_hint), onClick = { createLocalTorrentCard() })
                 }
@@ -879,7 +940,12 @@ class MovieLibraryActivity : ComponentActivity() {
                     "saved" -> {
                         if (saved.isEmpty()) item { Text(tr(R.string.movies_empty), color = Color.LightGray) }
                         items(saved, key = { it.id }) { movie ->
-                            SettingRow(movie.title, movie.year, onClick = { openMovie(movie.catalogItem()) })
+                            SettingRow(movie.title, movie.year,
+                                modifier = if (movie.id == savedReturnTarget) Modifier.focusRequester(savedCardFocus) else Modifier,
+                                onClick = {
+                                    savedReturnTarget = null
+                                    openMovie(movie.catalogItem())
+                                })
                         }
                     }
                     "results" -> {

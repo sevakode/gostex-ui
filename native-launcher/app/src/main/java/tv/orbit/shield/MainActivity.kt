@@ -2865,7 +2865,15 @@ private fun settingsTitle(section: String): Int = when {
     }
 }
 
-@Composable internal fun SettingRow(title: String, value: String = "", modifier: Modifier = Modifier, isSelected: Boolean = false, trailing: String = "›", onClick: () -> Unit) {
+@Composable internal fun SettingRow(
+    title: String,
+    value: String = "",
+    modifier: Modifier = Modifier,
+    isSelected: Boolean = false,
+    trailing: String = "›",
+    leadingIcon: CompactIcon? = null,
+    onClick: () -> Unit,
+) {
     var focused by remember { mutableStateOf(false) }
     Surface(onClick = onClick, modifier = modifier.fillMaxWidth().touchSurface(onClick = onClick).semantics { selected = isSelected }.onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(0.dp)),
@@ -2873,6 +2881,10 @@ private fun settingsTitle(section: String): Int = when {
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
         border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, Lime)))) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (leadingIcon != null) {
+                CompactGlyph(leadingIcon, Modifier.size(20.dp), if (focused) Ink else White)
+                Spacer(Modifier.width(8.dp))
+            }
             Column(Modifier.weight(1f)) {
                 Text(title, color = if (focused) Ink else White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, maxLines = 2)
                 if (value.isNotEmpty()) Text(value, color = if (focused) Ink else Muted, fontSize = 12.sp)

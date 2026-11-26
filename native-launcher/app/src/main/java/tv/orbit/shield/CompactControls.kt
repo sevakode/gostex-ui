@@ -22,7 +22,7 @@ import androidx.tv.material3.LocalContentColor
 import androidx.tv.material3.Surface
 
 /** One TV-sized focus target for toolbar and playback actions; glyphs never depend on system fonts. */
-internal enum class CompactIcon { Search, Clear, Open, Previous, Next, Play, Pause, Close, Add, Folder, Settings, Music, Download }
+internal enum class CompactIcon { Search, Clear, Open, Previous, Next, Play, Pause, Close, Add, Folder, Settings, Music, Download, Trash }
 
 @Composable internal fun CompactIconButton(
     icon: CompactIcon,
@@ -77,6 +77,18 @@ internal enum class CompactIcon { Search, Clear, Open, Previous, Next, Play, Pau
             CompactIcon.Clear, CompactIcon.Close -> { line(6f, 6f, 18f, 18f); line(18f, 6f, 6f, 18f) }
             CompactIcon.Add -> { line(12f, 4f, 12f, 20f); line(4f, 12f, 20f, 12f) }
             CompactIcon.Download -> { line(12f, 3f, 12f, 15f); line(7f, 10f, 12f, 15f); line(12f, 15f, 17f, 10f); line(5f, 20f, 19f, 20f) }
+            CompactIcon.Trash -> {
+                line(4f, 6f, 20f, 6f)
+                line(9f, 3f, 15f, 3f)
+                val bin = Path().apply {
+                    moveTo(6f * unit, 9f * unit)
+                    lineTo(7f * unit, 21f * unit)
+                    lineTo(17f * unit, 21f * unit)
+                    lineTo(18f * unit, 9f * unit)
+                }
+                drawPath(bin, tint, style = Stroke(2f * unit))
+                line(12f, 10f, 12f, 17f)
+            }
             CompactIcon.Play -> triangle(7f, 19f)
             CompactIcon.Pause -> { line(8f, 5f, 8f, 19f); line(16f, 5f, 16f, 19f) }
             CompactIcon.Previous -> { line(5f, 5f, 5f, 19f); triangle(19f, 8f) }

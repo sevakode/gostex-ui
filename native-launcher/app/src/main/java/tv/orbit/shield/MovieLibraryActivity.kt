@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -1021,21 +1022,26 @@ class MovieLibraryActivity : ComponentActivity() {
                                         else -> R.string.torr_download_error
                                     }
                                 }
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                val canPause = job.state == "queued" || job.state == "running"
+                                val canDelete = job.state == "paused" || job.state == "error"
+                                val canResume = canDelete && job.error != "video_invalid"
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                                     val downloadedSize = android.text.format.Formatter.formatShortFileSize(this@MovieLibraryActivity, displayOffset)
                                     val totalSize = android.text.format.Formatter.formatShortFileSize(this@MovieLibraryActivity, job.total)
-                                    SettingRow(job.name, "${tr(status)} · $downloadedSize / $totalSize · $percent%", modifier = Modifier.weight(1f), onClick = {
-                                        runCatching {
-                                            when (job.state) {
-                                                "queued", "running" -> TorrDownloadActions.pause(this@MovieLibraryActivity, job.id)
-                                                "paused", "error" -> if (job.error != "video_invalid") TorrDownloadActions.start(this@MovieLibraryActivity, job.id) else Unit
-                                            }
-                                        }.onFailure { toast(R.string.torr_download_failed) }
-                                    })
-                                    SettingRow(tr(R.string.movies_play), modifier = Modifier.widthIn(max = 160.dp), onClick = {
+                                    SettingRow(job.name, "${tr(status)} · $downloadedSize / $totalSize · $percent%",
+                                        modifier = Modifier.weight(1f), trailing = "", leadingIcon = CompactIcon.Play) {
                                         prepareTorrent(Uri.parse("torrserver://${job.hash}"), null, false, null, exactFileId = job.index)
-                                    })
-                                    if (job.state == "paused" || job.state == "error") SettingRow(tr(R.string.prefetch_delete), modifier = Modifier.widthIn(max = 180.dp), onClick = {
+                                    }
+                                    if (canPause || canResume) CompactIconButton(
+                                        if (canPause) CompactIcon.Pause else CompactIcon.Download,
+                                        tr(if (canPause) R.string.prefetch_pause_download else R.string.prefetch_resume_download),
+                                    ) {
+                                        runCatching {
+                                            if (canPause) TorrDownloadActions.pause(this@MovieLibraryActivity, job.id)
+                                            else TorrDownloadActions.start(this@MovieLibraryActivity, job.id)
+                                        }.onFailure { toast(R.string.torr_download_failed) }
+                                    }
+                                    if (canDelete) CompactIconButton(CompactIcon.Trash, tr(R.string.prefetch_delete)) {
                                         AlertDialog.Builder(this@MovieLibraryActivity).setTitle(R.string.prefetch_delete)
                                             .setMessage(getString(R.string.prefetch_delete_partial_confirm, job.name))
                                             .setPositiveButton(R.string.prefetch_delete) { _, _ ->
@@ -1044,7 +1050,7 @@ class MovieLibraryActivity : ComponentActivity() {
                                                     if (!ok) toast(R.string.prefetch_delete_failed)
                                                 }
                                             }.setNegativeButton(R.string.cancel, null).show()
-                                    })
+                                    }
                                 }
                             }
                             if (offlineEpisodes.isNotEmpty()) item { Text(tr(R.string.prefetch_saved_episodes), color = Color.LightGray, fontSize = 14.sp) }
@@ -1053,16 +1059,16 @@ class MovieLibraryActivity : ComponentActivity() {
                                     value = withContext(Dispatchers.IO) { TorrPrefetch.savedStatus(this@MovieLibraryActivity, job) }
                                 }
                                 val status = when (integrity) {
-                                    SavedVideoIntegrity.Result.VALID -> R.string.prefetch_ready
+                                    SavedVideoIntegrity.Result.VALID -> R.string.torr_download_done
                                     SavedVideoIntegrity.Result.INVALID -> R.string.prefetch_damaged
                                     SavedVideoIntegrity.Result.UNAVAILABLE -> R.string.prefetch_missing
                                     null -> R.string.prefetch_checking
                                 }
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    SettingRow(job.name, tr(status), modifier = Modifier.weight(1f), onClick = {
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    SettingRow(job.name, tr(status), modifier = Modifier.weight(1f), trailing = "", leadingIcon = CompactIcon.Play) {
                                         prepareTorrent(Uri.parse("torrserver://${job.hash}"), null, false, null, exactFileId = job.index)
-                                    })
-                                    SettingRow(tr(R.string.prefetch_delete), modifier = Modifier.widthIn(max = 180.dp), onClick = {
+                                    }
+                                    CompactIconButton(CompactIcon.Trash, tr(R.string.prefetch_delete)) {
                                         AlertDialog.Builder(this@MovieLibraryActivity).setTitle(R.string.prefetch_delete)
                                             .setMessage(getString(R.string.prefetch_delete_confirm, job.name))
                                             .setPositiveButton(R.string.prefetch_delete) { _, _ ->
@@ -1076,7 +1082,7 @@ class MovieLibraryActivity : ComponentActivity() {
                                                     }
                                                 }
                                             }.setNegativeButton(R.string.cancel, null).show()
-                                    })
+                                    }
                                 }
                             }
                             missingTorrentHash?.let { hash -> item(key = "restore-torrent") {

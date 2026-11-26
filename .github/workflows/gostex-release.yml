@@ -119,6 +119,7 @@ jobs:
             native-launcher/checks/check_torr_download_history.py \
             native-launcher/checks/check_torr_completed_discovery.py \
             native-launcher/checks/check_torr_download.py \
+            native-launcher/checks/check_torr_retry.py \
             native-launcher/checks/check_torr_network_wait.py \
             native-launcher/checks/check_torr_playback_rate.py \
             native-launcher/checks/check_torr_throttle.py \

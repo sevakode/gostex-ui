@@ -139,7 +139,7 @@ internal class TorrDownloadService : Service() {
                         notificationUpdate(transfer, job)
                         if (job.offset < job.total) {
                             var end: TorrDownloadCheckpoint? = null
-                            var retries = 0
+                            val retry = TorrDownloadRetry(job.offset)
                             val playbackRetry = TorrDownloadEngine.PlaybackRetry()
                             while (end == null && !cancelled()) {
                                 try {
@@ -195,8 +195,8 @@ internal class TorrDownloadService : Service() {
                                     if (cancelled()) break
                                     // A source that cannot resume must never silently start over.
                                     if (job.http?.let { it.expectedEtag == null } == true) throw error
-                                    val delay = torrRetryDelay(error.reason, retries, TorrDownloadRetryOptions.read(this)) ?: throw error
-                                    retries++
+                                    val delay = retry.delayAfterFailure(error.reason, job.offset,
+                                        TorrDownloadRetryOptions.read(this)) ?: throw error
                                     job = TorrDownloadStore.update(this, job.id) { if (it.state == "running") it.copy(error = "retrying") else it }
                                     if (job.state != "running") break
                                     notificationUpdate(transfer, job)

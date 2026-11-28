@@ -251,8 +251,14 @@
     <string name="torr_folder_access_hint">Selecciona la misma carpeta para restablecer el acceso. El archivo incompleto se conserva.</string>
     <string name="torr_folder_access_check">Comprueba la unidad y el archivo; después selecciona Continuar.</string>
     <string name="torr_folder_access_restored">Acceso restablecido. Selecciona Continuar.</string>
+    <string name="torr_folder_access_finished_hint">Selecciona la misma carpeta para que GOSTEX pueda volver a leer el archivo descargado. El archivo y los ajustes de descarga no cambian.</string>
+    <string name="torr_folder_access_finished_restored">Acceso restablecido. El archivo descargado vuelve a estar disponible.</string>
     <string name="torr_folder_access_cancelled">El acceso no ha cambiado.</string>
     <string name="torr_folder_access_different">Selecciona la carpeta original de descarga. La descarga no ha cambiado.</string>
     <string name="torr_folder_access_stale">Esta descarga ha cambiado o ya no está disponible. Vuelve a la cola.</string>
     <string name="torr_folder_access_failed">No se pudo restablecer el acceso. Comprueba que la carpeta original permita leer y escribir.</string>
+    <string name="torr_folder_access_game_hint">Selecciona la misma carpeta para volver a leer el archivo del juego y poder añadirlo o extraerlo. El archivo y los ajustes de descarga no cambian.</string>
+    <string name="torr_folder_access_game_restored">Acceso restablecido. Vuelve a seleccionar la acción del juego.</string>
+    <string name="movie_folder_access_restored">Acceso restablecido. Selecciona el episodio para reproducirlo.</string>
+    <string name="movie_folder_access_stale">Este episodio guardado ha cambiado o ya no está disponible. No se ha cambiado nada.</string>
 </resources>

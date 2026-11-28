@@ -103,6 +103,83 @@ class MovieLibraryActivity : ComponentActivity() {
         }
     }
 
+    // Saved episodes only need read access to the folder recorded in the download journal.
+    private var folderReadGrants by mutableStateOf<Set<TorrDownloadFolderAccess.Identity>?>(null)
+    private var folderSnapshotGeneration = 0
+    private var folderAccessRequest: ArrayList<String>? = null
+    private var folderAccessBusy by mutableStateOf(false)
+    private var folderAccessReturnFocus by mutableStateOf<String?>(null)
+
+    private val folderAccessPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        val saved = folderAccessRequest
+        folderAccessRequest = null
+        val request = saved?.takeIf { it.size == 5 }
+            ?.let { TorrDownloadFolderAccess.Request(it[0], it[1], it[2], it[3], it[4]) }
+        folderAccessBusy = true
+        ++folderSnapshotGeneration
+        lifecycleScope.launch {
+            try {
+                val ready = TorrDownloadStartup.prepare(applicationContext)
+                val result = withContext(Dispatchers.IO) {
+                    // Re-read the journal so a job changed while the picker was open is rejected as stale.
+                    val current = if (ready && !PortableMaintenance.running) TorrDownloadStore.jobs.value
+                        .firstOrNull { it.id == request?.id }?.let(::folderAccessRequestFor) else null
+                    TorrDownloadFolderAccess.restore(contentResolver, request, current, uri)
+                }
+                ++folderSnapshotGeneration
+                folderReadGrants = result.readGrants
+                when (result.outcome) {
+                    TorrDownloadFolderAccess.Outcome.RESTORED -> toast(R.string.movie_folder_access_restored)
+                    TorrDownloadFolderAccess.Outcome.CANCELLED -> toast(R.string.torr_folder_access_cancelled)
+                    TorrDownloadFolderAccess.Outcome.DIFFERENT_FOLDER -> error = getString(R.string.torr_folder_access_different)
+                    TorrDownloadFolderAccess.Outcome.STALE -> error = getString(R.string.movie_folder_access_stale)
+                    TorrDownloadFolderAccess.Outcome.UNAVAILABLE -> error = getString(R.string.torr_folder_access_failed)
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) { error = getString(R.string.torr_folder_access_failed) }
+            finally {
+                folderAccessBusy = false
+                folderAccessReturnFocus = request?.id
+            }
+        }
+    }
+
+    private fun folderAccessRequestFor(job: TorrDownloadJob) =
+        TorrDownloadFolderAccess.Request(job.id, job.tree, job.document, job.state, job.error)
+
+    private fun needsFolderAccess(job: TorrDownloadJob) =
+        TorrDownloadFolderAccess.needsRestore(job.state, job.error, job.tree, null, folderReadGrants)
+
+    /** Reads only the persisted permission list; a failed read stays unknown rather than "missing". */
+    private fun refreshFolderGrants() {
+        val generation = ++folderSnapshotGeneration
+        lifecycleScope.launch {
+            val snapshot = withContext(Dispatchers.IO) { TorrDownloadFolderAccess.snapshotGrants(contentResolver) }
+            if (generation == folderSnapshotGeneration) folderReadGrants = snapshot?.read
+        }
+    }
+
+    /** Regrants only the recorded folder; the job, the file and the default download folder stay unchanged. */
+    private fun restoreFolderAccess(job: TorrDownloadJob) {
+        if (folderAccessBusy || folderAccessRequest != null || PortableMaintenance.running || !needsFolderAccess(job)) return
+        error = "" // a message from an earlier attempt must not outlive a new one
+        val probe = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+        val resolved = runCatching { packageManager.resolveActivity(probe,
+            android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo }.getOrNull()
+        if (resolved == null || !resolved.enabled || !resolved.applicationInfo.enabled ||
+            resolved.packageName == "com.android.tv.frameworkpackagestubs") {
+            error = getString(R.string.document_picker_unavailable)
+            return
+        }
+        folderAccessRequest = arrayListOf(job.id, job.tree, job.document, job.state, job.error)
+        try { folderAccessPicker.launch(Uri.parse(job.tree)) }
+        catch (_: Exception) {
+            folderAccessRequest = null
+            folderAccessReturnFocus = job.id
+            error = getString(R.string.document_picker_unavailable)
+        }
+    }
+
     private val emulatorInstall: EmulatorInstall = EmulatorInstall(this, updateNotice = { message ->
         if (!videoPlayer.isOpen && message.isNotBlank()) Toast.makeText(this, message, Toast.LENGTH_LONG).show()
     })
@@ -117,6 +194,8 @@ class MovieLibraryActivity : ComponentActivity() {
         refresh()
         pendingFileId = savedInstanceState?.getString(STATE_PENDING_FILE_ID)
         pendingRestoreHash = savedInstanceState?.getString(STATE_PENDING_RESTORE_HASH)?.takeIf { it.matches(Regex("(?i)[0-9a-f]{40}")) }
+        folderAccessRequest = savedInstanceState?.getStringArrayList(STATE_FOLDER_ACCESS_REQUEST)?.takeIf { it.size == 5 }
+        folderAccessReturnFocus = savedInstanceState?.getString(STATE_FOLDER_ACCESS_FOCUS)?.takeIf { it.isNotBlank() && it.length <= 256 }
         lastPreparedMovie = savedInstanceState?.getString("buffer.movie")
         lastPreparedHash = savedInstanceState?.getString("buffer.hash")?.takeIf { it.matches(Regex("(?i)[0-9a-f]{40}")) }
         val hash = if (savedInstanceState == null) intent.getStringExtra(EXTRA_TORRENT_HASH) else savedInstanceState.getString(EXTRA_TORRENT_HASH)
@@ -145,6 +224,12 @@ class MovieLibraryActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        // Permissions can be revoked in system settings while the library is in the background.
+        refreshFolderGrants()
+    }
+
     override fun onStop() {
         bufferDialog?.dismiss()
         super.onStop()
@@ -159,6 +244,8 @@ class MovieLibraryActivity : ComponentActivity() {
         }
         outState.putString(STATE_PENDING_FILE_ID, pendingFileId)
         outState.putString(STATE_PENDING_RESTORE_HASH, pendingRestoreHash)
+        outState.putStringArrayList(STATE_FOLDER_ACCESS_REQUEST, folderAccessRequest)
+        outState.putString(STATE_FOLDER_ACCESS_FOCUS, folderAccessReturnFocus)
         outState.putString("buffer.movie", lastPreparedMovie)
         outState.putString("buffer.hash", lastPreparedHash)
         outState.putString(EXTRA_TORRENT_HASH, pendingTorrentHash)
@@ -196,6 +283,8 @@ class MovieLibraryActivity : ComponentActivity() {
     companion object {
         private const val STATE_PENDING_FILE_ID = "pending_file_id"
         private const val STATE_PENDING_RESTORE_HASH = "pending_restore_hash"
+        private const val STATE_FOLDER_ACCESS_REQUEST = "media.folder_access_request"
+        private const val STATE_FOLDER_ACCESS_FOCUS = "media.folder_access_focus"
         private const val STATE_PAGE = "media.page"
         private const val STATE_QUERY = "media.query"
         private const val STATE_SAVED_MOVIE_ID = "media.saved_movie_id"
@@ -899,6 +988,20 @@ class MovieLibraryActivity : ComponentActivity() {
                 // Discovery is optional; an unreadable journal or unavailable server must not close the card.
             }
         }
+        val offlineFocus = remember { FocusRequester() }
+        // After the folder picker, return to the same saved episode once the journal shows it again.
+        LaunchedEffect(folderAccessReturnFocus, downloads, journalState, page) {
+            val id = folderAccessReturnFocus ?: return@LaunchedEffect
+            val present = page == "detail" && downloads.any { it.id == id && it.state == "done" && it.prefetchMovieId == selected?.id }
+            if (!present) {
+                if (page != "detail" || journalState == TorrDownloadStartupState.READY ||
+                    journalState == TorrDownloadStartupState.FAILED) folderAccessReturnFocus = null
+                return@LaunchedEffect
+            }
+            withFrameNanos { }
+            runCatching { offlineFocus.requestFocus() }
+            folderAccessReturnFocus = null
+        }
         LaunchedEffect(sourceRemovalVersion) {
             if (sourceRemovalVersion > 0) {
                 withFrameNanos { }
@@ -1055,17 +1158,25 @@ class MovieLibraryActivity : ComponentActivity() {
                             }
                             if (offlineEpisodes.isNotEmpty()) item { Text(tr(R.string.prefetch_saved_episodes), color = Color.LightGray, fontSize = 14.sp) }
                             items(offlineEpisodes, key = { "offline:${it.id}" }) { job ->
-                                val integrity by produceState<SavedVideoIntegrity.Result?>(null, job) {
-                                    value = withContext(Dispatchers.IO) { TorrPrefetch.savedStatus(this@MovieLibraryActivity, job) }
+                                val restoreAccess = needsFolderAccess(job)
+                                val integrity by produceState<SavedVideoIntegrity.Result?>(null, job, restoreAccess) {
+                                    // Without a folder grant the file cannot be read; the row below offers restoration.
+                                    value = if (restoreAccess) null
+                                        else withContext(Dispatchers.IO) { TorrPrefetch.savedStatus(this@MovieLibraryActivity, job) }
                                 }
-                                val status = when (integrity) {
-                                    SavedVideoIntegrity.Result.VALID -> R.string.torr_download_done
-                                    SavedVideoIntegrity.Result.INVALID -> R.string.prefetch_damaged
-                                    SavedVideoIntegrity.Result.UNAVAILABLE -> R.string.prefetch_missing
-                                    null -> R.string.prefetch_checking
+                                val status = when {
+                                    restoreAccess -> R.string.prefetch_missing
+                                    integrity == SavedVideoIntegrity.Result.VALID -> R.string.torr_download_done
+                                    integrity == SavedVideoIntegrity.Result.INVALID -> R.string.prefetch_damaged
+                                    integrity == SavedVideoIntegrity.Result.UNAVAILABLE -> R.string.prefetch_missing
+                                    else -> R.string.prefetch_checking
                                 }
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    SettingRow(job.name, tr(status), modifier = Modifier.weight(1f), trailing = "", leadingIcon = CompactIcon.Play) {
+                                    SettingRow(job.name, tr(status), trailing = "", leadingIcon = CompactIcon.Play,
+                                        modifier = Modifier.weight(1f).then(
+                                            if (!restoreAccess && job.id == folderAccessReturnFocus) Modifier.focusRequester(offlineFocus) else Modifier)) {
+                                        // Without the grant this still plays by streaming, as before; restoring is a separate row.
+                                        if (folderAccessBusy) return@SettingRow
                                         prepareTorrent(Uri.parse("torrserver://${job.hash}"), null, false, null, exactFileId = job.index)
                                     }
                                     CompactIconButton(CompactIcon.Trash, tr(R.string.prefetch_delete)) {
@@ -1084,6 +1195,9 @@ class MovieLibraryActivity : ComponentActivity() {
                                             }.setNegativeButton(R.string.cancel, null).show()
                                     }
                                 }
+                                if (restoreAccess) SettingRow(tr(R.string.torr_folder_access_restore), tr(R.string.torr_folder_access_finished_hint),
+                                    modifier = if (job.id == folderAccessReturnFocus) Modifier.focusRequester(offlineFocus) else Modifier,
+                                    onClick = { restoreFolderAccess(job) })
                             }
                             missingTorrentHash?.let { hash -> item(key = "restore-torrent") {
                                 SettingRow(tr(R.string.movies_restore_torrent), tr(R.string.movies_restore_hint), onClick = { restoreMissingTorrent(hash) })

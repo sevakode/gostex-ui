@@ -24,9 +24,11 @@ verify("No cross-platform match",index.find("NES","Aladdin.nes")==null)
 verify("Final Fantasy IV SNES alias",index.find("SNES","Final Fantasy IV (Japan).sfc")?.title=="Final Fantasy II")
 verify("Final Fantasy IV DS not SNES",index.find("Nintendo DS","Final Fantasy IV.nds")==null)
 val portrait=index.find("Nintendo DS","Castlevania - Portrait of Ruin (Eur) (Rus).nds")
-verify("Observed DS translation filename has base-game cover",portrait?.title=="Castlevania - Portrait of Ruin" && portrait.cover.isNotBlank())
+// Release102: the public catalog ships no bundled covers; covers are resolved later from the matched base-game identity.
+val portraitBase=games.single{it.platform=="Nintendo DS" && it.title=="Castlevania - Portrait of Ruin"}
+verify("Observed DS translation filename resolves to base-game metadata",portrait?.id==portraitBase.id && portrait.platform=="Nintendo DS")
 verify("DS metadata cannot replace import identity or invent a ROM",portrait?.files?.isEmpty()==true && portrait.tree.isEmpty())
-verify("DS original Europe edition has same base-game cover",index.find("Nintendo DS","Castlevania - Portrait of Ruin (Europe) (En,Fr,De,Es,It).nds")?.id==portrait?.id)
+verify("DS original Europe edition resolves to the same base-game metadata",index.find("Nintendo DS","Castlevania - Portrait of Ruin (Europe) (En,Fr,De,Es,It).nds")?.id==portrait?.id)
 verify("DS title cannot match another platform",index.find("SNES","Castlevania - Portrait of Ruin (Eur) (Rus).nds")==null)
 verify("DS unknown translation label not stripped",index.find("Nintendo DS","Castlevania - Portrait of Ruin (Eur) (OtherTranslation).nds")==null)
 for(tag in listOf("Hack","Beta","Prototype","Demo")) verify("DS edition retained "+tag,index.find("Nintendo DS","Castlevania - Portrait of Ruin (Eur) (Rus) ("+tag+").nds")==null)

@@ -1746,9 +1746,12 @@ class MainActivity : ComponentActivity() {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable private fun OrbitContent(activity: MainActivity, games: List<Game>) {
     val prefs = remember { activity.getSharedPreferences("orbit", android.content.Context.MODE_PRIVATE) }
-    var tab by rememberSaveable { mutableStateOf("home") }
-    var searchQuery by rememberSaveable { mutableStateOf("") }
-    var searchOpen by rememberSaveable { mutableStateOf(false) }
+    val tabState = rememberSaveable { mutableStateOf("home") }
+    var tab by tabState
+    val searchQueryState = rememberSaveable { mutableStateOf("") }
+    var searchQuery by searchQueryState
+    val searchOpenState = rememberSaveable { mutableStateOf(false) }
+    var searchOpen by searchOpenState
     val searchFocus = remember { FocusRequester() }
     val addGamesFocus = remember { FocusRequester() }
     val libraryOptions = LocalLibraryOptions.current
@@ -1763,20 +1766,30 @@ class MainActivity : ComponentActivity() {
             if (appsOptions.tabVisible) add("apps")
         }
     }
-    var searchReturnTarget by remember { mutableStateOf("") }
-    var settingsOpen by rememberSaveable { mutableStateOf(false) }
-    var settingsInitialSection by rememberSaveable { mutableStateOf("root") }
+    val searchReturnTargetState = remember { mutableStateOf("") }
+    var searchReturnTarget by searchReturnTargetState
+    val settingsOpenState = rememberSaveable { mutableStateOf(false) }
+    var settingsOpen by settingsOpenState
+    val settingsInitialSectionState = rememberSaveable { mutableStateOf("root") }
+    var settingsInitialSection by settingsInitialSectionState
     val settingsFocus = remember { FocusRequester() }
     val updateFocus = remember { FocusRequester() }
-    var drawerWasOpen by remember { mutableStateOf(false) }
-    var platform by rememberSaveable { mutableStateOf("all") }
-    var chosenId by rememberSaveable { mutableStateOf(HomePreferences.selectedId(activity)) }
-    var detailId by rememberSaveable { mutableStateOf<String?>(null) }
-    var libraryDetailReturnId by rememberSaveable { mutableStateOf<String?>(null) }
+    val drawerWasOpenState = remember { mutableStateOf(false) }
+    val platformState = rememberSaveable { mutableStateOf("all") }
+    var platform by platformState
+    val chosenIdState = rememberSaveable { mutableStateOf(HomePreferences.selectedId(activity)) }
+    var chosenId by chosenIdState
+    val detailIdState = rememberSaveable { mutableStateOf<String?>(null) }
+    var detailId by detailIdState
+    val libraryDetailReturnIdState = rememberSaveable { mutableStateOf<String?>(null) }
+    var libraryDetailReturnId by libraryDetailReturnIdState
     val detail = remember(games, detailId) { detailId?.let { id -> games.firstOrNull { it.id == id } } }
-    var versionGameId by rememberSaveable { mutableStateOf<String?>(null) }
-    var versionFile by rememberSaveable { mutableStateOf<String?>(null) }
-    var versionPickerOpen by remember { mutableStateOf(false) }
+    val versionGameIdState = rememberSaveable { mutableStateOf<String?>(null) }
+    var versionGameId by versionGameIdState
+    val versionFileState = rememberSaveable { mutableStateOf<String?>(null) }
+    var versionFile by versionFileState
+    val versionPickerOpenState = remember { mutableStateOf(false) }
+    var versionPickerOpen by versionPickerOpenState
     fun closeGameDetail() {
         detailId = null
         versionGameId = null
@@ -1785,59 +1798,39 @@ class MainActivity : ComponentActivity() {
     }
     val incomingTorrent = activity.incomingTorrentUri
     if (incomingTorrent != null) {
-        LaunchedEffect(incomingTorrent) { tab = "downloads"; settingsOpen = false; closeGameDetail() }
-        DisposableEffect(activity, incomingTorrent) {
-            val magnet = incomingTorrent.scheme.equals("magnet", ignoreCase = true)
-            val dialog = android.app.AlertDialog.Builder(activity)
-                .setTitle(if (magnet) R.string.torr_download_add_magnet else R.string.torr_download_add_file)
-                .setMessage(if (magnet) R.string.downloads_external_magnet_confirm else R.string.downloads_external_confirm)
-                .setPositiveButton(R.string.downloads_external_queue) { _, _ ->
-                    activity.incomingTorrentUri = null
-                    if (magnet) activity.importMagnet(incomingTorrent) else activity.importTorrentUri(incomingTorrent)
-                }
-                .setNeutralButton(R.string.movies_add_torrent_media) { _, _ ->
-                    activity.incomingTorrentUri = null
-                    if (magnet) activity.importMagnet(incomingTorrent, openMedia = true)
-                    else activity.importTorrentUri(incomingTorrent, openMedia = true)
-                }
-                .setNegativeButton(R.string.cancel) { _, _ -> activity.incomingTorrentUri = null }
-                .setOnCancelListener { activity.incomingTorrentUri = null }
-                .create()
-            dialog.show()
-            onDispose { dialog.dismiss() }
-        }
+        OrbitIncomingTorrent(activity, incomingTorrent, tabState, settingsOpenState, ::closeGameDetail)
     }
     val mediaOptions = rememberMediaPlayerOptions()
     val batteryVisible = rememberBatteryVisible()
     val mediaVisible = mediaOptions.visible
-    var mediaOpen by rememberSaveable { mutableStateOf(false) }
+    val mediaOpenState = rememberSaveable { mutableStateOf(false) }
+    var mediaOpen by mediaOpenState
     val mediaPlayback = rememberMediaPlayback(activity, (mediaVisible && detail == null) || settingsOpen || mediaOpen,
         showPaused = mediaOptions.showPaused || settingsOpen || mediaOpen)
     val headerMediaSession = mediaPlayback.session?.takeIf { mediaOptions.showPaused || it.isPlaying }
     val mediaFocus = remember { FocusRequester() }
-    var mediaWasOpen by remember { mutableStateOf(false) }
-    LaunchedEffect(mediaOpen) {
-        if (mediaOpen) mediaWasOpen = true
-        else if (mediaWasOpen) {
-            withFrameNanos { }
-            val restored = if (mediaVisible && headerMediaSession != null) runCatching { mediaFocus.requestFocus() }.getOrDefault(false) else false
-            if (!restored) runCatching { settingsFocus.requestFocus() }
-        }
-    }
+    val mediaWasOpenState = remember { mutableStateOf(false) }
+    OrbitMediaReturnFocus(mediaVisible, headerMediaSession, mediaFocus, settingsFocus, mediaOpenState, mediaWasOpenState)
     val sectionOptions = rememberHomeSections()
     val favoriteRefs = remember(sectionOptions.favorites) { sectionOptions.favorites.toSet() }
     val favorites = remember(favoriteRefs) { favoriteRefs.filter { it.startsWith("game:") }.map { it.removePrefix("game:") }.toSet() }
     val firstFocus = remember { FocusRequester() }
     val feedState = remember { HomeFeedState() }
-    var tileMenu by remember { mutableStateOf<TileMenuTarget?>(null) }
-    var membershipItem by remember { mutableStateOf<String?>(null) }
-    var favoriteOrderItem by remember { mutableStateOf<String?>(null) }
-    var tileReturnFocus by remember { mutableStateOf<FocusRequester?>(null) }
-    var tileReturnAnchor by rememberSaveable(stateSaver = listSaver<HomeFeedAnchor?, Any>(
+    val tileMenuState = remember { mutableStateOf<TileMenuTarget?>(null) }
+    var tileMenu by tileMenuState
+    val membershipItemState = remember { mutableStateOf<String?>(null) }
+    var membershipItem by membershipItemState
+    val favoriteOrderItemState = remember { mutableStateOf<String?>(null) }
+    var favoriteOrderItem by favoriteOrderItemState
+    val tileReturnFocusState = remember { mutableStateOf<FocusRequester?>(null) }
+    var tileReturnFocus by tileReturnFocusState
+    val tileReturnAnchorState = rememberSaveable(stateSaver = listSaver<HomeFeedAnchor?, Any>(
         save = { anchor -> anchor?.let { listOf(it.shelf.orEmpty(), it.index, it.key.orEmpty()) }.orEmpty() },
         restore = { HomeFeedAnchor((it[0] as String).ifEmpty { null }, it[1] as Int, (it[2] as String).ifEmpty { null }) }
     )) { mutableStateOf<HomeFeedAnchor?>(null) }
-    var tileRestore by remember { mutableIntStateOf(0) }
+    var tileReturnAnchor by tileReturnAnchorState
+    val tileRestoreState = remember { mutableIntStateOf(0) }
+    var tileRestore by tileRestoreState
     fun dismissTileMenu() { tileMenu = null; tileRestore++ }
     fun returnFromGameDetail() {
         if (tab == "library") libraryDetailReturnId = detailId else tileRestore++
@@ -1868,17 +1861,12 @@ class MainActivity : ComponentActivity() {
         tileReturnAnchor = feedState.anchor()
         tileReturnFocus = focus; tileMenu = TileMenuTarget.MovieItem(movie)
     }
-    LaunchedEffect(tileRestore) {
-        if (tileRestore > 0 && detail == null && tileMenu == null && membershipItem == null && favoriteOrderItem == null) {
-            withFrameNanos { }
-            if (tab == "home") feedState.restore(tileReturnAnchor)
-            else if (tileReturnFocus?.let { runCatching { it.requestFocus() }.getOrDefault(false) } != true)
-                runCatching { firstFocus.requestFocus() }
-        }
-    }
+    OrbitTileReturnFocus(detail, feedState, firstFocus, tileRestoreState, tileMenuState, membershipItemState,
+        favoriteOrderItemState, tabState, tileReturnAnchorState, tileReturnFocusState)
     val libraryScroll = rememberLazyGridState()
     val appsScroll = rememberLazyGridState()
-    var selectedAppPackage by rememberSaveable { mutableStateOf<String?>(null) }
+    val selectedAppPackageState = rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedAppPackage by selectedAppPackageState
     val loadedApps by produceState<List<TvApp>?>(null, activity.resumeVersion) {
         value = withContext(Dispatchers.IO) { activity.apps() }
     }
@@ -1889,40 +1877,13 @@ class MainActivity : ComponentActivity() {
     val movies = movieResult?.getOrDefault(emptyList()).orEmpty()
     val homeOptions = rememberHomeOptions()
     val clockOptions = rememberClockOptions()
-    val currentClockOptions by rememberUpdatedState(clockOptions)
+    val currentClockOptionsState = rememberUpdatedState(clockOptions)
     val clockInstant = rememberClockInstant(clockOptions.visible && clockOptions.zones.isNotEmpty() && detail == null)
     val clockReturnZone = settingsInitialSection.takeIf { it.startsWith("clock/manage/") }?.removePrefix("clock/manage/")
     val clockStripState = rememberLazyListState()
     val clockReturnFocus = remember { FocusRequester() }
-    LaunchedEffect(settingsOpen) {
-        if (settingsOpen) {
-            drawerWasOpen = true
-            return@LaunchedEffect
-        }
-        if (!drawerWasOpen) return@LaunchedEffect
-        drawerWasOpen = false
-        withFrameNanos { }
-        val options = currentClockOptions
-        val clockIndex = if (clockReturnZone != null && options.visible && options.zones.size >= 2 && detail == null) {
-            options.zones.indexOf(clockReturnZone)
-        } else -1
-        val target = when {
-            clockIndex >= 0 -> {
-                val layout = clockStripState.layoutInfo
-                val visible = layout.visibleItemsInfo.any { item ->
-                    item.key == clockReturnZone && item.offset >= layout.viewportStartOffset &&
-                        item.offset + item.size <= layout.viewportEndOffset
-                }
-                if (!visible && layout.totalItemsCount > 0) clockStripState.scrollToItem(clockIndex)
-                withFrameNanos { }
-                clockReturnFocus
-            }
-            settingsInitialSection == "updates" -> updateFocus
-            else -> settingsFocus
-        }
-        val restored = runCatching { target.requestFocus() }.getOrDefault(false)
-        if (!restored && target !== settingsFocus) runCatching { settingsFocus.requestFocus() }
-    }
+    OrbitSettingsReturnFocus(detail, clockReturnZone, clockStripState, clockReturnFocus, updateFocus, settingsFocus,
+        settingsOpenState, settingsInitialSectionState, drawerWasOpenState, currentClockOptionsState)
     var moviePlayRevision by remember { mutableIntStateOf(0) }
     DisposableEffect(prefs) {
         val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
@@ -1974,24 +1935,9 @@ class MainActivity : ComponentActivity() {
         filtered.indexOfFirst { it.id == libraryFocusId }.coerceAtLeast(0)
     }
     val libraryFocusGame = filtered.getOrNull(libraryFocusIndex)
-    val currentLibraryPosition by rememberUpdatedState(libraryFocusIndex to libraryFocusGame?.id)
-    LaunchedEffect(platform, waitingForAndroidGames, androidGameApps) {
-        if (platform == "android-apps" && !waitingForAndroidGames && androidGameApps.isEmpty()) platform = "all"
-    }
-    LaunchedEffect(tab, visibleTabs) {
-        if (tab != "downloads" && tab !in visibleTabs) {
-            tab = "home"
-            searchOpen = false
-            platform = "all"
-        }
-        if (tab != "library") libraryDetailReturnId = null
-    }
-    LaunchedEffect(games) {
-        if (games.none { it.id == chosenId }) chosenId = homeGames.firstOrNull()?.id
-    }
-    LaunchedEffect(detailId, detail) {
-        if (detailId != null && detail == null) closeGameDetail()
-    }
+    val currentLibraryPositionState = rememberUpdatedState(libraryFocusIndex to libraryFocusGame?.id)
+    OrbitSelectionEffects(games, homeGames, visibleTabs, androidGameApps, waitingForAndroidGames, detail, platformState, tabState,
+        searchOpenState, libraryDetailReturnIdState, chosenIdState, detailIdState, ::closeGameDetail)
     fun selectGame(game: Game) {
         chosenId = game.id
         HomePreferences.select(activity, game.id)
@@ -2017,377 +1963,22 @@ class MainActivity : ComponentActivity() {
         tab = destination
         platform = "all"
     }
-    LaunchedEffect(activity.homeVersion) {
-        if (activity.homeVersion != 0) showRootTab("home")
-    }
-    LaunchedEffect(activity.openDownloadsRequested) {
-        if (activity.openDownloadsRequested) showRootTab("downloads")
-    }
-    BackHandler {
-        if (detail != null) returnFromGameDetail() else { tab = "home"; platform = "all" }
-    }
+    OrbitRootNavigation(activity, detail, tabState, platformState, ::showRootTab, ::returnFromGameDetail)
 
-    Box(Modifier.fillMaxSize().background(Ink).safeDrawingPadding().onPreviewKeyEvent { event ->
-        if (tab == "home" && detail == null && !settingsOpen && !mediaOpen && !searchOpen && tileMenu == null && membershipItem == null && favoriteOrderItem == null && isHomeShelfKey(event.nativeKeyEvent)) {
-            homeShelfStep(event.nativeKeyEvent)?.let(feedState::moveBy)
-            true
-        } else false
-    }) {
-        if (detail != null) {
-            val g = detail
-            val versions = remember(g, groups, libraryOptions.groupVersions) { gameVersions(g, groups, libraryOptions.groupVersions) }
-            val variant = versions.indexOfFirst { it.game.id == versionGameId && it.game.files[it.fileIndex] == versionFile }.coerceAtLeast(0)
-            val selectedVersion = versions.getOrNull(variant)
-            val versionPaths = remember(versions) { versions.map { android.net.Uri.decode(it.game.files[it.fileIndex]) } }
-            val fileNames = remember(versionPaths) { versionPaths.map { it.substringAfterLast('/') } }
-            val labels = remember(versionPaths, fileNames) {
-                val counts = fileNames.groupingBy { it }.eachCount()
-                versionPaths.mapIndexed { index, path ->
-                    val name = fileNames[index]
-                    if ((counts[name] ?: 0) > 1) "$name · ${path.substringBeforeLast('/', "")}" else name
-                }
-            }
-            val versionLabel = labels.getOrNull(variant).orEmpty()
-            LaunchedEffect(versions.size) { if (versions.size < 2) versionPickerOpen = false }
-            if (versionPickerOpen && versions.size > 1) {
-                DisposableEffect(activity, g.id, versions, labels) {
-                    val dialog = android.app.AlertDialog.Builder(activity)
-                        .setTitle(R.string.other_version)
-                        .setSingleChoiceItems(labels.toTypedArray(), variant) { _, index ->
-                            val version = versions[index]
-                            versionGameId = version.game.id
-                            versionFile = version.game.files[version.fileIndex]
-                            versionPickerOpen = false
-                        }
-                        .setNegativeButton(R.string.cancel) { _, _ -> versionPickerOpen = false }
-                        .setOnCancelListener { versionPickerOpen = false }
-                        .setOnDismissListener { versionPickerOpen = false }
-                        .create()
-                    dialog.show()
-                    onDispose { dialog.setOnDismissListener(null); dialog.dismiss() }
-                }
-            }
-            Box(Modifier.align(Alignment.CenterEnd).padding(end = 36.dp).fillMaxWidth(.32f).fillMaxHeight(.78f).border(1.dp, Color(0xFF424244)).background(Panel)) {
-                CoverArtwork(g.cover.ifEmpty { g.scene }, Modifier.fillMaxSize(), g.id)
-            }
-            BoxWithConstraints(Modifier.fillMaxSize()) {
-                val short = maxHeight < 480.dp
-                val edge = if (short || maxWidth < 600.dp) 16.dp else 40.dp
-                Column(Modifier.fillMaxSize().padding(edge)) {
-                    val detailsScroll = rememberScrollState()
-                    Column(Modifier.weight(1f).fillMaxWidth().then(if (short) Modifier.verticalScroll(detailsScroll) else Modifier)) {
-                        Action(tr(R.string.back_library), onClick = ::returnFromGameDetail)
-                        Spacer(Modifier.height(26.dp))
-                        Text("${platformTitle(g.platform).uppercase()}   /   ${if (g.demo) "HOMEBREW" else tr(R.string.your_collection).uppercase()}", color = Lime, fontSize = 12.sp, letterSpacing = 2.sp)
-                        Spacer(Modifier.height(10.dp))
-                        Text(g.title.uppercase(), fontSize = 38.sp, lineHeight = 42.sp, fontWeight = FontWeight.Black, color = White, maxLines = 2, modifier = Modifier.width(540.dp))
-                        Spacer(Modifier.height(12.dp))
-                        Text(listOf(g.year, genre(g.genre), if (g.players.isNotEmpty()) tr(R.string.players, g.players) else "").filter { it.isNotEmpty() }.joinToString("   ·   "), color = White, fontSize = 15.sp)
-                        Spacer(Modifier.height(12.dp))
-                        val selectedEmulator = PlatformRegistry.resolve(g.platform, libraryOptions.ndsEmulator)?.emulator ?: g.emulator
-                        Text(g.developer.ifEmpty { PlatformRegistry.title(activity, g.platform) } + "\n" + tr(R.string.emulator, selectedEmulator), color = Muted, fontSize = 14.sp, lineHeight = 23.sp)
-                        Spacer(Modifier.height(12.dp))
-                        GameDescriptionPanel(g)
-                    }
-                    if (versions.size > 1) {
-                        Text(tr(R.string.variant, variant + 1, versions.size), color = Muted, fontSize = 12.sp)
-                        Text(versionLabel, color = White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.width(540.dp))
-                        Spacer(Modifier.height(8.dp))
-                    }
-                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        Action(tr(R.string.play), primary = true, modifier = Modifier.focusRequester(firstFocus), onClick = { selectedVersion?.let { activity.launchGame(it.game, it.fileIndex) } })
-                        if (versions.size > 1) Action(tr(R.string.other_version), onClick = { versionPickerOpen = true })
-                        Action(tr(R.string.cover_manage), onClick = { activity.editGameCover(g.id) })
-                        Action(if (g.id in favorites) tr(R.string.favorite_on) else tr(R.string.favorite_off), onClick = { toggle(g) })
-                    }
-                    Spacer(Modifier.height(if (short) 8.dp else 22.dp))
-                    ControlHints(R.string.control_select, R.string.back)
-                }
-            }
-            LaunchedEffect(g.id) { firstFocus.requestFocus() }
-        } else {
-            var libraryGridPlaced by remember { mutableStateOf(false) }
-            Column(Modifier.fillMaxSize()) {
-                BoxWithConstraints(Modifier.fillMaxWidth()) {
-                  if (maxWidth < 600.dp) {
-                    Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 8.dp)) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.weight(1f)) {
-                                Image(painterResource(R.drawable.gostex_logo), contentDescription = "GOSTEX", modifier = Modifier.width(76.dp).height(34.dp))
-                            }
-                            if (mediaVisible) headerMediaSession?.let { session ->
-                                MediaPlayerButton(session, Modifier.focusRequester(mediaFocus)) { mediaOpen = true }
-                            }
-                            if (rememberNetworkVisible()) NetworkStatusButton(activity)
-                            CompactIconButton(CompactIcon.Settings, tr(R.string.settings), modifier = Modifier.focusRequester(settingsFocus),
-                                onClick = { settingsInitialSection = "root"; settingsOpen = true })
-                        }
-                        if (batteryVisible || (clockOptions.visible && clockOptions.zones.size == 1)) {
-                            FlowRow(
-                                Modifier.fillMaxWidth().padding(top = 6.dp),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
-                                verticalArrangement = Arrangement.spacedBy(4.dp),
-                                itemVerticalAlignment = Alignment.CenterVertically
-                            ) {
-                                HeaderClock(clockOptions, clockInstant)
-                                if (batteryVisible) BatteryStatus(activity) { percent, charging ->
-                                    activity.getString(if (charging) R.string.battery_charging else R.string.battery_level, percent)
-                                }
-                            }
-                        }
-                        Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            LazyRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                items(visibleTabs, key = { it }) { label ->
-                                    Action(tabTitle(label), compact = true, active = tab == label, onClick = { tab = label; platform = "all" })
-                                }
-                            }
-                            if (downloadsVisible) { Spacer(Modifier.width(6.dp)); DownloadsShortcut(tab == "downloads") { tab = "downloads"; platform = "all" } }
-                        }
-                    }
-                  } else {
-                Row(Modifier.fillMaxWidth().padding(start = 36.dp, end = 36.dp, top = 18.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Image(painterResource(R.drawable.gostex_logo), contentDescription = "GOSTEX", modifier = Modifier.width(100.dp).height(34.dp))
-                    Spacer(Modifier.width(24.dp))
-                    visibleTabs.forEach { label ->
-                        Action(tabTitle(label), compact = true, active = tab == label, onClick = { tab = label; platform = "all" })
-                        Spacer(Modifier.width(6.dp))
-                    }
-                    if (downloadsVisible) { DownloadsShortcut(tab == "downloads") { tab = "downloads"; platform = "all" }; Spacer(Modifier.width(6.dp)) }
-                    Row(Modifier.weight(1f).padding(start = 12.dp, end = 8.dp), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                        HeaderClock(clockOptions, clockInstant)
-                        if (batteryVisible) { Spacer(Modifier.width(10.dp)); BatteryStatus(activity) { percent, charging -> activity.getString(if (charging) R.string.battery_charging else R.string.battery_level, percent) } }
-                        if (mediaVisible) headerMediaSession?.let { session ->
-                            Spacer(Modifier.width(10.dp))
-                            MediaPlayerButton(session, Modifier.focusRequester(mediaFocus)) { mediaOpen = true }
-                        }
-                    }
-                    if (rememberNetworkVisible()) {
-                        NetworkStatusButton(activity)
-                        Spacer(Modifier.width(6.dp))
-                    }
-                    val settingsLabel = tr(R.string.settings)
-                    CompactIconButton(CompactIcon.Settings, settingsLabel, modifier = Modifier.focusRequester(settingsFocus),
-                        onClick = { settingsInitialSection = "root"; settingsOpen = true })
-                }
-                  }
-                }
-                UpdateAvailableAction(activity, Modifier.padding(horizontal = 42.dp, vertical = 4.dp).focusRequester(updateFocus)) {
-                    settingsInitialSection = "updates"
-                    settingsOpen = true
-                }
-                WorldClockStrip(clockOptions, clockInstant, clockStripState, clockReturnZone, clockReturnFocus) { zone ->
-                    settingsInitialSection = "clock/manage/$zone"
-                    settingsOpen = true
-                }
-                if (tab == "home") {
-                    HomeFeed(feedState, shelfContents, favoriteRefs, ready = loadedApps != null,
-                        inputEnabled = !settingsOpen && !mediaOpen && !searchOpen && tileMenu == null && membershipItem == null && favoriteOrderItem == null,
-                        modifier = Modifier.weight(1f), onGameFocus = ::selectGame,
-                        onGameOpen = ::openGame, onGameMenu = ::gameMenu,
-                        onAppOpen = activity::openApp, onAppMenu = ::appMenu,
-                        onMovieOpen = { openMediaLibrary(activity, it.id, playIfSingle = true) }, onMovieMenu = ::movieMenu,
-                        onMovieCover = activity::fetchMediaCover,
-                        onEmptySettings = { settingsInitialSection = "homeOptions"; settingsOpen = true })
-                } else if (tab == "movies") {
-                    MediaScreen(activity, movies, movieResult != null, movieResult?.isFailure == true,
-                        inputEnabled = !settingsOpen && !mediaOpen && tileMenu == null && membershipItem == null && favoriteOrderItem == null,
-                        favorites = favoriteRefs, onMenu = ::movieMenu, modifier = Modifier.weight(1f))
-                } else if (tab == "downloads") {
-                    val downloadsFocus = remember { FocusRequester() }
-                    LaunchedEffect(activity.openDownloadsRequested) {
-                        if (activity.openDownloadsRequested) {
-                            withFrameNanos { }
-                            runCatching { downloadsFocus.requestFocus() }
-                            activity.openDownloadsRequested = false
-                        }
-                    }
-                    BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-                        val wide = maxWidth >= 600.dp
-                        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = if (wide) 36.dp else 16.dp, vertical = 12.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(tr(R.string.torr_download_channel).uppercase(), color = White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                            TorrDownloadUi(activity, downloadsFocus, wide)
-                        }
-                    }
-                } else if (tab == "apps") {
-                    AppsScreen(apps, ready = loadedApps != null, favorites = favoriteRefs,
-                        selectedPackage = selectedAppPackage, onSelect = { selectedAppPackage = it },
-                        scroll = appsScroll, selectedFocus = firstFocus,
-                        inputEnabled = !settingsOpen && !mediaOpen && tileMenu == null && membershipItem == null && favoriteOrderItem == null,
-                        onOpen = activity::openApp, onMenu = ::appMenu, modifier = Modifier.weight(1f))
-                } else {
-                    BoxWithConstraints(Modifier.fillMaxWidth()) {
-                        val compact = maxWidth < 600.dp
-                        @Composable fun title() {
-                            Text(tabTitle(tab).uppercase(), fontSize = 28.sp, fontWeight = FontWeight.Bold, color = White)
-                            Spacer(Modifier.width(16.dp)); Text(gameCount(filtered.size + filteredAndroidGames.size), color = Muted, fontSize = 13.sp)
-                        }
-                        @Composable fun RowScope.actions(compact: Boolean) {
-                            if (searchQuery.isNotBlank()) {
-                                val querySpace = if (compact) Modifier.weight(1f, fill = false) else Modifier
-                                Text(searchQuery, querySpace.widthIn(max = 120.dp).padding(end = 12.dp), color = Lime,
-                                    fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                CompactIconButton(CompactIcon.Clear, tr(R.string.clear_search), onClick = { applySearch("") })
-                                Spacer(Modifier.width(6.dp))
-                            }
-                            CompactIconButton(CompactIcon.Search, tr(R.string.search_games), active = searchQuery.isNotBlank(), modifier = Modifier.focusRequester(searchFocus),
-                                onClick = { searchReturnTarget = ""; searchOpen = true })
-                            Spacer(Modifier.width(6.dp))
-                            CompactIconButton(CompactIcon.Add, tr(if (activity.scanning) R.string.scanning else R.string.add_games), enabled = !activity.scanning,
-                                onClick = { activity.chooseFolder(if (platform == "android-apps") "all" else platform) })
-                            Spacer(Modifier.width(6.dp))
-                            CompactIconButton(CompactIcon.Folder, tr(R.string.folders), onClick = { activity.manageFolders() })
-                        }
-                        if (compact) Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) { title() }
-                            Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) { actions(compact = true) }
-                        } else Row(Modifier.fillMaxWidth().padding(start = 36.dp, end = 36.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            title(); Spacer(Modifier.weight(1f)); actions(compact = false)
-                        }
-                    }
-                    if (games.isNotEmpty() || showAndroidGamesFilter || searchQuery.isNotBlank()) {
-                        Row(Modifier.fillMaxWidth().padding(horizontal = 36.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                            LazyRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(3.dp)) {
-                                item(key = "all") { Action(tr(R.string.all), compact = true, active = platform == "all", onClick = { platform = "all" }) }
-                                if (showAndroidGamesFilter) item(key = "android-apps") {
-                                    Action(tr(R.string.android_games_platform), compact = true, active = platform == "android-apps", onClick = { platform = "android-apps" })
-                                }
-                                items(PlatformRegistry.all, key = { it.id }) { p ->
-                                    Action(tr(p.titleRes), compact = true, active = platform == p.id, onClick = { platform = p.id })
-                                }
-                            }
-                        }
-                        if (tab == "library") {
-                            val selectedPlatform = PlatformRegistry.resolve(platform, libraryOptions.ndsEmulator)
-                            val importHint = if (platform == "android-apps") tr(R.string.android_games_hint) else if (selectedPlatform == null) tr(R.string.platform_import_hint) else {
-                                val formats = selectedPlatform.extensions.sorted().joinToString(" · ") { it.uppercase(java.util.Locale.ROOT) }
-                                tr(R.string.platform_formats, selectedPlatform.emulator, formats) +
-                                    (selectedPlatform.hintRes?.let { "\n" + tr(it) } ?: "")
-                            }
-                            Text(importHint, Modifier.padding(start = 36.dp, end = 36.dp, bottom = 6.dp), color = Muted, fontSize = 11.sp, lineHeight = 15.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                        }
-                    }
-                    if (libraryIsEmpty) Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        if (waitingForAndroidGames) Text(tr(R.string.apps_loading), Modifier.padding(horizontal = 36.dp), color = Muted, fontSize = 18.sp)
-                        else if (searchQuery.isNotBlank()) Text(tr(R.string.search_empty), Modifier.padding(horizontal = 36.dp), color = Muted, fontSize = 18.sp)
-                        else Column(Modifier.widthIn(max = 660.dp).padding(horizontal = 36.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text(tr(R.string.library_empty_title), color = White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                            Text(tr(R.string.library_import_steps, tr(R.string.add_games)), color = Muted, fontSize = 14.sp, lineHeight = 22.sp)
-                            Action(if (activity.scanning) tr(R.string.scanning) else tr(R.string.add_games), modifier = Modifier.focusRequester(addGamesFocus),
-                                onClick = { if (!activity.scanning) activity.chooseFolder(if (games.isEmpty() || platform == "android-apps") "all" else platform) })
-                            Text(tr(R.string.library_optional_hint), color = Muted, fontSize = 12.sp, lineHeight = 17.sp)
-                        }
-                    } else BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-                      LazyVerticalGrid(columns = GridCells.Fixed(TileLayout.columns(maxWidth, LocalTileSize.current)), state = libraryScroll,
-                        modifier = Modifier.fillMaxSize().onGloballyPositioned { libraryGridPlaced = true },
-                        contentPadding = PaddingValues(start = TileLayout.screenInset + TileLayout.focusInset, end = TileLayout.screenInset + TileLayout.focusInset, top = 8.dp, bottom = 18.dp),
-                        horizontalArrangement = Arrangement.spacedBy(TileLayout.gap), verticalArrangement = Arrangement.spacedBy(TileLayout.gap)) {
-                        items(filtered, key = { homeGameKey(it.id) }) { g ->
-                            val cardFocus = remember(g.id) { FocusRequester() }
-                            Poster(g, Modifier.fillMaxWidth()
-                                .then(if (g.id == libraryFocusGame?.id) Modifier.focusRequester(firstFocus) else Modifier)
-                                .focusRequester(cardFocus), g.id in favorites, onFocus = { selectGame(g) },
-                                onClick = { openGame(g, cardFocus) }, onLongClick = { gameMenu(g, cardFocus) })
-                        }
-                        items(filteredAndroidGames, key = { "app:${it.packageName}" }) { app ->
-                            val cardFocus = remember(app.packageName) { FocusRequester() }
-                            val first = filtered.isEmpty() && app == filteredAndroidGames.firstOrNull()
-                            AppTile(app, modifier = Modifier.fillMaxWidth()
-                                .then(if (first) Modifier.focusRequester(firstFocus) else Modifier)
-                                .focusRequester(cardFocus), favorite = homeAppKey(app.packageName) in favoriteRefs,
-                                onFocus = { selectedAppPackage = app.packageName },
-                                onClick = { activity.openApp(app) }, onLongClick = { appMenu(app, cardFocus) })
-                        }
-                      }
-                    }
-                }
-                Row(Modifier.fillMaxWidth().padding(horizontal = 36.dp, vertical = 8.dp)) {
-                    Box(Modifier.weight(1f).horizontalScroll(rememberScrollState())) {
-                        ControlHints(R.string.control_select, R.string.back, showHomeNavigation = tab == "home", showHoldMenu = true)
-                    }
-                    Spacer(Modifier.width(8.dp)); Text("GOSTEX", color = Lime, fontSize = 10.sp, fontFamily = FontFamily.Monospace, letterSpacing = 1.sp, maxLines = 1)
-                }
-            }
-            LaunchedEffect(tab, platform, homeOptions.order, searchQuery, searchOpen, libraryIsEmpty, waitingForAndroidGames) {
-                if (!waitingForAndroidGames && !settingsOpen && !mediaOpen && !searchOpen && tileMenu == null && membershipItem == null && favoriteOrderItem == null && tab == "library") {
-                    if (searchReturnTarget == "button" || libraryIsEmpty) {
-                        val target = if (searchReturnTarget == "button" || searchQuery.isNotBlank()) searchFocus else addGamesFocus
-                        withFrameNanos { }
-                        runCatching { target.requestFocus() }
-                    } else {
-                        val returningToGame = libraryDetailReturnId != null
-                        // LazyGridState can still describe the old viewport until the new grid is placed.
-                        if (returningToGame) snapshotFlow { libraryGridPlaced }.first { it }
-                        val (index, gameId) = currentLibraryPosition
-                        val layout = libraryScroll.layoutInfo
-                        val alreadyVisible = returningToGame && gameId != null && layout.visibleItemsInfo.any { item ->
-                            item.index == index && item.key == homeGameKey(gameId) &&
-                                item.offset.y >= layout.viewportStartOffset &&
-                                item.offset.y + item.size.height <= layout.viewportEndOffset
-                        }
-                        if (!alreadyVisible) libraryScroll.scrollToItem(index)
-                        withFrameNanos { }
-                        runCatching { firstFocus.requestFocus() }
-                    }
-                    searchReturnTarget = ""
-                    libraryDetailReturnId = null
-                }
-            }
-        }
-        LauncherNoticeHost(activity.notices, activity, Modifier.align(Alignment.BottomCenter),
-            active = !settingsOpen && !mediaOpen && !searchOpen && tileMenu == null && membershipItem == null && favoriteOrderItem == null && activity.coverEditorId == null,
-            onRestoreFocus = {
-                if (tab == "home" && detail == null) feedState.restore(feedState.anchor())
-                else runCatching { firstFocus.requestFocus() }
-            })
-    }
-    tileMenu?.let { target ->
-        val menuGame = (target as? TileMenuTarget.GameItem)?.game
-        val menuApp = (target as? TileMenuTarget.AppItem)?.app
-        val menuMovie = (target as? TileMenuTarget.MovieItem)?.movie
-        val itemKey = when (target) {
-            is TileMenuTarget.GameItem -> homeGameKey(target.game.id)
-            is TileMenuTarget.AppItem -> homeAppKey(target.app.packageName)
-            is TileMenuTarget.MovieItem -> homeMovieKey(target.movie.id)
-        }
-        val currentSection = sectionOptions.sections.firstOrNull {
-            tab == "home" && it.id == tileReturnAnchor?.shelf && it.kind == HomeSectionKind.CUSTOM
-        }
-        TileContextMenu(target, isFavorite = itemKey in favoriteRefs,
-            currentSectionTitle = currentSection?.let { sectionTitle(it) },
-            onPlay = { dismissTileMenu(); menuGame?.let { activity.launchGame(it, 0) } },
-            onDetails = { tileMenu = null; menuGame?.let(::showGameDetail) },
-            onCover = { dismissTileMenu(); menuGame?.let { activity.editGameCover(it.id) }; menuMovie?.let { activity.chooseCover(homeMovieKey(it.id)) } },
-            onToggleFavorite = { SectionPreferences.toggleFavorite(activity, itemKey); dismissTileMenu() },
-            onOpenApp = { dismissTileMenu(); menuApp?.let(activity::openApp); menuMovie?.let { openMediaLibrary(activity, it.id) } },
-            onSections = { tileMenu = null; membershipItem = itemKey },
-            onFavoriteOrder = { tileMenu = null; favoriteOrderItem = itemKey },
-            onPrioritize = { currentSection?.let { SectionPreferences.prioritize(activity, it.id, itemKey) }; dismissTileMenu() },
-            onAppInfo = {
-                dismissTileMenu()
-                menuApp?.let { app ->
-                    runCatching { activity.startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${app.packageName}"))) }
-                        .onFailure { activity.notice = activity.getString(R.string.app_error, app.name) }
-                }
-            },
-            onDismiss = ::dismissTileMenu)
-    }
-    membershipItem?.let { itemKey ->
-        SectionMembershipDialog(itemKey, onDismiss = { membershipItem = null; tileRestore++ })
-    }
-    favoriteOrderItem?.let { itemKey ->
-        FavoriteOrderDialog(itemKey, apps, games, movies, onDismiss = { favoriteOrderItem = null; tileRestore++ })
-    }
-    if (settingsOpen) SettingsDrawer(activity, apps, games, mediaPlayback, settingsInitialSection, onClose = { settingsOpen = false })
-    GameArchiveHost(activity)
-    GameImportSummaryHost(activity)
-    if (mediaOpen) MediaPlayerPopover(activity, mediaPlayback, onDismiss = { mediaOpen = false })
-    activity.coverEditorId?.let { id -> games.firstOrNull { it.id == id }?.let { game ->
-        GameCoverEditor(activity, game, onClose = { activity.coverEditorId = null })
-    } }
-    if (searchOpen) GameSearchDrawer(searchQuery, searchIndex, scopedAndroidGames,
-        scopeLabel = listOf(tabTitle(tab), (if (platform == "android-apps") tr(R.string.android_games_platform) else platformTitle(platform)).takeIf { platform != "all" }).filterNotNull().joinToString(" / "),
-        onApply = ::applySearch, onClose = { searchReturnTarget = "button"; searchOpen = false })
+    OrbitScreen(activity, games, apps, loadedApps, movies, movieResult, visibleTabs, downloadsVisible, mediaVisible,
+        headerMediaSession, batteryVisible, clockOptions, clockInstant, clockStripState, clockReturnZone, clockReturnFocus,
+        homeOptions, feedState, shelfContents, favorites, favoriteRefs, libraryOptions, filtered, filteredAndroidGames,
+        showAndroidGamesFilter, libraryIsEmpty, waitingForAndroidGames, libraryScroll, appsScroll, libraryFocusGame,
+        detail, groups, mediaFocus, settingsFocus, updateFocus, firstFocus, searchFocus, addGamesFocus,
+        tabState, platformState, mediaOpenState, settingsOpenState, settingsInitialSectionState, searchOpenState,
+        searchReturnTargetState, searchQueryState, tileMenuState, membershipItemState, favoriteOrderItemState,
+        selectedAppPackageState, libraryDetailReturnIdState, currentLibraryPositionState,
+        versionGameIdState, versionFileState, versionPickerOpenState,
+        ::applySearch, ::selectGame, ::openGame, ::gameMenu, ::appMenu, ::movieMenu, ::returnFromGameDetail, ::toggle)
+    OrbitOverlays(activity, games, apps, movies, mediaPlayback, sectionOptions, favoriteRefs, tileReturnAnchor,
+        searchIndex, scopedAndroidGames, tabState, platformState, settingsOpenState, settingsInitialSectionState, mediaOpenState,
+        searchOpenState, searchQueryState, searchReturnTargetState, tileMenuState, membershipItemState, favoriteOrderItemState,
+        tileRestoreState, ::applySearch, ::dismissTileMenu, ::showGameDetail)
 
 }
 
@@ -2619,7 +2210,8 @@ private fun settingsTitle(section: String): Int = when {
         val info = activity.packageManager.getPackageInfo(activity.packageName, 0)
         info.versionName.orEmpty()
     }
-    var remoteAuto by remember { mutableStateOf(RemoteStartup.enabled(activity)) }
+    val remoteAutoState = remember { mutableStateOf(RemoteStartup.enabled(activity)) }
+    var remoteAuto by remoteAutoState
     val displayLocale = LocalConfiguration.current.locales[0]
     val languageCode = displayLocale.language
     val language = when (languageCode) {
@@ -2694,66 +2286,12 @@ private fun settingsTitle(section: String): Int = when {
                 TorrAutoNextSetting()
                 VideoRestartNearEndSetting()
             } else if (section == "libraryGroup") {
-                if (activity.legacyRecoveryPending) SettingRow(tr(R.string.legacy_recovery_title), tr(R.string.legacy_recovery_summary),
-                    rowFocus("legacyRecovery"), onClick = { activity.retryLegacyRecovery() })
-                SettingRow(tr(R.string.add_games), modifier = rowFocus("addGames"), onClick = { activity.chooseFolder("all") })
-                SettingRow(tr(R.string.library_rescan), if (activity.scanning) tr(R.string.scanning) else tr(activity.manualLibraryScanStatus ?: R.string.library_rescan_hint),
-                    rowFocus("rescanGames"), onClick = { if (!activity.scanning) activity.retryLegacyRecovery(manual = true) })
-                SettingRow(tr(R.string.folders), modifier = rowFocus("folders"), onClick = { activity.manageFolders() })
-                SettingRow(tr(R.string.portable_copy_title), tr(R.string.portable_copy_summary), rowFocus("portableCopy"), onClick = { onSection("portableCopy") })
-                SettingRow(tr(R.string.covers_title), tr(R.string.covers_summary), rowFocus("covers"), onClick = { onSection("covers") })
-                NintendoDsEmulatorSetting(rowFocus("ndsEmulator"))
-                AndroidGamesVisibilitySetting(rowFocus("androidGames"))
-                GroupVersionsSetting(rowFocus("groupVersions"))
-                LibraryVisibilitySetting(rowFocus("libraryTab"))
-                AppsVisibilitySetting(rowFocus("appsTab"))
+                SettingsLibraryGroupRows(activity, ::rowFocus, onSection)
             } else if (section == "localeGroup") {
                 SettingRow(tr(R.string.language), language, rowFocus("language"), onClick = { onSection("language") })
                 SettingRow(tr(R.string.clock_title), modifier = rowFocus("clock"), onClick = { onSection("clock") })
             } else if (section == "systemGroup") {
-                SettingRow(tr(R.string.initial_setup_title), tr(R.string.initial_setup_summary), rowFocus("firstSetup"),
-                    onClick = { onSection("firstSetup") })
-                SettingRow(tr(R.string.network_settings), modifier = rowFocus("network"), onClick = { activity.openNetworkSettings() })
-                var browserSearch by remember(activity) { mutableStateOf(TvBrowserOptions.searchProvider(activity)) }
-                SettingRow(tr(R.string.browser_settings_search_engine), browserSearch.displayName, rowFocus("browserSearch"), onClick = {
-                    val providers = BrowserSearchProvider.entries
-                    android.app.AlertDialog.Builder(activity)
-                        .setTitle(R.string.browser_settings_search_engine)
-                        .setSingleChoiceItems(providers.map { it.displayName }.toTypedArray(), providers.indexOf(browserSearch)) { dialog, index ->
-                            browserSearch = providers[index]
-                            TvBrowserOptions.setSearchProvider(activity, browserSearch)
-                            dialog.dismiss()
-                        }
-                        .setNegativeButton(R.string.cancel, null)
-                        .show()
-                })
-                var quickDownload by remember(activity) { mutableStateOf(TvBrowserOptions.quickDownload(activity)) }
-                DisposableEffect(activity, prefs) {
-                    val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-                        if (key == TvBrowserOptions.QUICK_DOWNLOAD || key == null) {
-                            quickDownload = TvBrowserOptions.quickDownload(activity)
-                        }
-                    }
-                    prefs.registerOnSharedPreferenceChangeListener(listener)
-                    quickDownload = TvBrowserOptions.quickDownload(activity)
-                    onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
-                }
-                SettingRow(
-                    tr(R.string.browser_settings_quick_download),
-                    tr(R.string.browser_settings_quick_download_hint),
-                    rowFocus("browserQuickDownload"), isSelected = quickDownload,
-                    trailing = if (quickDownload) "✓" else "—",
-                    onClick = { TvBrowserOptions.setQuickDownload(activity, !TvBrowserOptions.quickDownload(activity)) }
-                )
-                DefaultHomeSetting(activity, rowFocus("defaultHome"))
-                SettingRow(tr(R.string.settings_device_title), modifier = rowFocus("shield"), onClick = { activity.openSettings() })
-                SettingRow(tr(R.string.settings_services_title), tr(R.string.settings_services_summary), rowFocus("services"), onClick = { onSection("services") })
-                SettingRow(tr(R.string.settings_copy_title), tr(R.string.settings_copy_hint), rowFocus("settingsCopy"), onClick = { onSection("settingsCopy") })
-                SettingRow(tr(R.string.remote_autostart), tr(if (remoteAuto) R.string.enabled else R.string.disabled), rowFocus("remote"), isSelected = remoteAuto, trailing = if (remoteAuto) "✓" else "—", onClick = {
-                    remoteAuto = !remoteAuto
-                    prefs.edit().putBoolean("remoteAutostart", remoteAuto).apply()
-                    if (remoteAuto) RemoteStartup.start(activity)
-                })
+                SettingsSystemGroupRows(activity, prefs, remoteAutoState, ::rowFocus, onSection)
             } else if (section == "firstSetup") {
                 InitialSetupSettings(activity, ::rowFocus, onCatalog = { onSection("setupApps") })
             } else if (section == "services") {
@@ -2776,48 +2314,9 @@ private fun settingsTitle(section: String): Int = when {
             } else if (section == "nowPlaying") {
                 MediaPlayerSettings(activity, mediaPlayback, initialFocus)
             } else if (section == "portableCopy") {
-                Text(tr(R.string.portable_copy_unavailable_restore), color = Muted, fontSize = 13.sp, lineHeight = 19.sp)
-                SettingRow(tr(if (activity.portableCopyBusy) R.string.portable_copy_cancel else R.string.portable_copy_choose),
-                    modifier = rowFocus("copyAction"), onClick = {
-                        if (activity.portableCopyBusy) activity.cancelPortableCopy() else activity.choosePortableCopyFolder()
-                    })
-                if (activity.portableCopyMessage.isNotBlank()) Text(activity.portableCopyMessage, color = White, fontSize = 13.sp, lineHeight = 19.sp)
-                SettingRow(tr(R.string.portable_preview_title), tr(R.string.portable_preview_summary), rowFocus("portablePreview"),
-                    onClick = { if (!activity.portableCopyBusy) onSection("portablePreview") })
+                SettingsPortableCopyRows(activity, ::rowFocus, onSection)
             } else if (section == "portablePreview") {
-                Text(tr(R.string.portable_preview_hint), color = Muted, fontSize = 13.sp, lineHeight = 19.sp)
-                SettingRow(tr(if (activity.portablePreviewBusy) R.string.portable_preview_cancel else R.string.portable_preview_folder),
-                    modifier = Modifier.focusRequester(initialFocus), onClick = {
-                        if (activity.portablePreviewBusy) activity.cancelPortablePreview() else activity.choosePortablePreviewFolder()
-                    })
-                if (activity.portablePreviewMessage.isNotBlank()) Text(activity.portablePreviewMessage, color = White, fontSize = 13.sp, lineHeight = 19.sp)
-                if (activity.portableDecisionGroups.isNotEmpty()) {
-                    Text(tr(R.string.portable_decision_hint), color = Muted, fontSize = 13.sp, lineHeight = 19.sp)
-                    activity.portableDecisionGroups.forEach { group ->
-                        val label = when (group) {
-                            PortableRestoreDecisionGroup.GAMES_AND_COVERS -> R.string.portable_decision_games
-                            PortableRestoreDecisionGroup.HOME -> R.string.portable_decision_home
-                            PortableRestoreDecisionGroup.SETTINGS -> R.string.portable_decision_settings
-                        }
-                        val value = when (activity.portableDecisionChoices[group]) {
-                            PortableRestoreChoice.KEEP_CURRENT -> R.string.portable_decision_keep
-                            PortableRestoreChoice.USE_BACKUP -> R.string.portable_decision_backup
-                            null -> R.string.portable_decision_choose
-                        }
-                        key(group) { SettingRow(tr(label), tr(value), onClick = { activity.choosePortableDecision(group) }) }
-                    }
-                    Text(tr(R.string.portable_decision_remaining, activity.portableDecisionRemaining), color = Muted, fontSize = 13.sp)
-                }
-                if (activity.portableDecisionRootBlocks > 0) Text(tr(R.string.portable_decision_root_blocked), color = Muted, fontSize = 13.sp, lineHeight = 19.sp)
-                if (activity.portableRestoreAvailable) SettingRow(tr(R.string.portable_restore_action), tr(R.string.portable_restore_summary),
-                    onClick = { activity.confirmPortableRestore() })
-                activity.portablePreviewTitles.forEach { title -> Text(title, color = White, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-                if (activity.portablePreviewExtra > 0) Text(tr(R.string.portable_preview_more, activity.portablePreviewExtra), color = Muted, fontSize = 13.sp)
-                activity.portableBackups.forEachIndexed { index, candidate ->
-                    val label = candidate.modified?.let { date -> tr(R.string.portable_preview_dated, index + 1, backupDateFormat.format(java.util.Date(date))) }
-                        ?: tr(R.string.portable_preview_number, index + 1)
-                    key(candidate.documentId) { SettingRow(label, modifier = Modifier, onClick = { activity.inspectPortableCandidate(candidate) }) }
-                }
+                SettingsPortablePreviewRows(activity, initialFocus, backupDateFormat)
             } else if (section == "covers") {
                 ManagedCoverSettings(activity, games, initialFocus)
             } else if (section == "art") {
@@ -2892,5 +2391,1004 @@ private fun settingsTitle(section: String): Int = when {
             Spacer(Modifier.width(12.dp))
             Text(trailing, color = if (focused) Ink else Muted, fontSize = 20.sp)
         }
+    }
+}
+
+// Split out of OrbitContent so ART can compile the home screen (dex method size limit).
+// No own restart scope: all remembered state and effects keep their parent order.
+@Composable @NonRestartableComposable
+private fun BoxScope.OrbitGameDetail(
+    activity: MainActivity,
+    g: Game,
+    groups: Map<GameGroupKey, List<Game>>,
+    libraryOptions: LibraryOptions,
+    favorites: Set<String>,
+    firstFocus: FocusRequester,
+    versionGameIdState: MutableState<String?>,
+    versionFileState: MutableState<String?>,
+    versionPickerOpenState: MutableState<Boolean>,
+    returnFromGameDetail: () -> Unit,
+    toggle: (Game) -> Unit,
+) {
+    var versionGameId by versionGameIdState
+    var versionFile by versionFileState
+    var versionPickerOpen by versionPickerOpenState
+    val versions = remember(g, groups, libraryOptions.groupVersions) { gameVersions(g, groups, libraryOptions.groupVersions) }
+    val variant = versions.indexOfFirst { it.game.id == versionGameId && it.game.files[it.fileIndex] == versionFile }.coerceAtLeast(0)
+    val selectedVersion = versions.getOrNull(variant)
+    val versionPaths = remember(versions) { versions.map { android.net.Uri.decode(it.game.files[it.fileIndex]) } }
+    val fileNames = remember(versionPaths) { versionPaths.map { it.substringAfterLast('/') } }
+    val labels = remember(versionPaths, fileNames) {
+        val counts = fileNames.groupingBy { it }.eachCount()
+        versionPaths.mapIndexed { index, path ->
+            val name = fileNames[index]
+            if ((counts[name] ?: 0) > 1) "$name · ${path.substringBeforeLast('/', "")}" else name
+        }
+    }
+    val versionLabel = labels.getOrNull(variant).orEmpty()
+    LaunchedEffect(versions.size) { if (versions.size < 2) versionPickerOpen = false }
+    if (versionPickerOpen && versions.size > 1) {
+        DisposableEffect(activity, g.id, versions, labels) {
+            val dialog = android.app.AlertDialog.Builder(activity)
+                .setTitle(R.string.other_version)
+                .setSingleChoiceItems(labels.toTypedArray(), variant) { _, index ->
+                    val version = versions[index]
+                    versionGameId = version.game.id
+                    versionFile = version.game.files[version.fileIndex]
+                    versionPickerOpen = false
+                }
+                .setNegativeButton(R.string.cancel) { _, _ -> versionPickerOpen = false }
+                .setOnCancelListener { versionPickerOpen = false }
+                .setOnDismissListener { versionPickerOpen = false }
+                .create()
+            dialog.show()
+            onDispose { dialog.setOnDismissListener(null); dialog.dismiss() }
+        }
+    }
+    Box(Modifier.align(Alignment.CenterEnd).padding(end = 36.dp).fillMaxWidth(.32f).fillMaxHeight(.78f).border(1.dp, Color(0xFF424244)).background(Panel)) {
+        CoverArtwork(g.cover.ifEmpty { g.scene }, Modifier.fillMaxSize(), g.id)
+    }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val short = maxHeight < 480.dp
+        val edge = if (short || maxWidth < 600.dp) 16.dp else 40.dp
+        Column(Modifier.fillMaxSize().padding(edge)) {
+            val detailsScroll = rememberScrollState()
+            Column(Modifier.weight(1f).fillMaxWidth().then(if (short) Modifier.verticalScroll(detailsScroll) else Modifier)) {
+                Action(tr(R.string.back_library), onClick = returnFromGameDetail)
+                Spacer(Modifier.height(26.dp))
+                Text("${platformTitle(g.platform).uppercase()}   /   ${if (g.demo) "HOMEBREW" else tr(R.string.your_collection).uppercase()}", color = Lime, fontSize = 12.sp, letterSpacing = 2.sp)
+                Spacer(Modifier.height(10.dp))
+                Text(g.title.uppercase(), fontSize = 38.sp, lineHeight = 42.sp, fontWeight = FontWeight.Black, color = White, maxLines = 2, modifier = Modifier.width(540.dp))
+                Spacer(Modifier.height(12.dp))
+                Text(listOf(g.year, genre(g.genre), if (g.players.isNotEmpty()) tr(R.string.players, g.players) else "").filter { it.isNotEmpty() }.joinToString("   ·   "), color = White, fontSize = 15.sp)
+                Spacer(Modifier.height(12.dp))
+                val selectedEmulator = PlatformRegistry.resolve(g.platform, libraryOptions.ndsEmulator)?.emulator ?: g.emulator
+                Text(g.developer.ifEmpty { PlatformRegistry.title(activity, g.platform) } + "\n" + tr(R.string.emulator, selectedEmulator), color = Muted, fontSize = 14.sp, lineHeight = 23.sp)
+                Spacer(Modifier.height(12.dp))
+                GameDescriptionPanel(g)
+            }
+            if (versions.size > 1) {
+                Text(tr(R.string.variant, variant + 1, versions.size), color = Muted, fontSize = 12.sp)
+                Text(versionLabel, color = White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.width(540.dp))
+                Spacer(Modifier.height(8.dp))
+            }
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                Action(tr(R.string.play), primary = true, modifier = Modifier.focusRequester(firstFocus), onClick = { selectedVersion?.let { activity.launchGame(it.game, it.fileIndex) } })
+                if (versions.size > 1) Action(tr(R.string.other_version), onClick = { versionPickerOpen = true })
+                Action(tr(R.string.cover_manage), onClick = { activity.editGameCover(g.id) })
+                Action(if (g.id in favorites) tr(R.string.favorite_on) else tr(R.string.favorite_off), onClick = { toggle(g) })
+            }
+            Spacer(Modifier.height(if (short) 8.dp else 22.dp))
+            ControlHints(R.string.control_select, R.string.back)
+        }
+    }
+    LaunchedEffect(g.id) { firstFocus.requestFocus() }
+}
+
+@Composable @NonRestartableComposable
+private fun OrbitIncomingTorrent(
+    activity: MainActivity,
+    incomingTorrent: Uri,
+    tabState: MutableState<String>,
+    settingsOpenState: MutableState<Boolean>,
+    closeGameDetail: () -> Unit,
+) {
+    var tab by tabState
+    var settingsOpen by settingsOpenState
+    LaunchedEffect(incomingTorrent) { tab = "downloads"; settingsOpen = false; closeGameDetail() }
+    DisposableEffect(activity, incomingTorrent) {
+        val magnet = incomingTorrent.scheme.equals("magnet", ignoreCase = true)
+        val dialog = android.app.AlertDialog.Builder(activity)
+            .setTitle(if (magnet) R.string.torr_download_add_magnet else R.string.torr_download_add_file)
+            .setMessage(if (magnet) R.string.downloads_external_magnet_confirm else R.string.downloads_external_confirm)
+            .setPositiveButton(R.string.downloads_external_queue) { _, _ ->
+                activity.incomingTorrentUri = null
+                if (magnet) activity.importMagnet(incomingTorrent) else activity.importTorrentUri(incomingTorrent)
+            }
+            .setNeutralButton(R.string.movies_add_torrent_media) { _, _ ->
+                activity.incomingTorrentUri = null
+                if (magnet) activity.importMagnet(incomingTorrent, openMedia = true)
+                else activity.importTorrentUri(incomingTorrent, openMedia = true)
+            }
+            .setNegativeButton(R.string.cancel) { _, _ -> activity.incomingTorrentUri = null }
+            .setOnCancelListener { activity.incomingTorrentUri = null }
+            .create()
+        dialog.show()
+        onDispose { dialog.dismiss() }
+    }
+}
+
+@Composable @NonRestartableComposable
+private fun OrbitSettingsReturnFocus(
+    detail: Game?,
+    clockReturnZone: String?,
+    clockStripState: androidx.compose.foundation.lazy.LazyListState,
+    clockReturnFocus: FocusRequester,
+    updateFocus: FocusRequester,
+    settingsFocus: FocusRequester,
+    settingsOpenState: State<Boolean>,
+    settingsInitialSectionState: State<String>,
+    drawerWasOpenState: MutableState<Boolean>,
+    currentClockOptionsState: State<ClockOptions>,
+) {
+    val settingsOpen by settingsOpenState
+    val settingsInitialSection by settingsInitialSectionState
+    var drawerWasOpen by drawerWasOpenState
+    val currentClockOptions by currentClockOptionsState
+    LaunchedEffect(settingsOpen) {
+        if (settingsOpen) {
+            drawerWasOpen = true
+            return@LaunchedEffect
+        }
+        if (!drawerWasOpen) return@LaunchedEffect
+        drawerWasOpen = false
+        withFrameNanos { }
+        val options = currentClockOptions
+        val clockIndex = if (clockReturnZone != null && options.visible && options.zones.size >= 2 && detail == null) {
+            options.zones.indexOf(clockReturnZone)
+        } else -1
+        val target = when {
+            clockIndex >= 0 -> {
+                val layout = clockStripState.layoutInfo
+                val visible = layout.visibleItemsInfo.any { item ->
+                    item.key == clockReturnZone && item.offset >= layout.viewportStartOffset &&
+                        item.offset + item.size <= layout.viewportEndOffset
+                }
+                if (!visible && layout.totalItemsCount > 0) clockStripState.scrollToItem(clockIndex)
+                withFrameNanos { }
+                clockReturnFocus
+            }
+            settingsInitialSection == "updates" -> updateFocus
+            else -> settingsFocus
+        }
+        val restored = runCatching { target.requestFocus() }.getOrDefault(false)
+        if (!restored && target !== settingsFocus) runCatching { settingsFocus.requestFocus() }
+    }
+}
+
+@Composable @NonRestartableComposable
+private fun OrbitTileReturnFocus(
+    detail: Game?,
+    feedState: HomeFeedState,
+    firstFocus: FocusRequester,
+    tileRestoreState: IntState,
+    tileMenuState: State<TileMenuTarget?>,
+    membershipItemState: State<String?>,
+    favoriteOrderItemState: State<String?>,
+    tabState: State<String>,
+    tileReturnAnchorState: State<HomeFeedAnchor?>,
+    tileReturnFocusState: State<FocusRequester?>,
+) {
+    val tileRestore by tileRestoreState
+    val tileMenu by tileMenuState
+    val membershipItem by membershipItemState
+    val favoriteOrderItem by favoriteOrderItemState
+    val tab by tabState
+    val tileReturnAnchor by tileReturnAnchorState
+    val tileReturnFocus by tileReturnFocusState
+    LaunchedEffect(tileRestore) {
+        if (tileRestore > 0 && detail == null && tileMenu == null && membershipItem == null && favoriteOrderItem == null) {
+            withFrameNanos { }
+            if (tab == "home") feedState.restore(tileReturnAnchor)
+            else if (tileReturnFocus?.let { runCatching { it.requestFocus() }.getOrDefault(false) } != true)
+                runCatching { firstFocus.requestFocus() }
+        }
+    }
+}
+
+@Composable @NonRestartableComposable
+private fun OrbitSelectionEffects(
+    games: List<Game>,
+    homeGames: List<Game>,
+    visibleTabs: List<String>,
+    androidGameApps: List<TvApp>,
+    waitingForAndroidGames: Boolean,
+    detail: Game?,
+    platformState: MutableState<String>,
+    tabState: MutableState<String>,
+    searchOpenState: MutableState<Boolean>,
+    libraryDetailReturnIdState: MutableState<String?>,
+    chosenIdState: MutableState<String?>,
+    detailIdState: State<String?>,
+    closeGameDetail: () -> Unit,
+) {
+    var platform by platformState
+    var tab by tabState
+    var searchOpen by searchOpenState
+    var libraryDetailReturnId by libraryDetailReturnIdState
+    var chosenId by chosenIdState
+    val detailId by detailIdState
+    LaunchedEffect(platform, waitingForAndroidGames, androidGameApps) {
+        if (platform == "android-apps" && !waitingForAndroidGames && androidGameApps.isEmpty()) platform = "all"
+    }
+    LaunchedEffect(tab, visibleTabs) {
+        if (tab != "downloads" && tab !in visibleTabs) {
+            tab = "home"
+            searchOpen = false
+            platform = "all"
+        }
+        if (tab != "library") libraryDetailReturnId = null
+    }
+    LaunchedEffect(games) {
+        if (games.none { it.id == chosenId }) chosenId = homeGames.firstOrNull()?.id
+    }
+    LaunchedEffect(detailId, detail) {
+        if (detailId != null && detail == null) closeGameDetail()
+    }
+}
+
+@Composable @NonRestartableComposable
+private fun OrbitMediaReturnFocus(
+    mediaVisible: Boolean,
+    headerMediaSession: NowPlayingSession?,
+    mediaFocus: FocusRequester,
+    settingsFocus: FocusRequester,
+    mediaOpenState: State<Boolean>,
+    mediaWasOpenState: MutableState<Boolean>,
+) {
+    val mediaOpen by mediaOpenState
+    var mediaWasOpen by mediaWasOpenState
+    LaunchedEffect(mediaOpen) {
+        if (mediaOpen) mediaWasOpen = true
+        else if (mediaWasOpen) {
+            withFrameNanos { }
+            val restored = if (mediaVisible && headerMediaSession != null) runCatching { mediaFocus.requestFocus() }.getOrDefault(false) else false
+            if (!restored) runCatching { settingsFocus.requestFocus() }
+        }
+    }
+}
+
+@Composable @NonRestartableComposable
+private fun OrbitRootNavigation(
+    activity: MainActivity,
+    detail: Game?,
+    tabState: MutableState<String>,
+    platformState: MutableState<String>,
+    showRootTab: (String) -> Unit,
+    returnFromGameDetail: () -> Unit,
+) {
+    var tab by tabState
+    var platform by platformState
+    LaunchedEffect(activity.homeVersion) {
+        if (activity.homeVersion != 0) showRootTab("home")
+    }
+    LaunchedEffect(activity.openDownloadsRequested) {
+        if (activity.openDownloadsRequested) showRootTab("downloads")
+    }
+    BackHandler {
+        if (detail != null) returnFromGameDetail() else { tab = "home"; platform = "all" }
+    }
+}
+
+@Composable @NonRestartableComposable
+private fun OrbitScreen(
+    activity: MainActivity,
+    games: List<Game>,
+    apps: List<TvApp>,
+    loadedApps: List<TvApp>?,
+    movies: List<SavedMovie>,
+    movieResult: Result<List<SavedMovie>>?,
+    visibleTabs: List<String>,
+    downloadsVisible: Boolean,
+    mediaVisible: Boolean,
+    headerMediaSession: NowPlayingSession?,
+    batteryVisible: Boolean,
+    clockOptions: ClockOptions,
+    clockInstant: java.time.Instant,
+    clockStripState: androidx.compose.foundation.lazy.LazyListState,
+    clockReturnZone: String?,
+    clockReturnFocus: FocusRequester,
+    homeOptions: HomeOptions,
+    feedState: HomeFeedState,
+    shelfContents: List<HomeShelfContent>,
+    favorites: Set<String>,
+    favoriteRefs: Set<String>,
+    libraryOptions: LibraryOptions,
+    filtered: List<Game>,
+    filteredAndroidGames: List<TvApp>,
+    showAndroidGamesFilter: Boolean,
+    libraryIsEmpty: Boolean,
+    waitingForAndroidGames: Boolean,
+    libraryScroll: androidx.compose.foundation.lazy.grid.LazyGridState,
+    appsScroll: androidx.compose.foundation.lazy.grid.LazyGridState,
+    libraryFocusGame: Game?,
+    detail: Game?,
+    groups: Map<GameGroupKey, List<Game>>,
+    mediaFocus: FocusRequester,
+    settingsFocus: FocusRequester,
+    updateFocus: FocusRequester,
+    firstFocus: FocusRequester,
+    searchFocus: FocusRequester,
+    addGamesFocus: FocusRequester,
+    tabState: MutableState<String>,
+    platformState: MutableState<String>,
+    mediaOpenState: MutableState<Boolean>,
+    settingsOpenState: MutableState<Boolean>,
+    settingsInitialSectionState: MutableState<String>,
+    searchOpenState: MutableState<Boolean>,
+    searchReturnTargetState: MutableState<String>,
+    searchQueryState: State<String>,
+    tileMenuState: State<TileMenuTarget?>,
+    membershipItemState: State<String?>,
+    favoriteOrderItemState: State<String?>,
+    selectedAppPackageState: MutableState<String?>,
+    libraryDetailReturnIdState: MutableState<String?>,
+    currentLibraryPositionState: State<Pair<Int, String?>>,
+    versionGameIdState: MutableState<String?>,
+    versionFileState: MutableState<String?>,
+    versionPickerOpenState: MutableState<Boolean>,
+    applySearch: (String) -> Unit,
+    selectGame: (Game) -> Unit,
+    openGame: (Game, FocusRequester) -> Unit,
+    gameMenu: (Game, FocusRequester) -> Unit,
+    appMenu: (TvApp, FocusRequester) -> Unit,
+    movieMenu: (SavedMovie, FocusRequester) -> Unit,
+    returnFromGameDetail: () -> Unit,
+    toggle: (Game) -> Unit,
+) {
+    val tab by tabState
+    val settingsOpen by settingsOpenState
+    val mediaOpen by mediaOpenState
+    val searchOpen by searchOpenState
+    val tileMenu by tileMenuState
+    val membershipItem by membershipItemState
+    val favoriteOrderItem by favoriteOrderItemState
+    Box(Modifier.fillMaxSize().background(Ink).safeDrawingPadding().onPreviewKeyEvent { event ->
+        if (tab == "home" && detail == null && !settingsOpen && !mediaOpen && !searchOpen && tileMenu == null && membershipItem == null && favoriteOrderItem == null && isHomeShelfKey(event.nativeKeyEvent)) {
+            homeShelfStep(event.nativeKeyEvent)?.let(feedState::moveBy)
+            true
+        } else false
+    }) {
+        if (detail != null) {
+            OrbitGameDetail(activity, detail, groups, libraryOptions, favorites, firstFocus,
+                versionGameIdState, versionFileState, versionPickerOpenState, returnFromGameDetail, toggle)
+        } else {
+            OrbitBrowse(activity, games, apps, loadedApps, movies, movieResult, visibleTabs, downloadsVisible, mediaVisible,
+                headerMediaSession, batteryVisible, clockOptions, clockInstant, clockStripState, clockReturnZone, clockReturnFocus,
+                homeOptions, feedState, shelfContents, favorites, favoriteRefs, libraryOptions, filtered, filteredAndroidGames,
+                showAndroidGamesFilter, libraryIsEmpty, waitingForAndroidGames, libraryScroll, appsScroll, libraryFocusGame,
+                mediaFocus, settingsFocus, updateFocus, firstFocus, searchFocus, addGamesFocus,
+                tabState, platformState, mediaOpenState, settingsOpenState, settingsInitialSectionState, searchOpenState,
+                searchReturnTargetState, searchQueryState, tileMenuState, membershipItemState, favoriteOrderItemState,
+                selectedAppPackageState, libraryDetailReturnIdState, currentLibraryPositionState,
+                applySearch, selectGame, openGame, gameMenu, appMenu, movieMenu)
+        }
+        LauncherNoticeHost(activity.notices, activity, Modifier.align(Alignment.BottomCenter),
+            active = !settingsOpen && !mediaOpen && !searchOpen && tileMenu == null && membershipItem == null && favoriteOrderItem == null && activity.coverEditorId == null,
+            onRestoreFocus = {
+                if (tab == "home" && detail == null) feedState.restore(feedState.anchor())
+                else runCatching { firstFocus.requestFocus() }
+            })
+    }
+}
+
+@Composable @NonRestartableComposable
+private fun OrbitOverlays(
+    activity: MainActivity,
+    games: List<Game>,
+    apps: List<TvApp>,
+    movies: List<SavedMovie>,
+    mediaPlayback: MediaPlaybackState,
+    sectionOptions: HomeSectionsOptions,
+    favoriteRefs: Set<String>,
+    tileReturnAnchor: HomeFeedAnchor?,
+    searchIndex: GameSearchIndex,
+    scopedAndroidGames: List<TvApp>,
+    tabState: State<String>,
+    platformState: State<String>,
+    settingsOpenState: MutableState<Boolean>,
+    settingsInitialSectionState: State<String>,
+    mediaOpenState: MutableState<Boolean>,
+    searchOpenState: MutableState<Boolean>,
+    searchQueryState: State<String>,
+    searchReturnTargetState: MutableState<String>,
+    tileMenuState: MutableState<TileMenuTarget?>,
+    membershipItemState: MutableState<String?>,
+    favoriteOrderItemState: MutableState<String?>,
+    tileRestoreState: MutableIntState,
+    applySearch: (String) -> Unit,
+    dismissTileMenu: () -> Unit,
+    showGameDetail: (Game) -> Unit,
+) {
+    val tab by tabState
+    val platform by platformState
+    var settingsOpen by settingsOpenState
+    val settingsInitialSection by settingsInitialSectionState
+    var mediaOpen by mediaOpenState
+    var searchOpen by searchOpenState
+    val searchQuery by searchQueryState
+    var searchReturnTarget by searchReturnTargetState
+    val tileMenu by tileMenuState
+    var membershipItem by membershipItemState
+    var favoriteOrderItem by favoriteOrderItemState
+    var tileRestore by tileRestoreState
+    tileMenu?.let { target ->
+        OrbitTileMenu(activity, target, tab, tileReturnAnchor, sectionOptions, favoriteRefs,
+            tileMenuState, membershipItemState, favoriteOrderItemState, dismissTileMenu, showGameDetail)
+    }
+    membershipItem?.let { itemKey ->
+        SectionMembershipDialog(itemKey, onDismiss = { membershipItem = null; tileRestore++ })
+    }
+    favoriteOrderItem?.let { itemKey ->
+        FavoriteOrderDialog(itemKey, apps, games, movies, onDismiss = { favoriteOrderItem = null; tileRestore++ })
+    }
+    if (settingsOpen) SettingsDrawer(activity, apps, games, mediaPlayback, settingsInitialSection, onClose = { settingsOpen = false })
+    GameArchiveHost(activity)
+    GameImportSummaryHost(activity)
+    if (mediaOpen) MediaPlayerPopover(activity, mediaPlayback, onDismiss = { mediaOpen = false })
+    activity.coverEditorId?.let { id -> games.firstOrNull { it.id == id }?.let { game ->
+        GameCoverEditor(activity, game, onClose = { activity.coverEditorId = null })
+    } }
+    if (searchOpen) GameSearchDrawer(searchQuery, searchIndex, scopedAndroidGames,
+        scopeLabel = listOf(tabTitle(tab), (if (platform == "android-apps") tr(R.string.android_games_platform) else platformTitle(platform)).takeIf { platform != "all" }).filterNotNull().joinToString(" / "),
+        onApply = applySearch, onClose = { searchReturnTarget = "button"; searchOpen = false })
+}
+
+@Composable @NonRestartableComposable
+private fun OrbitBrowse(
+    activity: MainActivity,
+    games: List<Game>,
+    apps: List<TvApp>,
+    loadedApps: List<TvApp>?,
+    movies: List<SavedMovie>,
+    movieResult: Result<List<SavedMovie>>?,
+    visibleTabs: List<String>,
+    downloadsVisible: Boolean,
+    mediaVisible: Boolean,
+    headerMediaSession: NowPlayingSession?,
+    batteryVisible: Boolean,
+    clockOptions: ClockOptions,
+    clockInstant: java.time.Instant,
+    clockStripState: androidx.compose.foundation.lazy.LazyListState,
+    clockReturnZone: String?,
+    clockReturnFocus: FocusRequester,
+    homeOptions: HomeOptions,
+    feedState: HomeFeedState,
+    shelfContents: List<HomeShelfContent>,
+    favorites: Set<String>,
+    favoriteRefs: Set<String>,
+    libraryOptions: LibraryOptions,
+    filtered: List<Game>,
+    filteredAndroidGames: List<TvApp>,
+    showAndroidGamesFilter: Boolean,
+    libraryIsEmpty: Boolean,
+    waitingForAndroidGames: Boolean,
+    libraryScroll: androidx.compose.foundation.lazy.grid.LazyGridState,
+    appsScroll: androidx.compose.foundation.lazy.grid.LazyGridState,
+    libraryFocusGame: Game?,
+    mediaFocus: FocusRequester,
+    settingsFocus: FocusRequester,
+    updateFocus: FocusRequester,
+    firstFocus: FocusRequester,
+    searchFocus: FocusRequester,
+    addGamesFocus: FocusRequester,
+    tabState: MutableState<String>,
+    platformState: MutableState<String>,
+    mediaOpenState: MutableState<Boolean>,
+    settingsOpenState: MutableState<Boolean>,
+    settingsInitialSectionState: MutableState<String>,
+    searchOpenState: MutableState<Boolean>,
+    searchReturnTargetState: MutableState<String>,
+    searchQueryState: State<String>,
+    tileMenuState: State<TileMenuTarget?>,
+    membershipItemState: State<String?>,
+    favoriteOrderItemState: State<String?>,
+    selectedAppPackageState: MutableState<String?>,
+    libraryDetailReturnIdState: MutableState<String?>,
+    currentLibraryPositionState: State<Pair<Int, String?>>,
+    applySearch: (String) -> Unit,
+    selectGame: (Game) -> Unit,
+    openGame: (Game, FocusRequester) -> Unit,
+    gameMenu: (Game, FocusRequester) -> Unit,
+    appMenu: (TvApp, FocusRequester) -> Unit,
+    movieMenu: (SavedMovie, FocusRequester) -> Unit,
+) {
+    val tab by tabState
+    val platform by platformState
+    val mediaOpen by mediaOpenState
+    var settingsOpen by settingsOpenState
+    var settingsInitialSection by settingsInitialSectionState
+    val searchOpen by searchOpenState
+    var searchReturnTarget by searchReturnTargetState
+    val searchQuery by searchQueryState
+    val tileMenu by tileMenuState
+    val membershipItem by membershipItemState
+    val favoriteOrderItem by favoriteOrderItemState
+    var selectedAppPackage by selectedAppPackageState
+    var libraryDetailReturnId by libraryDetailReturnIdState
+    val currentLibraryPosition by currentLibraryPositionState
+    val libraryGridPlacedState = remember { mutableStateOf(false) }
+    val libraryGridPlaced by libraryGridPlacedState
+    Column(Modifier.fillMaxSize()) {
+        OrbitHeader(activity, visibleTabs, downloadsVisible, mediaVisible, headerMediaSession, mediaFocus, settingsFocus,
+            batteryVisible, clockOptions, clockInstant, tabState, platformState, mediaOpenState, settingsOpenState,
+            settingsInitialSectionState)
+        UpdateAvailableAction(activity, Modifier.padding(horizontal = 42.dp, vertical = 4.dp).focusRequester(updateFocus)) {
+            settingsInitialSection = "updates"
+            settingsOpen = true
+        }
+        WorldClockStrip(clockOptions, clockInstant, clockStripState, clockReturnZone, clockReturnFocus) { zone ->
+            settingsInitialSection = "clock/manage/$zone"
+            settingsOpen = true
+        }
+        if (tab == "home") {
+            HomeFeed(feedState, shelfContents, favoriteRefs, ready = loadedApps != null,
+                inputEnabled = !settingsOpen && !mediaOpen && !searchOpen && tileMenu == null && membershipItem == null && favoriteOrderItem == null,
+                modifier = Modifier.weight(1f), onGameFocus = selectGame,
+                onGameOpen = openGame, onGameMenu = gameMenu,
+                onAppOpen = activity::openApp, onAppMenu = appMenu,
+                onMovieOpen = { openMediaLibrary(activity, it.id, playIfSingle = true) }, onMovieMenu = movieMenu,
+                onMovieCover = activity::fetchMediaCover,
+                onEmptySettings = { settingsInitialSection = "homeOptions"; settingsOpen = true })
+        } else if (tab == "movies") {
+            MediaScreen(activity, movies, movieResult != null, movieResult?.isFailure == true,
+                inputEnabled = !settingsOpen && !mediaOpen && tileMenu == null && membershipItem == null && favoriteOrderItem == null,
+                favorites = favoriteRefs, onMenu = movieMenu, modifier = Modifier.weight(1f))
+        } else if (tab == "downloads") {
+            OrbitDownloadsTab(activity)
+        } else if (tab == "apps") {
+            AppsScreen(apps, ready = loadedApps != null, favorites = favoriteRefs,
+                selectedPackage = selectedAppPackage, onSelect = { selectedAppPackage = it },
+                scroll = appsScroll, selectedFocus = firstFocus,
+                inputEnabled = !settingsOpen && !mediaOpen && tileMenu == null && membershipItem == null && favoriteOrderItem == null,
+                onOpen = activity::openApp, onMenu = appMenu, modifier = Modifier.weight(1f))
+        } else {
+            OrbitLibraryTab(activity, games, libraryOptions, filtered, filteredAndroidGames, showAndroidGamesFilter,
+                libraryIsEmpty, waitingForAndroidGames, libraryScroll, libraryFocusGame, favorites, favoriteRefs,
+                firstFocus, searchFocus, addGamesFocus, tabState, searchQueryState, platformState, searchOpenState,
+                searchReturnTargetState, selectedAppPackageState, libraryGridPlacedState,
+                applySearch, selectGame, openGame, gameMenu, appMenu)
+        }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 36.dp, vertical = 8.dp)) {
+            Box(Modifier.weight(1f).horizontalScroll(rememberScrollState())) {
+                ControlHints(R.string.control_select, R.string.back, showHomeNavigation = tab == "home", showHoldMenu = true)
+            }
+            Spacer(Modifier.width(8.dp)); Text("GOSTEX", color = Lime, fontSize = 10.sp, fontFamily = FontFamily.Monospace, letterSpacing = 1.sp, maxLines = 1)
+        }
+    }
+    LaunchedEffect(tab, platform, homeOptions.order, searchQuery, searchOpen, libraryIsEmpty, waitingForAndroidGames) {
+        if (!waitingForAndroidGames && !settingsOpen && !mediaOpen && !searchOpen && tileMenu == null && membershipItem == null && favoriteOrderItem == null && tab == "library") {
+            if (searchReturnTarget == "button" || libraryIsEmpty) {
+                val target = if (searchReturnTarget == "button" || searchQuery.isNotBlank()) searchFocus else addGamesFocus
+                withFrameNanos { }
+                runCatching { target.requestFocus() }
+            } else {
+                val returningToGame = libraryDetailReturnId != null
+                // LazyGridState can still describe the old viewport until the new grid is placed.
+                if (returningToGame) snapshotFlow { libraryGridPlaced }.first { it }
+                val (index, gameId) = currentLibraryPosition
+                val layout = libraryScroll.layoutInfo
+                val alreadyVisible = returningToGame && gameId != null && layout.visibleItemsInfo.any { item ->
+                    item.index == index && item.key == homeGameKey(gameId) &&
+                        item.offset.y >= layout.viewportStartOffset &&
+                        item.offset.y + item.size.height <= layout.viewportEndOffset
+                }
+                if (!alreadyVisible) libraryScroll.scrollToItem(index)
+                withFrameNanos { }
+                runCatching { firstFocus.requestFocus() }
+            }
+            searchReturnTarget = ""
+            libraryDetailReturnId = null
+        }
+    }
+}
+
+@Composable @NonRestartableComposable
+private fun OrbitHeader(
+    activity: MainActivity,
+    visibleTabs: List<String>,
+    downloadsVisible: Boolean,
+    mediaVisible: Boolean,
+    headerMediaSession: NowPlayingSession?,
+    mediaFocus: FocusRequester,
+    settingsFocus: FocusRequester,
+    batteryVisible: Boolean,
+    clockOptions: ClockOptions,
+    clockInstant: java.time.Instant,
+    tabState: MutableState<String>,
+    platformState: MutableState<String>,
+    mediaOpenState: MutableState<Boolean>,
+    settingsOpenState: MutableState<Boolean>,
+    settingsInitialSectionState: MutableState<String>,
+) {
+    var tab by tabState
+    var platform by platformState
+    var mediaOpen by mediaOpenState
+    var settingsOpen by settingsOpenState
+    var settingsInitialSection by settingsInitialSectionState
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+      if (maxWidth < 600.dp) {
+        Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 8.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) {
+                    Image(painterResource(R.drawable.gostex_logo), contentDescription = "GOSTEX", modifier = Modifier.width(76.dp).height(34.dp))
+                }
+                if (mediaVisible) headerMediaSession?.let { session ->
+                    MediaPlayerButton(session, Modifier.focusRequester(mediaFocus)) { mediaOpen = true }
+                }
+                if (rememberNetworkVisible()) NetworkStatusButton(activity)
+                CompactIconButton(CompactIcon.Settings, tr(R.string.settings), modifier = Modifier.focusRequester(settingsFocus),
+                    onClick = { settingsInitialSection = "root"; settingsOpen = true })
+            }
+            if (batteryVisible || (clockOptions.visible && clockOptions.zones.size == 1)) {
+                FlowRow(
+                    Modifier.fillMaxWidth().padding(top = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    itemVerticalAlignment = Alignment.CenterVertically
+                ) {
+                    HeaderClock(clockOptions, clockInstant)
+                    if (batteryVisible) BatteryStatus(activity) { percent, charging ->
+                        activity.getString(if (charging) R.string.battery_charging else R.string.battery_level, percent)
+                    }
+                }
+            }
+            Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                LazyRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(visibleTabs, key = { it }) { label ->
+                        Action(tabTitle(label), compact = true, active = tab == label, onClick = { tab = label; platform = "all" })
+                    }
+                }
+                if (downloadsVisible) { Spacer(Modifier.width(6.dp)); DownloadsShortcut(tab == "downloads") { tab = "downloads"; platform = "all" } }
+            }
+        }
+      } else {
+    Row(Modifier.fillMaxWidth().padding(start = 36.dp, end = 36.dp, top = 18.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Image(painterResource(R.drawable.gostex_logo), contentDescription = "GOSTEX", modifier = Modifier.width(100.dp).height(34.dp))
+        Spacer(Modifier.width(24.dp))
+        visibleTabs.forEach { label ->
+            Action(tabTitle(label), compact = true, active = tab == label, onClick = { tab = label; platform = "all" })
+            Spacer(Modifier.width(6.dp))
+        }
+        if (downloadsVisible) { DownloadsShortcut(tab == "downloads") { tab = "downloads"; platform = "all" }; Spacer(Modifier.width(6.dp)) }
+        Row(Modifier.weight(1f).padding(start = 12.dp, end = 8.dp), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+            HeaderClock(clockOptions, clockInstant)
+            if (batteryVisible) { Spacer(Modifier.width(10.dp)); BatteryStatus(activity) { percent, charging -> activity.getString(if (charging) R.string.battery_charging else R.string.battery_level, percent) } }
+            if (mediaVisible) headerMediaSession?.let { session ->
+                Spacer(Modifier.width(10.dp))
+                MediaPlayerButton(session, Modifier.focusRequester(mediaFocus)) { mediaOpen = true }
+            }
+        }
+        if (rememberNetworkVisible()) {
+            NetworkStatusButton(activity)
+            Spacer(Modifier.width(6.dp))
+        }
+        val settingsLabel = tr(R.string.settings)
+        CompactIconButton(CompactIcon.Settings, settingsLabel, modifier = Modifier.focusRequester(settingsFocus),
+            onClick = { settingsInitialSection = "root"; settingsOpen = true })
+    }
+      }
+    }
+}
+
+@Composable @NonRestartableComposable
+private fun ColumnScope.OrbitDownloadsTab(activity: MainActivity) {
+    val downloadsFocus = remember { FocusRequester() }
+    LaunchedEffect(activity.openDownloadsRequested) {
+        if (activity.openDownloadsRequested) {
+            withFrameNanos { }
+            runCatching { downloadsFocus.requestFocus() }
+            activity.openDownloadsRequested = false
+        }
+    }
+    BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+        val wide = maxWidth >= 600.dp
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = if (wide) 36.dp else 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(tr(R.string.torr_download_channel).uppercase(), color = White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            TorrDownloadUi(activity, downloadsFocus, wide)
+        }
+    }
+}
+
+@Composable @NonRestartableComposable
+private fun ColumnScope.OrbitLibraryTab(
+    activity: MainActivity,
+    games: List<Game>,
+    libraryOptions: LibraryOptions,
+    filtered: List<Game>,
+    filteredAndroidGames: List<TvApp>,
+    showAndroidGamesFilter: Boolean,
+    libraryIsEmpty: Boolean,
+    waitingForAndroidGames: Boolean,
+    libraryScroll: androidx.compose.foundation.lazy.grid.LazyGridState,
+    libraryFocusGame: Game?,
+    favorites: Set<String>,
+    favoriteRefs: Set<String>,
+    firstFocus: FocusRequester,
+    searchFocus: FocusRequester,
+    addGamesFocus: FocusRequester,
+    tabState: State<String>,
+    searchQueryState: State<String>,
+    platformState: MutableState<String>,
+    searchOpenState: MutableState<Boolean>,
+    searchReturnTargetState: MutableState<String>,
+    selectedAppPackageState: MutableState<String?>,
+    libraryGridPlacedState: MutableState<Boolean>,
+    applySearch: (String) -> Unit,
+    selectGame: (Game) -> Unit,
+    openGame: (Game, FocusRequester) -> Unit,
+    gameMenu: (Game, FocusRequester) -> Unit,
+    appMenu: (TvApp, FocusRequester) -> Unit,
+) {
+    val tab by tabState
+    val searchQuery by searchQueryState
+    var platform by platformState
+    var searchOpen by searchOpenState
+    var searchReturnTarget by searchReturnTargetState
+    var selectedAppPackage by selectedAppPackageState
+    var libraryGridPlaced by libraryGridPlacedState
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val compact = maxWidth < 600.dp
+        @Composable fun title() {
+            Text(tabTitle(tab).uppercase(), fontSize = 28.sp, fontWeight = FontWeight.Bold, color = White)
+            Spacer(Modifier.width(16.dp)); Text(gameCount(filtered.size + filteredAndroidGames.size), color = Muted, fontSize = 13.sp)
+        }
+        @Composable fun RowScope.actions(compact: Boolean) {
+            if (searchQuery.isNotBlank()) {
+                val querySpace = if (compact) Modifier.weight(1f, fill = false) else Modifier
+                Text(searchQuery, querySpace.widthIn(max = 120.dp).padding(end = 12.dp), color = Lime,
+                    fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                CompactIconButton(CompactIcon.Clear, tr(R.string.clear_search), onClick = { applySearch("") })
+                Spacer(Modifier.width(6.dp))
+            }
+            CompactIconButton(CompactIcon.Search, tr(R.string.search_games), active = searchQuery.isNotBlank(), modifier = Modifier.focusRequester(searchFocus),
+                onClick = { searchReturnTarget = ""; searchOpen = true })
+            Spacer(Modifier.width(6.dp))
+            CompactIconButton(CompactIcon.Add, tr(if (activity.scanning) R.string.scanning else R.string.add_games), enabled = !activity.scanning,
+                onClick = { activity.chooseFolder(if (platform == "android-apps") "all" else platform) })
+            Spacer(Modifier.width(6.dp))
+            CompactIconButton(CompactIcon.Folder, tr(R.string.folders), onClick = { activity.manageFolders() })
+        }
+        if (compact) Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) { title() }
+            Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) { actions(compact = true) }
+        } else Row(Modifier.fillMaxWidth().padding(start = 36.dp, end = 36.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            title(); Spacer(Modifier.weight(1f)); actions(compact = false)
+        }
+    }
+    if (games.isNotEmpty() || showAndroidGamesFilter || searchQuery.isNotBlank()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 36.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            LazyRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(3.dp)) {
+                item(key = "all") { Action(tr(R.string.all), compact = true, active = platform == "all", onClick = { platform = "all" }) }
+                if (showAndroidGamesFilter) item(key = "android-apps") {
+                    Action(tr(R.string.android_games_platform), compact = true, active = platform == "android-apps", onClick = { platform = "android-apps" })
+                }
+                items(PlatformRegistry.all, key = { it.id }) { p ->
+                    Action(tr(p.titleRes), compact = true, active = platform == p.id, onClick = { platform = p.id })
+                }
+            }
+        }
+        if (tab == "library") {
+            val selectedPlatform = PlatformRegistry.resolve(platform, libraryOptions.ndsEmulator)
+            val importHint = if (platform == "android-apps") tr(R.string.android_games_hint) else if (selectedPlatform == null) tr(R.string.platform_import_hint) else {
+                val formats = selectedPlatform.extensions.sorted().joinToString(" · ") { it.uppercase(java.util.Locale.ROOT) }
+                tr(R.string.platform_formats, selectedPlatform.emulator, formats) +
+                    (selectedPlatform.hintRes?.let { "\n" + tr(it) } ?: "")
+            }
+            Text(importHint, Modifier.padding(start = 36.dp, end = 36.dp, bottom = 6.dp), color = Muted, fontSize = 11.sp, lineHeight = 15.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+        }
+    }
+    if (libraryIsEmpty) Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+        if (waitingForAndroidGames) Text(tr(R.string.apps_loading), Modifier.padding(horizontal = 36.dp), color = Muted, fontSize = 18.sp)
+        else if (searchQuery.isNotBlank()) Text(tr(R.string.search_empty), Modifier.padding(horizontal = 36.dp), color = Muted, fontSize = 18.sp)
+        else Column(Modifier.widthIn(max = 660.dp).padding(horizontal = 36.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(tr(R.string.library_empty_title), color = White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            Text(tr(R.string.library_import_steps, tr(R.string.add_games)), color = Muted, fontSize = 14.sp, lineHeight = 22.sp)
+            Action(if (activity.scanning) tr(R.string.scanning) else tr(R.string.add_games), modifier = Modifier.focusRequester(addGamesFocus),
+                onClick = { if (!activity.scanning) activity.chooseFolder(if (games.isEmpty() || platform == "android-apps") "all" else platform) })
+            Text(tr(R.string.library_optional_hint), color = Muted, fontSize = 12.sp, lineHeight = 17.sp)
+        }
+    } else BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+      LazyVerticalGrid(columns = GridCells.Fixed(TileLayout.columns(maxWidth, LocalTileSize.current)), state = libraryScroll,
+        modifier = Modifier.fillMaxSize().onGloballyPositioned { libraryGridPlaced = true },
+        contentPadding = PaddingValues(start = TileLayout.screenInset + TileLayout.focusInset, end = TileLayout.screenInset + TileLayout.focusInset, top = 8.dp, bottom = 18.dp),
+        horizontalArrangement = Arrangement.spacedBy(TileLayout.gap), verticalArrangement = Arrangement.spacedBy(TileLayout.gap)) {
+        items(filtered, key = { homeGameKey(it.id) }) { g ->
+            val cardFocus = remember(g.id) { FocusRequester() }
+            Poster(g, Modifier.fillMaxWidth()
+                .then(if (g.id == libraryFocusGame?.id) Modifier.focusRequester(firstFocus) else Modifier)
+                .focusRequester(cardFocus), g.id in favorites, onFocus = { selectGame(g) },
+                onClick = { openGame(g, cardFocus) }, onLongClick = { gameMenu(g, cardFocus) })
+        }
+        items(filteredAndroidGames, key = { "app:${it.packageName}" }) { app ->
+            val cardFocus = remember(app.packageName) { FocusRequester() }
+            val first = filtered.isEmpty() && app == filteredAndroidGames.firstOrNull()
+            AppTile(app, modifier = Modifier.fillMaxWidth()
+                .then(if (first) Modifier.focusRequester(firstFocus) else Modifier)
+                .focusRequester(cardFocus), favorite = homeAppKey(app.packageName) in favoriteRefs,
+                onFocus = { selectedAppPackage = app.packageName },
+                onClick = { activity.openApp(app) }, onLongClick = { appMenu(app, cardFocus) })
+        }
+      }
+    }
+}
+
+@Composable @NonRestartableComposable
+private fun OrbitTileMenu(
+    activity: MainActivity,
+    target: TileMenuTarget,
+    tab: String,
+    tileReturnAnchor: HomeFeedAnchor?,
+    sectionOptions: HomeSectionsOptions,
+    favoriteRefs: Set<String>,
+    tileMenuState: MutableState<TileMenuTarget?>,
+    membershipItemState: MutableState<String?>,
+    favoriteOrderItemState: MutableState<String?>,
+    dismissTileMenu: () -> Unit,
+    showGameDetail: (Game) -> Unit,
+) {
+    var tileMenu by tileMenuState
+    var membershipItem by membershipItemState
+    var favoriteOrderItem by favoriteOrderItemState
+    val menuGame = (target as? TileMenuTarget.GameItem)?.game
+    val menuApp = (target as? TileMenuTarget.AppItem)?.app
+    val menuMovie = (target as? TileMenuTarget.MovieItem)?.movie
+    val itemKey = when (target) {
+        is TileMenuTarget.GameItem -> homeGameKey(target.game.id)
+        is TileMenuTarget.AppItem -> homeAppKey(target.app.packageName)
+        is TileMenuTarget.MovieItem -> homeMovieKey(target.movie.id)
+    }
+    val currentSection = sectionOptions.sections.firstOrNull {
+        tab == "home" && it.id == tileReturnAnchor?.shelf && it.kind == HomeSectionKind.CUSTOM
+    }
+    TileContextMenu(target, isFavorite = itemKey in favoriteRefs,
+        currentSectionTitle = currentSection?.let { sectionTitle(it) },
+        onPlay = { dismissTileMenu(); menuGame?.let { activity.launchGame(it, 0) } },
+        onDetails = { tileMenu = null; menuGame?.let(showGameDetail) },
+        onCover = { dismissTileMenu(); menuGame?.let { activity.editGameCover(it.id) }; menuMovie?.let { activity.chooseCover(homeMovieKey(it.id)) } },
+        onToggleFavorite = { SectionPreferences.toggleFavorite(activity, itemKey); dismissTileMenu() },
+        onOpenApp = { dismissTileMenu(); menuApp?.let(activity::openApp); menuMovie?.let { openMediaLibrary(activity, it.id) } },
+        onSections = { tileMenu = null; membershipItem = itemKey },
+        onFavoriteOrder = { tileMenu = null; favoriteOrderItem = itemKey },
+        onPrioritize = { currentSection?.let { SectionPreferences.prioritize(activity, it.id, itemKey) }; dismissTileMenu() },
+        onAppInfo = {
+            dismissTileMenu()
+            menuApp?.let { app ->
+                runCatching { activity.startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${app.packageName}"))) }
+                    .onFailure { activity.notice = activity.getString(R.string.app_error, app.name) }
+            }
+        },
+        onDismiss = dismissTileMenu)
+}
+
+// Settings sections split out of SettingsPanel (dex method size limit); no own restart scope.
+@Composable @NonRestartableComposable
+private fun SettingsLibraryGroupRows(activity: MainActivity, rowFocus: (String) -> Modifier, onSection: (String) -> Unit) {
+    if (activity.legacyRecoveryPending) SettingRow(tr(R.string.legacy_recovery_title), tr(R.string.legacy_recovery_summary),
+        rowFocus("legacyRecovery"), onClick = { activity.retryLegacyRecovery() })
+    SettingRow(tr(R.string.add_games), modifier = rowFocus("addGames"), onClick = { activity.chooseFolder("all") })
+    SettingRow(tr(R.string.library_rescan), if (activity.scanning) tr(R.string.scanning) else tr(activity.manualLibraryScanStatus ?: R.string.library_rescan_hint),
+        rowFocus("rescanGames"), onClick = { if (!activity.scanning) activity.retryLegacyRecovery(manual = true) })
+    SettingRow(tr(R.string.folders), modifier = rowFocus("folders"), onClick = { activity.manageFolders() })
+    SettingRow(tr(R.string.portable_copy_title), tr(R.string.portable_copy_summary), rowFocus("portableCopy"), onClick = { onSection("portableCopy") })
+    SettingRow(tr(R.string.covers_title), tr(R.string.covers_summary), rowFocus("covers"), onClick = { onSection("covers") })
+    NintendoDsEmulatorSetting(rowFocus("ndsEmulator"))
+    AndroidGamesVisibilitySetting(rowFocus("androidGames"))
+    GroupVersionsSetting(rowFocus("groupVersions"))
+    LibraryVisibilitySetting(rowFocus("libraryTab"))
+    AppsVisibilitySetting(rowFocus("appsTab"))
+}
+
+@Composable @NonRestartableComposable
+private fun SettingsSystemGroupRows(
+    activity: MainActivity,
+    prefs: android.content.SharedPreferences,
+    remoteAutoState: MutableState<Boolean>,
+    rowFocus: (String) -> Modifier,
+    onSection: (String) -> Unit,
+) {
+    var remoteAuto by remoteAutoState
+    SettingRow(tr(R.string.initial_setup_title), tr(R.string.initial_setup_summary), rowFocus("firstSetup"),
+        onClick = { onSection("firstSetup") })
+    SettingRow(tr(R.string.network_settings), modifier = rowFocus("network"), onClick = { activity.openNetworkSettings() })
+    var browserSearch by remember(activity) { mutableStateOf(TvBrowserOptions.searchProvider(activity)) }
+    SettingRow(tr(R.string.browser_settings_search_engine), browserSearch.displayName, rowFocus("browserSearch"), onClick = {
+        val providers = BrowserSearchProvider.entries
+        android.app.AlertDialog.Builder(activity)
+            .setTitle(R.string.browser_settings_search_engine)
+            .setSingleChoiceItems(providers.map { it.displayName }.toTypedArray(), providers.indexOf(browserSearch)) { dialog, index ->
+                browserSearch = providers[index]
+                TvBrowserOptions.setSearchProvider(activity, browserSearch)
+                dialog.dismiss()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    })
+    var quickDownload by remember(activity) { mutableStateOf(TvBrowserOptions.quickDownload(activity)) }
+    DisposableEffect(activity, prefs) {
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == TvBrowserOptions.QUICK_DOWNLOAD || key == null) {
+                quickDownload = TvBrowserOptions.quickDownload(activity)
+            }
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        quickDownload = TvBrowserOptions.quickDownload(activity)
+        onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+    SettingRow(
+        tr(R.string.browser_settings_quick_download),
+        tr(R.string.browser_settings_quick_download_hint),
+        rowFocus("browserQuickDownload"), isSelected = quickDownload,
+        trailing = if (quickDownload) "✓" else "—",
+        onClick = { TvBrowserOptions.setQuickDownload(activity, !TvBrowserOptions.quickDownload(activity)) }
+    )
+    DefaultHomeSetting(activity, rowFocus("defaultHome"))
+    SettingRow(tr(R.string.settings_device_title), modifier = rowFocus("shield"), onClick = { activity.openSettings() })
+    SettingRow(tr(R.string.settings_services_title), tr(R.string.settings_services_summary), rowFocus("services"), onClick = { onSection("services") })
+    SettingRow(tr(R.string.settings_copy_title), tr(R.string.settings_copy_hint), rowFocus("settingsCopy"), onClick = { onSection("settingsCopy") })
+    SettingRow(tr(R.string.remote_autostart), tr(if (remoteAuto) R.string.enabled else R.string.disabled), rowFocus("remote"), isSelected = remoteAuto, trailing = if (remoteAuto) "✓" else "—", onClick = {
+        remoteAuto = !remoteAuto
+        prefs.edit().putBoolean("remoteAutostart", remoteAuto).apply()
+        if (remoteAuto) RemoteStartup.start(activity)
+    })
+}
+
+@Composable @NonRestartableComposable
+private fun SettingsPortableCopyRows(activity: MainActivity, rowFocus: (String) -> Modifier, onSection: (String) -> Unit) {
+    Text(tr(R.string.portable_copy_unavailable_restore), color = Muted, fontSize = 13.sp, lineHeight = 19.sp)
+    SettingRow(tr(if (activity.portableCopyBusy) R.string.portable_copy_cancel else R.string.portable_copy_choose),
+        modifier = rowFocus("copyAction"), onClick = {
+            if (activity.portableCopyBusy) activity.cancelPortableCopy() else activity.choosePortableCopyFolder()
+        })
+    if (activity.portableCopyMessage.isNotBlank()) Text(activity.portableCopyMessage, color = White, fontSize = 13.sp, lineHeight = 19.sp)
+    SettingRow(tr(R.string.portable_preview_title), tr(R.string.portable_preview_summary), rowFocus("portablePreview"),
+        onClick = { if (!activity.portableCopyBusy) onSection("portablePreview") })
+}
+
+@Composable @NonRestartableComposable
+private fun SettingsPortablePreviewRows(activity: MainActivity, initialFocus: FocusRequester, backupDateFormat: java.text.DateFormat) {
+    Text(tr(R.string.portable_preview_hint), color = Muted, fontSize = 13.sp, lineHeight = 19.sp)
+    SettingRow(tr(if (activity.portablePreviewBusy) R.string.portable_preview_cancel else R.string.portable_preview_folder),
+        modifier = Modifier.focusRequester(initialFocus), onClick = {
+            if (activity.portablePreviewBusy) activity.cancelPortablePreview() else activity.choosePortablePreviewFolder()
+        })
+    if (activity.portablePreviewMessage.isNotBlank()) Text(activity.portablePreviewMessage, color = White, fontSize = 13.sp, lineHeight = 19.sp)
+    if (activity.portableDecisionGroups.isNotEmpty()) {
+        Text(tr(R.string.portable_decision_hint), color = Muted, fontSize = 13.sp, lineHeight = 19.sp)
+        activity.portableDecisionGroups.forEach { group ->
+            val label = when (group) {
+                PortableRestoreDecisionGroup.GAMES_AND_COVERS -> R.string.portable_decision_games
+                PortableRestoreDecisionGroup.HOME -> R.string.portable_decision_home
+                PortableRestoreDecisionGroup.SETTINGS -> R.string.portable_decision_settings
+            }
+            val value = when (activity.portableDecisionChoices[group]) {
+                PortableRestoreChoice.KEEP_CURRENT -> R.string.portable_decision_keep
+                PortableRestoreChoice.USE_BACKUP -> R.string.portable_decision_backup
+                null -> R.string.portable_decision_choose
+            }
+            key(group) { SettingRow(tr(label), tr(value), onClick = { activity.choosePortableDecision(group) }) }
+        }
+        Text(tr(R.string.portable_decision_remaining, activity.portableDecisionRemaining), color = Muted, fontSize = 13.sp)
+    }
+    if (activity.portableDecisionRootBlocks > 0) Text(tr(R.string.portable_decision_root_blocked), color = Muted, fontSize = 13.sp, lineHeight = 19.sp)
+    if (activity.portableRestoreAvailable) SettingRow(tr(R.string.portable_restore_action), tr(R.string.portable_restore_summary),
+        onClick = { activity.confirmPortableRestore() })
+    activity.portablePreviewTitles.forEach { title -> Text(title, color = White, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+    if (activity.portablePreviewExtra > 0) Text(tr(R.string.portable_preview_more, activity.portablePreviewExtra), color = Muted, fontSize = 13.sp)
+    activity.portableBackups.forEachIndexed { index, candidate ->
+        val label = candidate.modified?.let { date -> tr(R.string.portable_preview_dated, index + 1, backupDateFormat.format(java.util.Date(date))) }
+            ?: tr(R.string.portable_preview_number, index + 1)
+        key(candidate.documentId) { SettingRow(label, modifier = Modifier, onClick = { activity.inspectPortableCandidate(candidate) }) }
     }
 }

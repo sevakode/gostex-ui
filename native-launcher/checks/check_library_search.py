@@ -18,8 +18,27 @@ def quoted(value):
     return json.dumps(value, ensure_ascii=False).replace("$", "\\$")
 
 
-model_text = MAIN.read_text()
-model = model_text[model_text.index("data class Game("):model_text.index("class MainActivity :")]
+def declaration(source, header):
+    """Return one top-level declaration by balanced parentheses/braces, not by whatever follows it in the file."""
+    start = source.index(header)
+    depth, position = 0, start + len(header) - 1
+    for position in range(position, len(source)):
+        depth += {"(": 1, ")": -1}.get(source[position], 0)
+        if depth == 0:
+            break
+    end = position + 1
+    rest = source[end:].lstrip(" ")
+    if rest.startswith("{"):
+        depth = 0
+        for position in range(end, len(source)):
+            depth += {"{": 1, "}": -1}.get(source[position], 0)
+            if depth == 0 and source[position] == "}":
+                break
+        end = position + 1
+    return source[start:end] + "\n"
+
+
+model = declaration(MAIN.read_text(), "data class Game(")
 games = json.loads(CATALOG.read_text())
 rows = []
 for game in games:

@@ -5,23 +5,27 @@ import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableIntState
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.NonRestartableComposable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -35,62 +39,102 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+// The screen is split into non-restartable children so ART can compile each method; the parent
+// keeps every remembered state, so the children read and write the same state objects as before.
 @Composable internal fun TorrDownloadUi(activity: MainActivity, initialFocus: FocusRequester, wide: Boolean = false) {
     val scope = rememberCoroutineScope()
-    val jobs by TorrDownloadStore.jobs.collectAsState()
-    val liveProgress by TorrDownloadLiveProgress.current.collectAsStateWithLifecycle()
-    var entries by remember { mutableStateOf<List<TorrCatalogEntry>>(emptyList()) }
-    var selected by remember { mutableStateOf<TorrCatalogEntry?>(null) }
-    var magnet by remember { mutableStateOf("") }
-    var busy by remember { mutableStateOf(false) }
-    var preparingHash by remember { mutableStateOf<String?>(null) }
-    var metadataRetryInFlight by remember { mutableStateOf(false) }
-    var metadataRetryGeneration by remember { mutableStateOf(0L) }
-    var failed by remember { mutableStateOf(false) }
-    var journalFailed by remember { mutableStateOf(false) }
-    var journalLoading by remember { mutableStateOf(true) }
+    val jobsState = TorrDownloadStore.jobs.collectAsState()
+    val liveProgressState = TorrDownloadLiveProgress.current.collectAsStateWithLifecycle()
+    val entriesState = remember { mutableStateOf<List<TorrCatalogEntry>>(emptyList()) }
+    var entries by entriesState
+    val selectedState = remember { mutableStateOf<TorrCatalogEntry?>(null) }
+    var selected by selectedState
+    val magnetState = remember { mutableStateOf("") }
+    var magnet by magnetState
+    val busyState = remember { mutableStateOf(false) }
+    var busy by busyState
+    val preparingHashState = remember { mutableStateOf<String?>(null) }
+    val metadataRetryInFlightState = remember { mutableStateOf(false) }
+    var metadataRetryInFlight by metadataRetryInFlightState
+    val metadataRetryGenerationState = remember { mutableStateOf(0L) }
+    var metadataRetryGeneration by metadataRetryGenerationState
+    val failedState = remember { mutableStateOf(false) }
+    var failed by failedState
+    val journalFailedState = remember { mutableStateOf(false) }
+    var journalFailed by journalFailedState
+    val journalLoadingState = remember { mutableStateOf(true) }
+    var journalLoading by journalLoadingState
     var removingJobId by remember { mutableStateOf<String?>(null) }
-    var discardErrorId by remember { mutableStateOf<String?>(null) }
-    var page by remember { mutableStateOf(0) }
-    var filePage by remember { mutableStateOf(0) }
-    var jobPage by rememberSaveable { mutableStateOf(0) }
-    var showFinished by rememberSaveable { mutableStateOf(false) }
-    var showHttpDownload by remember { mutableStateOf(false) }
-    var httpInitialAddress by remember { mutableStateOf("") }
-    var httpSession by remember { mutableStateOf<HttpDownloadSession?>(null) }
-    var httpRebindId by remember { mutableStateOf<String?>(null) }
+    val discardErrorIdState = remember { mutableStateOf<String?>(null) }
+    val pageState = remember { mutableStateOf(0) }
+    var page by pageState
+    val filePageState = remember { mutableStateOf(0) }
+    var filePage by filePageState
+    val jobPageState = rememberSaveable { mutableStateOf(0) }
+    var jobPage by jobPageState
+    val showFinishedState = rememberSaveable { mutableStateOf(false) }
+    var showFinished by showFinishedState
+    val showHttpDownloadState = remember { mutableStateOf(false) }
+    var showHttpDownload by showHttpDownloadState
+    val httpInitialAddressState = remember { mutableStateOf("") }
+    var httpInitialAddress by httpInitialAddressState
+    val httpSessionState = remember { mutableStateOf<HttpDownloadSession?>(null) }
+    var httpSession by httpSessionState
+    val httpRebindIdState = remember { mutableStateOf<String?>(null) }
+    var httpRebindId by httpRebindIdState
     var browserRebindId by rememberSaveable { mutableStateOf<String?>(null) }
-    var httpRebindReturnId by remember { mutableStateOf<String?>(null) }
-    var httpEntryFocus by remember { mutableStateOf<FocusRequester?>(null) }
-    var httpReturnFocus by remember { mutableStateOf<FocusRequester?>(null) }
-    var openingHttp by remember { mutableStateOf(false) }
+    val httpRebindReturnIdState = remember { mutableStateOf<String?>(null) }
+    var httpRebindReturnId by httpRebindReturnIdState
+    val httpEntryFocusState = remember { mutableStateOf<FocusRequester?>(null) }
+    var httpEntryFocus by httpEntryFocusState
+    val httpReturnFocusState = remember { mutableStateOf<FocusRequester?>(null) }
+    val openingHttpState = remember { mutableStateOf(false) }
     val httpLinkFocus = remember { FocusRequester() }
     val browserFocus = remember { FocusRequester() }
-    var folderAccessRequest by rememberSaveable { mutableStateOf<ArrayList<String>?>(null) }
-    var folderAccessReturnFocus by rememberSaveable { mutableStateOf<String?>(null) }
-    var folderAccessBusy by remember { mutableStateOf(false) }
-    var folderGrants by remember { mutableStateOf<Set<TorrDownloadFolderAccess.Identity>?>(null) }
+    val folderAccessRequestState = rememberSaveable { mutableStateOf<ArrayList<String>?>(null) }
+    var folderAccessRequest by folderAccessRequestState
+    val folderAccessReturnFocusState = rememberSaveable { mutableStateOf<String?>(null) }
+    var folderAccessReturnFocus by folderAccessReturnFocusState
+    // Whether the completed row's game button, rather than the row itself, started the restore.
+    val folderAccessFromGameState = rememberSaveable { mutableStateOf(false) }
+    var folderAccessFromGame by folderAccessFromGameState
+    val folderAccessBusyState = remember { mutableStateOf(false) }
+    var folderAccessBusy by folderAccessBusyState
+    val folderGrantsState = remember { mutableStateOf<Set<TorrDownloadFolderAccess.Identity>?>(null) }
+    var folderGrants by folderGrantsState
+    // Completed files only need to be read; their recorded folder may hold a read-only grant.
+    var folderReadGrants by remember { mutableStateOf<Set<TorrDownloadFolderAccess.Identity>?>(null) }
     fun needsSiteSession(job: TorrDownloadJob) = job.requiresHttpSession && TorrDownloadStore.sessionFor(job.id) == null
     fun needsFolderAccess(job: TorrDownloadJob) =
-        TorrDownloadFolderAccess.needsRestore(job.state, job.error, job.tree, folderGrants)
+        TorrDownloadFolderAccess.needsRestore(job.state, job.error, job.tree, folderGrants, folderReadGrants)
     fun captureFolderRequest(job: TorrDownloadJob) =
         TorrDownloadFolderAccess.Request(job.id, job.tree, job.document, job.state, job.error)
     val folderSnapshotGeneration = remember { intArrayOf(0) }
     LaunchedEffect(activity.resumeVersion) {
         val generation = ++folderSnapshotGeneration[0]
-        val snapshot = withContext(Dispatchers.IO) { TorrDownloadFolderAccess.snapshot(activity.contentResolver) }
-        if (generation == folderSnapshotGeneration[0]) folderGrants = snapshot
+        val snapshot = withContext(Dispatchers.IO) { TorrDownloadFolderAccess.snapshotGrants(activity.contentResolver) }
+        if (generation == folderSnapshotGeneration[0]) {
+            folderGrants = snapshot?.readWrite
+            folderReadGrants = snapshot?.read
+        }
+    }
+    val hiddenFinishedState = remember(activity) { mutableStateOf(TorrDownloadHistory.read(activity)) }
+    var hiddenFinished by hiddenFinishedState
+    DisposableEffect(activity) {
+        val stopObserving = TorrDownloadHistory.observe(activity) { hiddenFinished = it }
+        onDispose { stopObserving() }
     }
     val folderAccessPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         val saved = folderAccessRequest
@@ -109,10 +153,13 @@ import kotlinx.coroutines.withContext
                 }
                 ++folderSnapshotGeneration[0]
                 folderGrants = result.grants
+                folderReadGrants = result.readGrants
                 activity.torrDownloadMessage = activity.getString(when (result.outcome) {
                     TorrDownloadFolderAccess.Outcome.RESTORED -> {
                         val job = TorrDownloadStore.jobs.value.firstOrNull { it.id == request?.id }
                         when {
+                            request?.state == "done" -> if (job != null && downloadGameReadsFolder(job))
+                                R.string.torr_folder_access_game_restored else R.string.torr_folder_access_finished_restored
                             job != null && needsSiteSession(job) -> R.string.http_download_session_pick_same
                             job?.requiresHttpRestart == true -> R.string.http_download_restart_access_restored
                             else -> R.string.torr_folder_access_restored
@@ -128,12 +175,19 @@ import kotlinx.coroutines.withContext
             finally {
                 folderAccessBusy = false
                 folderAccessReturnFocus = request?.id
-                val index = TorrDownloadStore.jobs.value.filter { it.state != "done" }.indexOfFirst { it.id == request?.id }
-                if (index >= 0) { showFinished = false; jobPage = index / 20 }
+                val all = TorrDownloadStore.jobs.value
+                if (request?.state == "done") {
+                    // Return to the same completed row without touching the job, file or default folder.
+                    val index = TorrDownloadHistory.completed(all, hiddenFinished).indexOfFirst { it.id == request?.id }
+                    if (index >= 0) { showFinished = true; jobPage = index / 20 }
+                } else {
+                    val index = all.filter { it.state != "done" }.indexOfFirst { it.id == request?.id }
+                    if (index >= 0) { showFinished = false; jobPage = index / 20 }
+                }
             }
         }
     }
-    fun restoreFolderAccess(job: TorrDownloadJob) {
+    fun restoreFolderAccess(job: TorrDownloadJob, fromGame: Boolean) {
         if (folderAccessBusy || folderAccessRequest != null || PortableMaintenance.running || !needsFolderAccess(job)) return
         val probe = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT_TREE)
         val resolved = runCatching { activity.packageManager.resolveActivity(probe,
@@ -143,8 +197,10 @@ import kotlinx.coroutines.withContext
             activity.torrDownloadMessage = activity.getString(R.string.document_picker_unavailable)
             return
         }
+        folderAccessFromGame = fromGame
         folderAccessRequest = arrayListOf(job.id, job.tree, job.document, job.state, job.error)
-        activity.torrDownloadMessage = activity.getString(R.string.torr_folder_access_hint)
+        activity.torrDownloadMessage = activity.getString(
+            if (job.state == "done") finishedFolderAccessHint(job) else R.string.torr_folder_access_hint)
         try { folderAccessPicker.launch(android.net.Uri.parse(job.tree)) }
         catch (_: Exception) {
             folderAccessRequest = null
@@ -152,16 +208,15 @@ import kotlinx.coroutines.withContext
             activity.torrDownloadMessage = activity.getString(R.string.document_picker_unavailable)
         }
     }
-    var hiddenFinished by remember(activity) { mutableStateOf(TorrDownloadHistory.read(activity)) }
-    DisposableEffect(activity) {
-        val stopObserving = TorrDownloadHistory.observe(activity) { hiddenFinished = it }
-        onDispose { stopObserving() }
-    }
     val finishedTabFocus = remember { FocusRequester() }
-    var finishedFocusId by remember { mutableStateOf<String?>(null) }
-    var chosenFiles by remember { mutableStateOf<Set<Int>>(emptySet()) }
-    var showOptions by remember { mutableStateOf(false) }
-    var showMagnet by remember { mutableStateOf(false) }
+    val finishedFocusIdState = remember { mutableStateOf<String?>(null) }
+    var finishedFocusId by finishedFocusIdState
+    val chosenFilesState = remember { mutableStateOf<Set<Int>>(emptySet()) }
+    var chosenFiles by chosenFilesState
+    val showOptionsState = remember { mutableStateOf(false) }
+    val showOptions by showOptionsState
+    val showMagnetState = remember { mutableStateOf(false) }
+    var showMagnet by showMagnetState
     var focusBrowserMagnet by remember { mutableStateOf(false) }
     val magnetSubmitFocus = remember { FocusRequester() }
     val browser = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -214,10 +269,10 @@ import kotlinx.coroutines.withContext
             if (runCatching { magnetSubmitFocus.requestFocus() }.getOrDefault(false)) focusBrowserMagnet = false
         }
     }
-    var reserveMiB by remember { mutableStateOf(TorrDownloadSpace.read(activity)) }
-    var prefetchCount by remember { mutableIntStateOf(TorrPrefetch.count(activity)) }
-    var prefetchQuota by remember { mutableIntStateOf(TorrPrefetch.quota(activity)) }
-    var autoRetry by remember { mutableStateOf(TorrDownloadRetryOptions.read(activity)) }
+    val reserveMiBState = remember { mutableStateOf(TorrDownloadSpace.read(activity)) }
+    val prefetchCountState = remember { mutableIntStateOf(TorrPrefetch.count(activity)) }
+    val prefetchQuotaState = remember { mutableIntStateOf(TorrPrefetch.quota(activity)) }
+    val autoRetryState = remember { mutableStateOf(TorrDownloadRetryOptions.read(activity)) }
     val autoCover = rememberTorrentAutoCover()
     val showMediaTorrents = rememberTorrMediaVisibility()
     val mediaPrefs = remember(activity) { activity.getSharedPreferences("orbit", android.content.Context.MODE_PRIVATE) }
@@ -229,8 +284,10 @@ import kotlinx.coroutines.withContext
         mediaPrefs.registerOnSharedPreferenceChangeListener(listener)
         onDispose { mediaPrefs.unregisterOnSharedPreferenceChangeListener(listener) }
     }
-    var linkedHashes by remember { mutableStateOf<Set<String>?>(null) }
-    var linkCheckFailed by remember { mutableStateOf(false) }
+    val linkedHashesState = remember { mutableStateOf<Set<String>?>(null) }
+    var linkedHashes by linkedHashesState
+    val linkCheckFailedState = remember { mutableStateOf(false) }
+    var linkCheckFailed by linkCheckFailedState
     LaunchedEffect(activity.resumeVersion, activity.torrCatalogRevision, mediaRevision) {
         linkedHashes = null
         linkCheckFailed = false
@@ -312,214 +369,73 @@ import kotlinx.coroutines.withContext
         if (selected == null) { withFrameNanos { }; runCatching { initialFocus.requestFocus() } }
     }
 
+
     val current = selected
     if (current != null) {
-        LaunchedEffect(current.hash, current.files.isEmpty()) { runCatching { fileFocus.requestFocus() } }
-        SettingRow(tr(R.string.torr_download_back), modifier = Modifier.focusRequester(fileFocus), onClick = { leaveSelected() })
-        Text(current.title, color = Color.White, fontSize = 16.sp)
-        val coverId = remember(current.hash) { TorrentArtwork.id(current.hash) }
-        val cover = activity.managedCovers[coverId]
-        CoverArtwork(cover?.manual?.takeIf { it.isNotEmpty() } ?: cover?.original.orEmpty(), Modifier.width(180.dp).height(102.dp), fallbackTitle = current.title)
-        SettingRow(tr(R.string.downloads_choose_cover), onClick = { activity.chooseCover(coverId) })
-        SettingRow(tr(R.string.movies_add_torrent_media), onClick = {
-            activity.startActivity(android.content.Intent(activity, MovieLibraryActivity::class.java).apply {
-                putExtra(MovieLibraryActivity.EXTRA_TORRENT_HASH, current.hash)
-                putExtra(MovieLibraryActivity.EXTRA_TORRENT_TITLE, current.title)
-            })
-        })
-        val rate = current.downloadBytesPerSecond?.let { android.text.format.Formatter.formatShortFileSize(activity, it) }
-        val seeders = current.connectedSeeders
-        if (rate != null || seeders != null) {
-            val details = listOfNotNull(rate?.let { tr(R.string.torr_status_rate, it) }, seeders?.let { tr(R.string.torr_status_seeders, it) }).joinToString(" · ")
-            Text(details, color = Color.LightGray, fontSize = 13.sp)
-            Text(tr(R.string.torr_status_snapshot), color = Color.LightGray, fontSize = 12.sp)
-        } else Text(tr(R.string.torr_status_unknown), color = Color.LightGray, fontSize = 13.sp)
-        SettingRow(tr(R.string.torr_status_refresh), if (busy) tr(R.string.torr_download_loading) else "", onClick = {
-            if (!busy) {
-                busy = true
-                scope.launch {
-                    try {
-                        val snapshot = withContext(Dispatchers.IO) { TorrServerCatalog.get(current.hash) }
-                        if (selected?.hash == current.hash) selected = current.copy(downloadBytesPerSecond = snapshot.downloadBytesPerSecond, connectedSeeders = snapshot.connectedSeeders)
-                    } catch (_: Exception) { activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed) }
-                    finally { busy = false }
-                }
-            }
-        })
-        if (activity.torrDownloadMessage.isNotBlank()) Text(activity.torrDownloadMessage,
-            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }, color = Color.LightGray, fontSize = 13.sp)
-        SettingRow(tr(R.string.torr_remove_server), onClick = {
-            if (!busy) {
-                busy = true
-                scope.launch {
-                    val linked = try {
-                        withContext(Dispatchers.IO) { linkedTorrentMovieCount(MovieLibraryStore.read(activity), current.hash) }
-                    } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
-                    catch (_: Exception) { null }
-                    finally { busy = false }
-                    if (selected?.hash != current.hash || activity.isFinishing || activity.isDestroyed) return@launch
-                    if (linked == null || linked > 0) {
-                        val dialog = android.app.AlertDialog.Builder(activity)
-                            .setTitle(R.string.torr_media_protected_title)
-                            .setMessage(if (linked == null) R.string.torr_media_check_failed else R.string.torr_media_protected_message)
-                            .setNegativeButton(R.string.cancel, null)
-                        if (linked != null) dialog.setPositiveButton(R.string.torr_media_hide_action) { _, _ ->
-                            TorrMediaVisibility.write(activity, false)
-                            selected = null
-                        }
-                        dialog.show()
-                        return@launch
-                    }
-                    val extra = ""
-                    val message = listOf(activity.getString(R.string.torr_remove_server_message), extra)
-                        .filter { it.isNotEmpty() }.joinToString("\n\n")
-                    android.app.AlertDialog.Builder(activity)
-                        .setTitle(R.string.torr_remove_server_title)
-                        .setMessage(message)
-                        .setPositiveButton(R.string.torr_remove_server) { _, _ ->
-                            if (!busy) {
-                                busy = true
-                                scope.launch {
-                                    var acquired = false
-                                    var mediaReserved = false
-                                    var removed = false
-                                    try {
-                                        if (journalLoading || journalFailed) throw IllegalStateException("Queue unavailable")
-                                        acquired = TorrDownloadStore.beginTorrentRemoval(activity, current.hash)
-                                        if (!acquired) activity.torrDownloadMessage = activity.getString(R.string.torr_remove_server_pending)
-                                        else {
-                                            // Reserve the media relationship without holding a lock across HTTP.
-                                            withContext(Dispatchers.IO + NonCancellable) {
-                                                mediaReserved = MovieLibraryStore.reserveTorrentRemoval(activity.applicationContext, current.hash)
-                                            }
-                                            if (!mediaReserved) activity.torrDownloadMessage = activity.getString(R.string.torr_media_protected_message)
-                                            else {
-                                                withContext(Dispatchers.IO + NonCancellable) { TorrServerCatalog.remove(current.hash) }
-                                                selected = null; chosenFiles = emptySet(); filePage = 0
-                                                activity.torrDownloadMessage = activity.getString(R.string.torr_remove_server_done)
-                                                removed = true
-                                            }
-                                        }
-                                    } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
-                                    catch (_: Exception) { activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed) }
-                                    finally {
-                                        if (mediaReserved) MovieLibraryStore.endTorrentRemoval(current.hash)
-                                        if (acquired) TorrDownloadStore.endTorrentRemoval(current.hash)
-                                        busy = false
-                                    }
-                                    if (removed) refresh()
-                                }
-                            }
-                        }.setNegativeButton(R.string.cancel, null).show()
-                }
-            }
-        })
-        if (current.files.isEmpty()) {
-            Text(tr(R.string.torr_download_no_files), color = Color.LightGray, fontSize = 13.sp)
-            SettingRow(tr(R.string.torr_download_refresh), if (busy) tr(R.string.torr_download_preparing_files) else "", onClick = {
-                if (!busy && !metadataRetryInFlight) {
-                    busy = true
-                    metadataRetryInFlight = true
-                    val generation = ++metadataRetryGeneration
-                    preparingHash = current.hash
-                    activity.torrDownloadMessage = ""
-                    scope.launch {
-                        try {
-                            val loaded = withContext(Dispatchers.IO) { TorrServerCatalog.loadFiles(current.hash) }
-                            if (generation == metadataRetryGeneration && selected?.hash == current.hash) { selected = loaded; filePage = 0; chosenFiles = emptySet() }
-                        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
-                        catch (_: TorrMetadataTimeout) {
-                            if (generation == metadataRetryGeneration && selected?.hash == current.hash) activity.torrDownloadMessage = activity.getString(R.string.movies_torrent_timeout)
-                        } catch (_: Exception) {
-                            if (generation == metadataRetryGeneration && selected?.hash == current.hash) activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed)
-                        } finally {
-                            metadataRetryInFlight = false
-                            preparingHash = null
-                            if (generation == metadataRetryGeneration) busy = false
-                        }
-                    }
-                }
-            })
-        } else {
-            Text(tr(R.string.torr_download_choose_file), color = Color.LightGray, fontSize = 13.sp)
-            if (chosenFiles.isNotEmpty()) SettingRow(tr(R.string.torr_download_selected, chosenFiles.size), onClick = {
-                if (!busy) activity.chooseTorrDestination(current, current.files.filter { it.id in chosenFiles })
-            })
-            if (current.files.size in 2..100) SettingRow(tr(R.string.torr_download_all, current.files.size), onClick = {
-                if (!busy) activity.chooseTorrDestination(current, current.files)
-            })
-            current.files.drop(filePage * 20).take(20).forEach { file ->
-                val checked = file.id in chosenFiles
-                SettingRow(file.path, android.text.format.Formatter.formatShortFileSize(activity, file.size), isSelected = checked, trailing = if (checked) "✓" else "○", onClick = {
-                    chosenFiles = if (checked) chosenFiles - file.id else chosenFiles + file.id
-                })
-                if (TorrPlayback.isVideo(file.path)) SettingRow(tr(R.string.torr_play_file), file.path, onClick = {
-                    activity.prepareTorrPlayback(current.hash, file.id, file.size)
-                })
-            }
-            if (filePage > 0) SettingRow("‹", onClick = { filePage-- })
-            if ((filePage + 1) * 20 < current.files.size) SettingRow("›", onClick = { filePage++ })
-        }
+        TorrDownloadSelectedUi(activity, current, scope, fileFocus, busyState, selectedState, filePageState, chosenFilesState,
+            preparingHashState, metadataRetryInFlightState, metadataRetryGenerationState, journalLoadingState, journalFailedState,
+            leaveSelected = { leaveSelected() }, refresh = { refresh() })
         return
     }
 
-    LaunchedEffect(showHttpDownload, httpReturnFocus, activity.resumeVersion) {
-        val focus = httpReturnFocus
-        if (!showHttpDownload && focus != null &&
-            activity.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) {
-            withFrameNanos { }
-            if (runCatching { focus.requestFocus() }.getOrDefault(false)) httpReturnFocus = null
-        }
-    }
-    if (showHttpDownload) {
-        val savedFolder = TorrDownloadFolderAccess.identity(activity.torrDownloadFolder)
-        val folderLabel = savedFolder?.takeIf { folderGrants?.contains(it) == true }?.documentId?.let {
-            it.substringAfterLast('/').substringAfter(':').ifBlank { it }
-        }
-        HttpDownloadUi(activity, folderLabel, httpInitialAddress, onSubmit = {
-            showFinished = false
-            if (httpRebindId == null) jobPage = 0
-        }, onDismiss = dismiss@{
-            if (!showHttpDownload) return@dismiss
-            showHttpDownload = false
-            httpInitialAddress = ""
-            httpSession = null
-            val rebindId = httpRebindId
-            httpRebindId = null
-            if (rebindId == null) httpReturnFocus = httpEntryFocus else httpRebindReturnId = rebindId
-            httpEntryFocus = null
-        }, session = httpSession, onRebind = httpRebindId?.let { id ->
-            { admission ->
-                runCatching {
-                    TorrDownloadStore.bindSession(activity, id, admission)
-                    activity.startTorrDownload(id)
-                }.isSuccess
-            }
-        })
-    }
+    TorrDownloadHttpEntryUi(activity, showHttpDownloadState, httpReturnFocusState, httpInitialAddressState, httpSessionState,
+        httpRebindIdState, httpRebindReturnIdState, httpEntryFocusState, folderGrantsState, showFinishedState, jobPageState)
     fun addHttpLink() {
         if (PortableMaintenance.running) return
         httpEntryFocus = httpLinkFocus
         showHttpDownload = true
     }
-    if (wide) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SettingRow(tr(R.string.torr_download_add_file), modifier = Modifier.weight(1f).focusRequester(initialFocus), onClick = activity::chooseTorrFile)
-            SettingRow(tr(R.string.http_download_add_link), modifier = Modifier.weight(1f).focusRequester(httpLinkFocus), onClick = ::addHttpLink)
-            SettingRow(tr(R.string.browser_download_entry), modifier = Modifier.weight(1f).focusRequester(browserFocus), onClick = { openBrowser() })
-            SettingRow(tr(if (showMagnet) R.string.downloads_magnet_hide else R.string.downloads_magnet_show), modifier = Modifier.weight(1f), onClick = { showMagnet = !showMagnet })
-            SettingRow(tr(if (showOptions) R.string.downloads_options_hide else R.string.downloads_options_show), modifier = Modifier.weight(1f), onClick = { showOptions = !showOptions })
-        }
-    } else {
-        SettingRow(tr(R.string.torr_download_add_file), modifier = Modifier.focusRequester(initialFocus), onClick = activity::chooseTorrFile)
-        SettingRow(tr(R.string.http_download_add_link), modifier = Modifier.focusRequester(httpLinkFocus), onClick = ::addHttpLink)
-        SettingRow(tr(R.string.browser_download_entry), modifier = Modifier.focusRequester(browserFocus), onClick = { openBrowser() })
-        SettingRow(tr(if (showMagnet) R.string.downloads_magnet_hide else R.string.downloads_magnet_show), onClick = { showMagnet = !showMagnet })
-        SettingRow(tr(if (showOptions) R.string.downloads_options_hide else R.string.downloads_options_show), onClick = { showOptions = !showOptions })
-    }
+    TorrDownloadAddButtonsUi(activity, wide, initialFocus, httpLinkFocus, browserFocus, showMagnetState, showOptionsState,
+        addHttpLink = ::addHttpLink, openBrowser = { openBrowser() })
     if (activity.torrDownloadMessage.isNotBlank()) Text(activity.torrDownloadMessage,
         modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }, color = Color.LightGray, fontSize = 13.sp)
     if (showOptions) {
+        TorrDownloadOptionsUi(activity, scope, reserveMiBState, prefetchCountState, prefetchQuotaState, autoRetryState,
+            showMediaTorrents, autoCover)
+    }
+    if (showMagnet) {
+        TorrDownloadMagnetUi(activity, scope, magnetState, busyState, magnetSubmitFocus)
+    }
+    if (failed) {
+        Text(tr(R.string.torr_download_unavailable), color = Color.LightGray, fontSize = 13.sp)
+        SettingRow(tr(R.string.torr_download_open), onClick = activity::openTorrServer)
+    }
+    val visibleJobs = torrDownloadQueueHeader(activity, initialFocus, jobsState, journalLoadingState, journalFailedState,
+        hiddenFinishedState, folderAccessReturnFocusState, folderAccessBusyState, folderAccessRequestState, showFinishedState,
+        jobPageState, finishedFocusIdState, finishedTabFocus, needsSiteSession = ::needsSiteSession,
+        needsFolderAccess = ::needsFolderAccess)
+    val firstJobFocus = remember { FocusRequester() }
+    visibleJobs.drop(jobPage * 20).take(20).forEachIndexed { index, job ->
+        TorrDownloadJobRowUi(activity, job, scope, liveProgressState, httpRebindReturnIdState, folderAccessReturnFocusState,
+            folderAccessFromGameState, folderAccessBusyState, folderAccessRequestState, busyState, discardErrorIdState,
+            openingHttpState, if (index == 0) firstJobFocus else null,
+            needsSiteSession = ::needsSiteSession, needsFolderAccess = ::needsFolderAccess,
+            restoreFolderAccess = ::restoreFolderAccess, openBrowser = { openBrowser(it) },
+            removeJobRecord = { removeJobRecord(it) }, hideFinished = ::hideFinished)
+    }
+    TorrDownloadJobPagerUi(jobPageState, visibleJobs.size, firstJobFocus)
+    if (visibleJobs.any { it.state == "done" }) Text(tr(R.string.torr_download_keep_file), color = Color.LightGray, fontSize = 13.sp)
+    TorrDownloadCatalogUi(activity, scope, entriesState, linkedHashesState, linkCheckFailedState, showMediaTorrents, failedState,
+        busyState, pageState, preparingHashState, metadataRetryInFlightState, selectedState, filePageState, chosenFilesState,
+        refresh = { refresh() })
+}
+
+/** Download settings; the remembered resume option resets when the section is hidden, as before. */
+@Composable @NonRestartableComposable
+private fun TorrDownloadOptionsUi(
+    activity: MainActivity,
+    scope: CoroutineScope,
+    reserveMiBState: MutableState<Int>,
+    prefetchCountState: MutableIntState,
+    prefetchQuotaState: MutableIntState,
+    autoRetryState: MutableState<Boolean>,
+    showMediaTorrents: Boolean,
+    autoCover: Boolean,
+) {
+    var reserveMiB by reserveMiBState
+    var prefetchCount by prefetchCountState
+    var prefetchQuota by prefetchQuotaState
+    var autoRetry by autoRetryState
     val folder = activity.torrDownloadFolder
     val folderLabel = remember(folder) {
         runCatching { android.provider.DocumentsContract.getTreeDocumentId(android.net.Uri.parse(folder)).substringAfterLast('/') }.getOrDefault("")
@@ -601,35 +517,91 @@ import kotlinx.coroutines.withContext
     })
     Text(tr(R.string.downloads_auto_cover_hint), color = Color.LightGray, fontSize = 12.sp)
     DownloadWriteLimits(activity)
-    }
-    if (showMagnet) {
-    Text(tr(R.string.torr_download_magnet), color = Color.LightGray, fontSize = 13.sp)
-    BasicTextField(magnet, { if (it.length <= 8192) magnet = it }, modifier = Modifier.fillMaxWidth().background(Color(0xFF29292B)).padding(10.dp),
-        singleLine = true, textStyle = TextStyle(color = Color.White, fontSize = 14.sp))
-    SettingRow(tr(R.string.torr_download_add_magnet), modifier = Modifier.focusRequester(magnetSubmitFocus), onClick = {
-        if (!busy && magnet.isNotBlank()) {
-            busy = true
-            activity.torrDownloadMessage = ""
-            scope.launch {
-                try {
-                    val entry = withContext(Dispatchers.IO) { TorrServerCatalog.addMagnet(magnet.trim()) }
-                    magnet = ""; activity.torrCatalogChanged(); activity.torrDownloadMessage = activity.getString(R.string.torr_download_torrent_added)
-                    activity.findTorrentCover(entry)
-                } catch (_: Exception) { activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed) }
-                finally { busy = false }
-            }
+}
+
+/**
+ * Queue page buttons. A page turn can remove the pressed button (first or last page), so focus then moves to the
+ * pager button that remains, or to the first row; only a pager press requests focus.
+ */
+@Composable @NonRestartableComposable
+private fun TorrDownloadJobPagerUi(jobPageState: MutableState<Int>, jobCount: Int, firstJobFocus: FocusRequester) {
+    var jobPage by jobPageState
+    val count by rememberUpdatedState(jobCount)
+    val previousFocus = remember { FocusRequester() }
+    val nextFocus = remember { FocusRequester() }
+    val previousInView = remember { BringIntoViewRequester() }
+    val nextInView = remember { BringIntoViewRequester() }
+    val pagerScope = rememberCoroutineScope()
+    // -1 after "‹", 1 after "›", 0 when no pager focus is pending.
+    var pagerFocus by remember { mutableIntStateOf(0) }
+    LaunchedEffect(pagerFocus) {
+        if (pagerFocus == 0) return@LaunchedEffect
+        withFrameNanos { }
+        val hasPrevious = jobPageState.value > 0
+        val hasNext = (jobPageState.value + 1) * 20 < count
+        val target = when {
+            pagerFocus < 0 && hasPrevious -> previousFocus
+            pagerFocus > 0 && hasNext -> nextFocus
+            hasPrevious -> previousFocus
+            hasNext -> nextFocus
+            else -> firstJobFocus
         }
-    })
+        pagerFocus = 0
+        val onFirstRow = !runCatching { target.requestFocus() }.getOrDefault(false)
+        if (onFirstRow) runCatching { firstJobFocus.requestFocus() }
+        // A button that keeps focus is not scrolled by the focus change, and a page turn changes the
+        // content height after the request, so scroll once the new layout is in place. Resetting
+        // pagerFocus restarts this effect, so the scroll runs in its own scope.
+        else if (target !== firstJobFocus) pagerScope.launch {
+            val inView = if (target === previousFocus) previousInView else nextInView
+            withFrameNanos { }
+            withFrameNanos { }
+            runCatching { inView.bringIntoView() }
+            delay(150)
+            runCatching { inView.bringIntoView() }
+        }
     }
-    if (failed) {
-        Text(tr(R.string.torr_download_unavailable), color = Color.LightGray, fontSize = 13.sp)
-        SettingRow(tr(R.string.torr_download_open), onClick = activity::openTorrServer)
-    }
+    if (jobPage > 0) SettingRow("‹", modifier = Modifier.bringIntoViewRequester(previousInView).focusRequester(previousFocus),
+        onClick = { jobPage--; pagerFocus = -1 })
+    if ((jobPage + 1) * 20 < jobCount) SettingRow("›", modifier = Modifier.bringIntoViewRequester(nextInView).focusRequester(nextFocus),
+        onClick = { jobPage++; pagerFocus = 1 })
+}
+
+/** Queue title, tabs and batch controls; returns the jobs of the selected tab for the rows below. */
+@Composable @NonRestartableComposable
+private fun torrDownloadQueueHeader(
+    activity: MainActivity,
+    initialFocus: FocusRequester,
+    jobsState: State<List<TorrDownloadJob>>,
+    journalLoadingState: State<Boolean>,
+    journalFailedState: State<Boolean>,
+    hiddenFinishedState: State<Set<String>>,
+    folderAccessReturnFocusState: MutableState<String?>,
+    folderAccessBusyState: State<Boolean>,
+    folderAccessRequestState: State<ArrayList<String>?>,
+    showFinishedState: MutableState<Boolean>,
+    jobPageState: MutableState<Int>,
+    finishedFocusIdState: MutableState<String?>,
+    finishedTabFocus: FocusRequester,
+    needsSiteSession: (TorrDownloadJob) -> Boolean,
+    needsFolderAccess: (TorrDownloadJob) -> Boolean,
+): List<TorrDownloadJob> {
+    val jobs by jobsState
+    val journalLoading by journalLoadingState
+    val journalFailed by journalFailedState
+    val hiddenFinished by hiddenFinishedState
+    var folderAccessReturnFocus by folderAccessReturnFocusState
+    val folderAccessBusy by folderAccessBusyState
+    val folderAccessRequest by folderAccessRequestState
+    var showFinished by showFinishedState
+    var jobPage by jobPageState
+    var finishedFocusId by finishedFocusIdState
     Text(tr(R.string.torr_download_queue), color = Color.White, fontSize = 16.sp)
     val availableJobs = if (journalLoading || journalFailed) emptyList() else jobs
     val activeJobs = availableJobs.filter { it.state != "done" }
     val finishedJobs = TorrDownloadHistory.completed(availableJobs, hiddenFinished)
-    val folderFocusMissing = folderAccessReturnFocus != null && activeJobs.none { it.id == folderAccessReturnFocus }
+    val folderFocusMissing = folderAccessReturnFocus != null &&
+        (if (showFinished) finishedJobs else activeJobs).none { it.id == folderAccessReturnFocus }
     LaunchedEffect(folderFocusMissing, folderAccessBusy, journalLoading) {
         if (folderFocusMissing && !folderAccessBusy && !journalLoading) {
             withFrameNanos { }
@@ -665,237 +637,245 @@ import kotlinx.coroutines.withContext
     if (journalFailed) Text(tr(R.string.torr_download_failed), color = Color.LightGray, fontSize = 13.sp)
     if (journalLoading) Text(tr(R.string.torr_download_loading), color = Color.LightGray, fontSize = 13.sp)
     if (!journalLoading && !journalFailed && visibleJobs.isEmpty()) Text(tr(if (showFinished) R.string.torr_download_empty_finished else R.string.torr_download_empty_queue), color = Color.LightGray, fontSize = 13.sp)
-    visibleJobs.drop(jobPage * 20).take(20).forEach { job ->
-        val jobFocus = remember(job.id) { FocusRequester() }
-        LaunchedEffect(job.id, httpRebindReturnId, activity.resumeVersion) {
-            if (httpRebindReturnId == job.id && activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
-                withFrameNanos { }
-                if (runCatching { jobFocus.requestFocus() }.getOrDefault(false)) httpRebindReturnId = null
-            }
+    return visibleJobs
+}
+
+/** One queue row with its status, actions and confirmations; per-job state is keyed by the job id as before. */
+@Composable @NonRestartableComposable
+private fun TorrDownloadJobRowUi(
+    activity: MainActivity,
+    job: TorrDownloadJob,
+    scope: CoroutineScope,
+    liveProgressState: State<TorrDownloadProgress?>,
+    httpRebindReturnIdState: MutableState<String?>,
+    folderAccessReturnFocusState: MutableState<String?>,
+    folderAccessFromGameState: MutableState<Boolean>,
+    folderAccessBusyState: State<Boolean>,
+    folderAccessRequestState: State<ArrayList<String>?>,
+    busyState: MutableState<Boolean>,
+    discardErrorIdState: MutableState<String?>,
+    openingHttpState: MutableState<Boolean>,
+    pageFocus: FocusRequester?,
+    needsSiteSession: (TorrDownloadJob) -> Boolean,
+    needsFolderAccess: (TorrDownloadJob) -> Boolean,
+    restoreFolderAccess: (job: TorrDownloadJob, fromGame: Boolean) -> Unit,
+    openBrowser: (String) -> Unit,
+    removeJobRecord: (String) -> Unit,
+    hideFinished: (TorrDownloadJob) -> Unit,
+) {
+    val liveProgress by liveProgressState
+    var httpRebindReturnId by httpRebindReturnIdState
+    var folderAccessReturnFocus by folderAccessReturnFocusState
+    var folderAccessFromGame by folderAccessFromGameState
+    val folderAccessBusy by folderAccessBusyState
+    val folderAccessRequest by folderAccessRequestState
+    var busy by busyState
+    var discardErrorId by discardErrorIdState
+    var openingHttp by openingHttpState
+    val jobFocus = remember(job.id) { FocusRequester() }
+    val jobInView = remember(job.id) { BringIntoViewRequester() }
+    val gameFocus = remember(job.id) { FocusRequester() }
+    val gameInView = remember(job.id) { BringIntoViewRequester() }
+    LaunchedEffect(job.id, httpRebindReturnId, activity.resumeVersion) {
+        if (httpRebindReturnId == job.id && activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+            withFrameNanos { }
+            if (runCatching { jobFocus.requestFocus() }.getOrDefault(false)) httpRebindReturnId = null
         }
-        var restartOffset by remember(job.id) { mutableStateOf<Long?>(null) }
-        val restoreAccess = needsFolderAccess(job)
-        fun dismissRestart() {
-            restartOffset = null
-            scope.launch {
-                withFrameNanos { }
-                runCatching { jobFocus.requestFocus() }
-            }
+    }
+    var restartOffset by remember(job.id) { mutableStateOf<Long?>(null) }
+    val restoreAccess = needsFolderAccess(job)
+    fun dismissRestart() {
+        restartOffset = null
+        scope.launch {
+            withFrameNanos { }
+            runCatching { jobFocus.requestFocus() }
         }
-        restartOffset?.let { offset ->
-            ConfirmHttpDownloadRestart(onDismiss = ::dismissRestart, onConfirm = {
-                // A focus/queue refresh may have changed the row while the prompt was open.
-                val current = TorrDownloadStore.jobs.value.firstOrNull { it.id == job.id }
-                val confirmed = restartOffset == offset
-                dismissRestart()
-                if (confirmed && current != null && current.requiresHttpRestart && current.offset == offset &&
-                    current.state in setOf("paused", "error") &&
-                    !PortableMaintenance.running &&
-                    !folderAccessBusy && folderAccessRequest == null && activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
-                    if (needsFolderAccess(current)) restoreFolderAccess(current)
-                    else {
-                        runCatching { activity.startTorrDownload(current.id, restartId = current.id) }
-                            .onFailure { activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed) }
-                    }
+    }
+    restartOffset?.let { offset ->
+        ConfirmHttpDownloadRestart(onDismiss = ::dismissRestart, onConfirm = {
+            // A focus/queue refresh may have changed the row while the prompt was open.
+            val current = TorrDownloadStore.jobs.value.firstOrNull { it.id == job.id }
+            val confirmed = restartOffset == offset
+            dismissRestart()
+            if (confirmed && current != null && current.requiresHttpRestart && current.offset == offset &&
+                current.state in setOf("paused", "error") &&
+                !PortableMaintenance.running &&
+                !folderAccessBusy && folderAccessRequest == null && activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                if (needsFolderAccess(current)) restoreFolderAccess(current, false)
+                else {
+                    runCatching { activity.startTorrDownload(current.id, restartId = current.id) }
+                        .onFailure { activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed) }
                 }
-            })
+            }
+        })
+    }
+    LaunchedEffect(folderAccessReturnFocus == job.id, folderAccessBusy) {
+        if (folderAccessReturnFocus == job.id && !folderAccessBusy) {
+            withFrameNanos { }
+            // Return to the control that started the restore: the game button or the row itself.
+            val game = folderAccessFromGame && job.state == "done" && downloadGameAction(job) != null
+            folderAccessFromGame = false
+            if (!game || !runCatching { gameFocus.requestFocus() }.getOrDefault(false)) runCatching { jobFocus.requestFocus() }
+            // The control may keep focus while a new status line above it pushes it off-screen.
+            runCatching { (if (game) gameInView else jobInView).bringIntoView() }
+            folderAccessReturnFocus = null
         }
-        LaunchedEffect(folderAccessReturnFocus == job.id, folderAccessBusy) {
-            if (folderAccessReturnFocus == job.id && !folderAccessBusy) {
-                withFrameNanos { }
-                runCatching { jobFocus.requestFocus() }
-                folderAccessReturnFocus = null
-            }
+    }
+    val label = when (job.state) {
+        "queued" -> R.string.torr_download_queued
+        "running" -> when (job.error) {
+            "retrying" -> R.string.torr_download_retrying
+            "waiting_network" -> R.string.torr_download_waiting_network
+            else -> R.string.torr_download_running
         }
-        val label = when (job.state) {
-            "queued" -> R.string.torr_download_queued
-            "running" -> when (job.error) {
-                "retrying" -> R.string.torr_download_retrying
-                "waiting_network" -> R.string.torr_download_waiting_network
-                else -> R.string.torr_download_running
-            }
-            "paused" -> R.string.torr_download_paused
-            "done" -> R.string.torr_download_done
-            "finalizing" -> R.string.torr_download_finalizing
-            else -> (if (job.http != null) httpDownloadJobErrorResource(job.error) else null) ?: when (job.error) {
-                "space" -> R.string.torr_download_low_space
-                "space_unavailable" -> R.string.torr_download_space_unknown
-                "storage" -> R.string.torr_download_storage_error
-                "video_invalid" -> R.string.torr_download_video_invalid
-                "finalize", "finalizing" -> R.string.torr_download_finalize_error
-                "source_timeout" -> R.string.torr_download_source_timeout
-                "source_connect" -> R.string.torr_download_source_connect
-                "source_auth" -> R.string.torr_download_source_auth
-                "source_io", "source_incomplete" -> R.string.torr_download_source_interrupted
-                "source_response" -> R.string.torr_download_source_response
-                "source_changed" -> R.string.torr_download_source_changed
-                else -> R.string.torr_download_error
-            }
+        "paused" -> R.string.torr_download_paused
+        "done" -> R.string.torr_download_done
+        "finalizing" -> R.string.torr_download_finalizing
+        else -> (if (job.http != null) httpDownloadJobErrorResource(job.error) else null) ?: when (job.error) {
+            "space" -> R.string.torr_download_low_space
+            "space_unavailable" -> R.string.torr_download_space_unknown
+            "storage" -> R.string.torr_download_storage_error
+            "video_invalid" -> R.string.torr_download_video_invalid
+            "finalize", "finalizing" -> R.string.torr_download_finalize_error
+            "source_timeout" -> R.string.torr_download_source_timeout
+            "source_connect" -> R.string.torr_download_source_connect
+            "source_auth" -> R.string.torr_download_source_auth
+            "source_io", "source_incomplete" -> R.string.torr_download_source_interrupted
+            "source_response" -> R.string.torr_download_source_response
+            "source_changed" -> R.string.torr_download_source_changed
+            else -> R.string.torr_download_error
         }
-        val displayOffset = downloadDisplayOffset(job, liveProgress)
-        val percent = if (job.total == 0L) { if (job.state == "done") 100 else 0 } else (displayOffset.toDouble() / job.total * 100).toInt().coerceIn(0, 100)
-        val httpTorrent = job.http != null && job.finalName.endsWith(".torrent", ignoreCase = true)
-        val action = when (job.state) {
-            "queued", "running" -> tr(R.string.torr_download_pause)
-            "paused", "error" -> if (job.error == "video_invalid") "" else tr(when {
-                restoreAccess -> R.string.torr_folder_access_restore
-                needsSiteSession(job) -> R.string.http_download_sign_in_again
-                job.requiresHttpRestart -> R.string.http_download_restart
-                else -> R.string.torr_download_resume
-            })
-            "done" -> when {
-                httpTorrent -> tr(R.string.browser_import_torrent)
-                job.http != null -> tr(R.string.http_download_open)
-                else -> ""
-            }
+    }
+    val displayOffset = downloadDisplayOffset(job, liveProgress)
+    val percent = if (job.total == 0L) { if (job.state == "done") 100 else 0 } else (displayOffset.toDouble() / job.total * 100).toInt().coerceIn(0, 100)
+    val httpTorrent = job.http != null && job.finalName.endsWith(".torrent", ignoreCase = true)
+    val action = when (job.state) {
+        "queued", "running" -> tr(R.string.torr_download_pause)
+        "paused", "error" -> if (job.error == "video_invalid") "" else tr(when {
+            restoreAccess -> R.string.torr_folder_access_restore
+            needsSiteSession(job) -> R.string.http_download_sign_in_again
+            job.requiresHttpRestart -> R.string.http_download_restart
+            else -> R.string.torr_download_resume
+        })
+        "done" -> when {
+            restoreAccess -> tr(R.string.torr_folder_access_restore)
+            httpTorrent -> tr(R.string.browser_import_torrent)
+            job.http != null -> tr(R.string.http_download_open)
             else -> ""
         }
-        val summary = "${tr(label)} · $percent%" + if (action.isNotEmpty()) " · $action" else ""
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SettingRow(job.name, summary, modifier = Modifier.weight(1f).focusRequester(jobFocus), onClick = {
-                if (restoreAccess) { restoreFolderAccess(job); return@SettingRow }
-                if (folderAccessBusy || folderAccessRequest != null) return@SettingRow
-                runCatching {
-                    when (job.state) {
-                        "queued", "running" -> TorrDownloadActions.pause(activity, job.id)
-                        "paused", "error" -> when {
-                            job.error == "video_invalid" -> Unit // The separate removal action asks for confirmation.
-                            needsSiteSession(job) -> openBrowser(job.id)
-                            job.requiresHttpRestart -> restartOffset = job.offset
-                            else -> activity.startTorrDownload(job.id)
-                        }
-                        "done" -> if (job.http != null && !openingHttp && !PortableMaintenance.running) {
-                            openingHttp = true
-                            scope.launch {
-                                try {
-                                    if (httpTorrent) {
-                                        val document = withContext(Dispatchers.IO) { TorrDownloadDocuments.verifyCompletedHttp(activity, job) }
-                                        activity.importTorrentUri(document)
-                                    } else openCompletedHttpDownload(activity, job)
-                                }
-                                catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
-                                catch (_: Exception) { activity.torrDownloadMessage = activity.getString(R.string.http_download_open_failed) }
-                                finally { openingHttp = false }
+        else -> ""
+    }
+    val summary = "${tr(label)} · $percent%" + if (action.isNotEmpty()) " · $action" else ""
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        SettingRow(job.name, summary, modifier = Modifier.weight(1f).bringIntoViewRequester(jobInView).focusRequester(jobFocus)
+            .then(if (pageFocus != null) Modifier.focusRequester(pageFocus) else Modifier), onClick = {
+            if (restoreAccess) { restoreFolderAccess(job, false); return@SettingRow }
+            if (folderAccessBusy || folderAccessRequest != null) return@SettingRow
+            runCatching {
+                when (job.state) {
+                    "queued", "running" -> TorrDownloadActions.pause(activity, job.id)
+                    "paused", "error" -> when {
+                        job.error == "video_invalid" -> Unit // The separate removal action asks for confirmation.
+                        needsSiteSession(job) -> openBrowser(job.id)
+                        job.requiresHttpRestart -> restartOffset = job.offset
+                        else -> activity.startTorrDownload(job.id)
+                    }
+                    "done" -> if (job.http != null && !openingHttp && !PortableMaintenance.running) {
+                        openingHttp = true
+                        scope.launch {
+                            try {
+                                if (httpTorrent) {
+                                    val document = withContext(Dispatchers.IO) { TorrDownloadDocuments.verifyCompletedHttp(activity, job) }
+                                    activity.importTorrentUri(document)
+                                } else openCompletedHttpDownload(activity, job)
                             }
-                        } else Unit
-                        else -> Unit
-                    }
-                }.onFailure { activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed) }
-            })
-            val hideDescription = tr(R.string.torr_download_hide_finished)
-            if (job.state == "done") SettingRow("×", modifier = Modifier.width(72.dp).semantics { contentDescription = hideDescription }, trailing = "", onClick = { hideFinished(job) })
-        }
-        if (restoreAccess || (job.state == "error" && TorrDownloadFolderAccess.canRestore(job.state, job.error))) Text(
-            tr(when {
-                restoreAccess -> R.string.torr_folder_access_hint
-                job.requiresHttpRestart -> R.string.http_download_restart_access_check
-                else -> R.string.torr_folder_access_check
-            }),
-            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }, color = Color.LightGray, fontSize = 12.sp)
-        if (job.state in setOf("running", "queued", "paused") && job.total > 0) {
-            Box(Modifier.fillMaxWidth().height(3.dp).background(Color(0xFF38383C))) {
-                Box(Modifier.fillMaxWidth(percent / 100f).height(3.dp).background(Color(0xFFCCFF00)))
-            }
-        }
-        if (job.state == "done") {
-            val isArchive = GameArchiveFormat.supportsName(job.finalName)
-            if (isArchive || PlatformRegistry.all.any { it.accepts(job.finalName) }) {
-                SettingRow(tr(if (isArchive) R.string.game_archive_title else R.string.torr_game_add),
-                    onClick = { activity.addDownloadedGame(job) })
-            }
-        }
-        if (job.state == "paused" || job.state == "error") SettingRow(
-            tr(R.string.torr_download_remove), tr(R.string.torr_download_keep_partial), onClick = {
-                android.app.AlertDialog.Builder(activity)
-                    .setTitle(R.string.torr_download_remove_incomplete_title)
-                    .setMessage(R.string.torr_download_remove_incomplete_message)
-                    .setPositiveButton(R.string.torr_download_remove) { _, _ ->
-                        removeJobRecord(job.id)
-                    }
-                    .setNegativeButton(R.string.cancel, null).show()
-            })
-        if (job.state == "paused" || job.state == "error") SettingRow(
-            tr(R.string.torr_discard_partial), onClick = {
-                if (!busy) android.app.AlertDialog.Builder(activity)
-                    .setTitle(R.string.torr_discard_title)
-                    .setMessage(R.string.torr_discard_message)
-                    .setPositiveButton(R.string.torr_discard_partial) { _, _ ->
-                        if (!busy) {
-                            busy = true
-                            discardErrorId = null
-                            scope.launch {
-                                try {
-                                    withContext(Dispatchers.IO + NonCancellable) { TorrDownloadDocuments.discard(activity.applicationContext, job.id) }
-                                    activity.torrDownloadMessage = activity.getString(R.string.torr_discard_done)
-                                } catch (_: Exception) {
-                                    activity.torrDownloadMessage = activity.getString(R.string.torr_discard_failed)
-                                    discardErrorId = job.id
-                                } finally { busy = false }
-                            }
+                            catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                            catch (_: Exception) { activity.torrDownloadMessage = activity.getString(R.string.http_download_open_failed) }
+                            finally { openingHttp = false }
                         }
-                    }.setNegativeButton(R.string.cancel, null).show()
-            })
-        if (discardErrorId == job.id) Text(tr(R.string.torr_discard_failed),
-            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }, color = Color.LightGray, fontSize = 13.sp)
-    }
-    if (jobPage > 0) SettingRow("‹", onClick = { jobPage-- })
-    if ((jobPage + 1) * 20 < visibleJobs.size) SettingRow("›", onClick = { jobPage++ })
-    if (visibleJobs.any { it.state == "done" }) Text(tr(R.string.torr_download_keep_file), color = Color.LightGray, fontSize = 13.sp)
-    Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-        Text(tr(R.string.torr_download_choose_torrent), modifier = Modifier.weight(1f), color = Color.White, fontSize = 16.sp)
-        SettingRow(tr(R.string.torr_download_refresh), if (busy) tr(R.string.torr_download_loading) else "", modifier = Modifier.width(150.dp), onClick = { refresh() })
-    }
-    if (busy) Text(tr(R.string.torr_download_loading), color = Color.LightGray, fontSize = 13.sp)
-    val visibleEntries = remember(entries, linkedHashes, showMediaTorrents, linkCheckFailed) {
-        if (showMediaTorrents || linkCheckFailed) entries
-        else if (linkedHashes == null) emptyList()
-        else entries.filterNot { it.hash.lowercase(java.util.Locale.ROOT) in linkedHashes!! }
-    }
-    LaunchedEffect(visibleEntries.size) { page = page.coerceAtMost(((visibleEntries.size - 1).coerceAtLeast(0)) / 20) }
-    if (linkCheckFailed) Text(tr(R.string.torr_media_check_failed), color = Color.LightGray, fontSize = 12.sp)
-    if (linkedHashes == null && !linkCheckFailed && !showMediaTorrents) Text(tr(R.string.torr_download_loading), color = Color.LightGray, fontSize = 13.sp)
-    if (visibleEntries.isEmpty() && !busy && !failed && (linkedHashes != null || linkCheckFailed || showMediaTorrents)) Text(
-        tr(if (entries.isNotEmpty() && linkedHashes != null && !showMediaTorrents) R.string.torr_media_all_hidden else R.string.torr_download_empty),
-        color = Color.LightGray, fontSize = 13.sp)
-    visibleEntries.drop(page * 20).take(20).forEach { entry ->
-        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-        val coverId = remember(entry.hash) { TorrentArtwork.id(entry.hash) }
-        val cover = activity.managedCovers[coverId]
-        val artwork = cover?.manual?.takeIf { it.isNotEmpty() } ?: cover?.original.orEmpty()
-        if (artwork.isEmpty()) Box(Modifier.width(100.dp).height(57.dp).background(Color(0xFF29292B)), contentAlignment = androidx.compose.ui.Alignment.Center) {
-            Text("↓", color = Color.LightGray, fontSize = 24.sp)
-        } else CoverArtwork(artwork, Modifier.width(100.dp).height(57.dp))
-        Spacer(Modifier.width(10.dp))
-        SettingRow(entry.title, if (preparingHash == entry.hash) tr(R.string.torr_download_preparing_files) else "", modifier = Modifier.weight(1f), onClick = {
-            if (!busy && !metadataRetryInFlight) {
-                busy = true
-                preparingHash = entry.hash
-                activity.torrDownloadMessage = ""
-                scope.launch {
-                    try { selected = withContext(Dispatchers.IO) { TorrServerCatalog.loadFiles(entry.hash) }; filePage = 0; chosenFiles = emptySet() }
-                    catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
-                    catch (_: TorrMetadataTimeout) {
-                        selected = entry; activity.torrDownloadMessage = activity.getString(R.string.movies_torrent_timeout)
-                    }
-                    catch (_: Exception) {
-                        selected = entry; activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed)
-                    }
-                    finally { preparingHash = null; busy = false }
+                    } else Unit
+                    else -> Unit
                 }
-            }
+            }.onFailure { activity.torrDownloadMessage = activity.getString(R.string.torr_download_failed) }
         })
-        Spacer(Modifier.width(8.dp))
-        CompactIconButton(CompactIcon.Add, tr(R.string.movies_add_torrent_media), enabled = !busy, onClick = {
-            activity.startActivity(android.content.Intent(activity, MovieLibraryActivity::class.java).apply {
-                putExtra(MovieLibraryActivity.EXTRA_TORRENT_HASH, entry.hash)
-                putExtra(MovieLibraryActivity.EXTRA_TORRENT_TITLE, entry.title)
-            })
-        })
+        val hideDescription = tr(R.string.torr_download_hide_finished)
+        if (job.state == "done") SettingRow("×", modifier = Modifier.width(72.dp).semantics { contentDescription = hideDescription }, trailing = "", onClick = { hideFinished(job) })
+    }
+    if (restoreAccess || (job.state == "error" && TorrDownloadFolderAccess.canRestore(job.state, job.error))) Text(
+        tr(when {
+            restoreAccess && job.state == "done" -> finishedFolderAccessHint(job)
+            restoreAccess -> R.string.torr_folder_access_hint
+            job.requiresHttpRestart -> R.string.http_download_restart_access_check
+            else -> R.string.torr_folder_access_check
+        }),
+        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }, color = Color.LightGray, fontSize = 12.sp)
+    if (job.state in setOf("running", "queued", "paused") && job.total > 0) {
+        Box(Modifier.fillMaxWidth().height(3.dp).background(Color(0xFF38383C))) {
+            Box(Modifier.fillMaxWidth(percent / 100f).height(3.dp).background(Color(0xFFCCFF00)))
         }
     }
-    if (page > 0) SettingRow("‹", onClick = { page-- })
-    if ((page + 1) * 20 < visibleEntries.size) SettingRow("›", onClick = { page++ })
+    val gameAction = if (job.state == "done") downloadGameAction(job) else null
+    if (gameAction != null) {
+        // Without the read grant the import or archive check could only fail; regrant the exact folder first.
+        SettingRow(tr(gameAction), if (restoreAccess && downloadGameReadsFolder(job)) tr(R.string.torr_folder_access_restore) else "",
+            modifier = Modifier.bringIntoViewRequester(gameInView).focusRequester(gameFocus),
+            onClick = {
+                if (needsFolderAccess(job) && downloadGameReadsFolder(job)) restoreFolderAccess(job, true)
+                else activity.addDownloadedGame(job)
+            })
+    }
+    if (job.state == "paused" || job.state == "error") SettingRow(
+        tr(R.string.torr_download_remove), tr(R.string.torr_download_keep_partial), onClick = {
+            android.app.AlertDialog.Builder(activity)
+                .setTitle(R.string.torr_download_remove_incomplete_title)
+                .setMessage(R.string.torr_download_remove_incomplete_message)
+                .setPositiveButton(R.string.torr_download_remove) { _, _ ->
+                    removeJobRecord(job.id)
+                }
+                .setNegativeButton(R.string.cancel, null).show()
+        })
+    if (job.state == "paused" || job.state == "error") SettingRow(
+        tr(R.string.torr_discard_partial), onClick = {
+            if (!busy) android.app.AlertDialog.Builder(activity)
+                .setTitle(R.string.torr_discard_title)
+                .setMessage(R.string.torr_discard_message)
+                .setPositiveButton(R.string.torr_discard_partial) { _, _ ->
+                    if (!busy) {
+                        busy = true
+                        discardErrorId = null
+                        scope.launch {
+                            try {
+                                withContext(Dispatchers.IO + NonCancellable) { TorrDownloadDocuments.discard(activity.applicationContext, job.id) }
+                                activity.torrDownloadMessage = activity.getString(R.string.torr_discard_done)
+                            } catch (_: Exception) {
+                                activity.torrDownloadMessage = activity.getString(R.string.torr_discard_failed)
+                                discardErrorId = job.id
+                            } finally { busy = false }
+                        }
+                    }
+                }.setNegativeButton(R.string.cancel, null).show()
+        })
+    if (discardErrorId == job.id) Text(tr(R.string.torr_discard_failed),
+        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }, color = Color.LightGray, fontSize = 13.sp)
 }
+
+/** The completed-row game action, matching [MainActivity.addDownloadedGame]; null when the file is not a game. */
+private fun downloadGameAction(job: TorrDownloadJob): Int? = when {
+    GameArchiveFormat.supportsName(job.finalName) -> R.string.game_archive_title
+    PlatformRegistry.all.any { it.accepts(job.finalName) } -> R.string.torr_game_add
+    else -> null
+}
+
+/**
+ * Archive inspection and single-file import read the recorded document through its download tree, so they need
+ * its read grant. Disc sheets (cue/gdi/m3u) instead ask for their own library folder in the picker.
+ */
+private fun downloadGameReadsFolder(job: TorrDownloadJob): Boolean = downloadGameAction(job) != null &&
+    (GameArchiveFormat.supportsName(job.finalName) ||
+        job.finalName.substringAfterLast('.', "").lowercase(java.util.Locale.ROOT) !in setOf("cue", "gdi", "m3u"))
+
+private fun finishedFolderAccessHint(job: TorrDownloadJob): Int =
+    if (downloadGameReadsFolder(job)) R.string.torr_folder_access_game_hint else R.string.torr_folder_access_finished_hint
 
 @Composable
 private fun DownloadWriteLimits(activity: MainActivity) {

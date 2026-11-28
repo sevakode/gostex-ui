@@ -253,8 +253,14 @@
     <string name="torr_folder_access_hint">Выбери прежнюю папку, чтобы восстановить доступ. Недокачанный файл останется на месте.</string>
     <string name="torr_folder_access_check">Проверь накопитель и файл, затем нажми «Продолжить».</string>
     <string name="torr_folder_access_restored">Доступ восстановлен. Нажми «Продолжить», чтобы возобновить загрузку.</string>
+    <string name="torr_folder_access_finished_hint">Выбери прежнюю папку, чтобы GOSTEX снова мог читать скачанный файл. Файл и настройки загрузок не изменятся.</string>
+    <string name="torr_folder_access_finished_restored">Доступ восстановлен. Скачанный файл снова доступен.</string>
     <string name="torr_folder_access_cancelled">Доступ не изменён.</string>
     <string name="torr_folder_access_different">Выбери исходную папку загрузки. Загрузка не изменена.</string>
     <string name="torr_folder_access_stale">Эта загрузка изменилась или уже недоступна. Вернись к очереди.</string>
     <string name="torr_folder_access_failed">Не удалось восстановить доступ. Проверь, что исходная папка доступна для чтения и записи.</string>
+    <string name="torr_folder_access_game_hint">Выбери прежнюю папку, чтобы файл игры снова можно было прочитать, добавить или распаковать. Файл и настройки загрузок не изменятся.</string>
+    <string name="torr_folder_access_game_restored">Доступ восстановлен. Снова выбери действие для игры.</string>
+    <string name="movie_folder_access_restored">Доступ восстановлен. Выбери серию, чтобы воспроизвести её.</string>
+    <string name="movie_folder_access_stale">Эта сохранённая серия изменилась или уже недоступна. Ничего не изменено.</string>
 </resources>

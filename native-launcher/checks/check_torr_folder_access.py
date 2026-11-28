@@ -52,11 +52,12 @@ private class Resolver: ContentResolver() {
  var readGranted = true
  var writeGranted = true
  var selected: Uri? = null
+ var expectedFlags = 3
  override val persistedUriPermissions: List<UriPermission> get() {
   reads++; if (readThrows) throw SecurityException("Permission query unavailable"); return grants.toList()
  }
  override fun takePersistableUriPermission(uri: Uri, flags: Int) {
-  takes++; selected = uri; check(flags == 3)
+  takes++; selected = uri; check(flags == expectedFlags)
   if (takeThrows) throw SecurityException("No persistable grant")
   grants += UriPermission(uri, readGranted, writeGranted)
  }
@@ -97,7 +98,7 @@ fun main() {
   val outcome = access.restore(resolver, retryable, retryable, Uri.parse(TREE))
   check(outcome.outcome == TorrDownloadFolderAccess.Outcome.RESTORED && resolver.takes == 1)
  }
- for ((state, error) in listOf("running" to "storage", "queued" to "", "done" to "",
+ for ((state, error) in listOf("running" to "storage", "queued" to "",
   "finalizing" to "", "error" to "video_invalid", "error" to "source_auth", "paused" to "video_invalid")) {
   val changed = request.copy(state=state, error=error)
   check(!access.needsRestore(state, error, TREE, emptySet()))
@@ -143,6 +144,42 @@ fun main() {
  check(unavailable.outcome == TorrDownloadFolderAccess.Outcome.UNAVAILABLE && unavailable.grants == null)
  check(unknown.takes == 1 && unknown.reads == 1)
  check(request == original)
+ // A completed file only needs read access to its recorded folder; the job and file stay unchanged.
+ val done = request.copy(state="done", error="")
+ val finished = done.copy()
+ check(access.canRestore("done", ""))
+ check(access.needsRestore("done", "", TREE, emptySet(), emptySet()))
+ check(access.needsRestore("done", "", TREE, setOf(identity), emptySet())) // read set decides for done
+ check(!access.needsRestore("done", "", TREE, emptySet(), setOf(identity)))
+ check(!access.needsRestore("done", "", TREE, emptySet(), null))
+ check(!access.needsRestore("done", "", TREE, emptySet()))
+ check(access.needsRestore("paused", "", TREE, emptySet(), setOf(identity))) // resuming still needs write
+ val readOnly = Resolver()
+ readOnly.grants += UriPermission(Uri.parse(TREE), true, false)
+ val readOnlyGrants = access.snapshotGrants(readOnly) ?: error("Snapshot unavailable")
+ check(identity in readOnlyGrants.read && identity !in readOnlyGrants.readWrite)
+ check(!access.needsRestore("done", "", TREE, readOnlyGrants.readWrite, readOnlyGrants.read))
+ check(access.needsRestore("paused", "", TREE, readOnlyGrants.readWrite, readOnlyGrants.read))
+ val reader = Resolver().apply { expectedFlags = 1; writeGranted = false }
+ val readResult = access.restore(reader, done, done, Uri.parse("content://storage.example/tree/USB%3aGames%2fPS1"))
+ check(readResult.outcome == TorrDownloadFolderAccess.Outcome.RESTORED)
+ check(readResult.readGrants == setOf(identity) && readResult.grants == emptySet<TorrDownloadFolderAccess.Identity>())
+ check(reader.takes == 1 && reader.reads == 1 && done == finished)
+ for ((selected, expected) in listOf(null to TorrDownloadFolderAccess.Outcome.CANCELLED,
+  Uri.parse("content://storage.example/tree/USB%3AOther") to TorrDownloadFolderAccess.Outcome.DIFFERENT_FOLDER)) {
+  val resolver = Resolver().apply { expectedFlags = 1 }
+  check(access.restore(resolver, done, done, selected).outcome == expected)
+  check(resolver.takes == 0 && resolver.reads == 1 && done == finished)
+ }
+ for (changed in listOf(null, done.copy(document="content://storage.example/document/replaced"),
+  done.copy(tree=TREE+"Other"), request)) {
+  val resolver = Resolver().apply { expectedFlags = 1 }
+  check(access.restore(resolver, done, changed, Uri.parse(TREE)).outcome == TorrDownloadFolderAccess.Outcome.STALE)
+  check(resolver.takes == 0)
+ }
+ val unreadable = Resolver().apply { expectedFlags = 1; readGranted = false; writeGranted = false }
+ check(access.restore(unreadable, done, done, Uri.parse(TREE)).outcome == TorrDownloadFolderAccess.Outcome.UNAVAILABLE)
+ println("PASS: completed file read-only regrant keeps job, file and write policy for resume")
  println("PASS: paused and publication-error recovery, exact tree/state, verified regrant, missing or unknown grants, stale and ambiguous result rejection")
 }
 ''',
@@ -170,7 +207,7 @@ keys = None
 for suffix in ('', '-en', '-es', '-ru'):
     resources = ET.parse(ROOT / f'native-launcher/app/src/main/res/values{suffix}/strings.xml').getroot()
     found = {item.attrib['name'] for item in resources.findall('string') if item.attrib['name'].startswith('torr_folder_access_')}
-    assert len(found) == 8
+    assert len(found) == 12
     if keys is None:
         keys = found
     assert found == keys
@@ -179,8 +216,17 @@ callback = ui[ui.index('val folderAccessPicker ='):ui.index('fun restoreFolderAc
 assert 'startTorrDownload' not in callback and 'TorrDownloadStore.update' not in callback
 assert 'putString' not in callback and 'chooseTorrFolder' not in callback
 assert 'TorrDownloadFolderAccess.restore' in callback and 'folderAccessReturnFocus = request?.id' in callback
-assert ui.count('TorrDownloadFolderAccess.snapshot(') == 1
+assert ui.count('TorrDownloadFolderAccess.snapshotGrants(') == 1 and 'TorrDownloadFolderAccess.snapshot(' not in ui
+assert 'folderReadGrants = result.readGrants' in ui
 assert 'val restoreAccess = needsFolderAccess(job)' in ui
 assert 'filter(::canResumeInBatch)' in ui and '!needsFolderAccess(job)' in ui
-assert 'if (needsFolderAccess(current)) restoreFolderAccess(current)' in ui
+assert 'if (needsFolderAccess(current)) restoreFolderAccess(current, false)' in ui
+# Completed game actions read the recorded file, so a known-missing read grant routes them to the same regrant.
+game = ui[ui.index('val gameAction = if (job.state == "done") downloadGameAction(job) else null'):]
+game = game[:game.index('if (job.state == "paused" || job.state == "error") SettingRow(')]
+assert 'if (needsFolderAccess(job) && downloadGameReadsFolder(job)) restoreFolderAccess(job, true)' in game
+assert 'else activity.addDownloadedGame(job)' in game
+reads = ui[ui.index('private fun downloadGameReadsFolder('):ui.index('private fun finishedFolderAccessHint(')]
+assert 'setOf("cue", "gdi", "m3u")' in reads and 'GameArchiveFormat.supportsName(job.finalName)' in reads
+assert ui.count('finishedFolderAccessHint(job)') == 2 and 'R.string.torr_folder_access_game_restored' in callback
 print('PASS: shared row, restart and bulk policy, localized parity and no auto-start or default-folder write')

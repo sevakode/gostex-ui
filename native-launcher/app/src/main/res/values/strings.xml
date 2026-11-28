@@ -251,8 +251,14 @@
     <string name="torr_folder_access_hint">Select the same folder to restore access. The incomplete file stays in place.</string>
     <string name="torr_folder_access_check">Check the drive and file, then select Resume.</string>
     <string name="torr_folder_access_restored">Access restored. Select Resume to continue.</string>
+    <string name="torr_folder_access_finished_hint">Select the same folder so GOSTEX can read the downloaded file again. The file and download settings stay unchanged.</string>
+    <string name="torr_folder_access_finished_restored">Access restored. The downloaded file is available again.</string>
     <string name="torr_folder_access_cancelled">Access unchanged.</string>
     <string name="torr_folder_access_different">Choose the original download folder. The download was not changed.</string>
     <string name="torr_folder_access_stale">This download changed or is no longer available. Return to the queue.</string>
     <string name="torr_folder_access_failed">Could not restore folder access. Check that the original folder allows reading and writing.</string>
+    <string name="torr_folder_access_game_hint">Select the same folder so the game file can be read again to add or extract it. The file and download settings stay unchanged.</string>
+    <string name="torr_folder_access_game_restored">Access restored. Select the game action again.</string>
+    <string name="movie_folder_access_restored">Access restored. Select the episode to play it.</string>
+    <string name="movie_folder_access_stale">This saved episode changed or is no longer available. Nothing was changed.</string>
 </resources>
